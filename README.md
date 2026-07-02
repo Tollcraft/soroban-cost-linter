@@ -1,10 +1,10 @@
 # soroban-cost-linter
 
-> Part of the **[`Tollcraft`](https://github.com/Toolcraft)** initiative, funded by Drips Wave 7.
+> Part of the **[`Tollcraft`](https://github.com/Tollcraft)** initiative, funded by Drips Wave 7.
 
 `soroban-cost-linter` is a static analysis tool for Stellar smart contract developers. It analyzes your Rust code before compilation to detect input-independent, structurally expensive patterns that would unnecessarily drive up your Soroban resource metering and network fees.
 
-This tool acts as the preventative shield in the Tollcraft two-tiered cost pipeline, pairing conceptually with our runtime test harness, [`soroban-budget-assert`](https://github.com/Toolcraft/soroban-budget-assert).
+This tool acts as the preventative shield in the Tollcraft two-tiered cost pipeline, pairing conceptually with our runtime test harness, [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert).
 
 ## The Problem
 
