@@ -89,7 +89,3 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 2. Fork the repository.
 3. Ensure all Pull Requests target the `v1` branch.
 4. Pass all local tests before submitting.
-
-```
-
-```
