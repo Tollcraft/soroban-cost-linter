@@ -3,7 +3,6 @@
   <p><strong>The static analysis shield for Soroban smart contracts</strong></p>
   <p>
     <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
-    <img src="https://img.shields.io/crates/v/soroban-cost-linter.svg" alt="Crates.io" />
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </p>
 </div>
