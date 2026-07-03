@@ -1,8 +1,14 @@
 pub mod soroban_sdk {
     pub struct Env;
+    impl Clone for Env {
+        fn clone(&self) -> Self { Env }
+    }
     impl Env {
         pub fn storage(&self) -> storage::Storage {
             storage::Storage
+        }
+        pub fn ledger(&self) -> ledger::Ledger {
+            ledger::Ledger
         }
     }
     
@@ -33,6 +39,13 @@ pub mod soroban_sdk {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+        }
+    }
+
+    pub mod ledger {
+        pub struct Ledger;
+        impl Ledger {
+            pub fn sequence(&self) -> u32 { 0 }
         }
     }
 }
@@ -69,6 +82,16 @@ fn good_storage_outside_loop(env: Env) {
 fn allowed_storage_in_loop(env: Env) {
     for i in 0..10 {
         env.storage().instance().set(&i, &1); // Good (allowed)
+    }
+}
+
+fn bad_clone_env(env: Env) {
+    let _cloned = env.clone(); // Should Warn
+}
+
+fn bad_host_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _seq = env.ledger().sequence(); // Should Warn
     }
 }
 

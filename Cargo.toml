@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "soroban_cost_lints",
+    "cargo-cost-lint"
+]
+resolver = "2"

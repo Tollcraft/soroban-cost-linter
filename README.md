@@ -1,4 +1,12 @@
-# soroban-cost-linter
+<div align="center">
+  <h1>soroban-cost-linter</h1>
+  <p><strong>The static analysis shield for Soroban smart contracts</strong></p>
+  <p>
+    <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
+    <img src="https://img.shields.io/crates/v/soroban-cost-linter.svg" alt="Crates.io" />
+    <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
+  </p>
+</div>
 
 > Part of the **[`Tollcraft`](https://github.com/Tollcraft)** initiative, funded by Drips Wave 7.
 
@@ -89,3 +97,19 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 2. Fork the repository.
 3. Ensure all Pull Requests target the `v1` branch.
 4. Pass all local tests before submitting.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+
+## Community
+
+Join the discussion on our [Discord](https://discord.gg/tollcraft).
+
+## Maintainers
+
+| Name | Role | Contact |
+|---|---|---|
+| Tollcraft Team | Core Maintainers | [@Tollcraft on Telegram](https://t.me/Tollcraft) |
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=Tollcraft/soroban-cost-linter)](https://github.com/Tollcraft/soroban-cost-linter/graphs/contributors)

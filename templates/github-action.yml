@@ -1,0 +1,19 @@
+name: Soroban Cost Lint
+
+on: [push, pull_request]
+
+jobs:
+  cost-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install Dylint
+        run: cargo install cargo-dylint dylint-link
+      - name: Install soroban-cost-linter
+        run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+      - name: Run Cost Linter
+        run: cargo cost-lint
