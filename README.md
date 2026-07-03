@@ -107,6 +107,7 @@ Join the discussion on our [Discord](https://discord.gg/tollcraft).
 
 | Name | Role | Contact |
 |---|---|---|
+| [mallison031](https://github.com/mallison031) | Maintainer | [GitHub](https://github.com/mallison031) |
 | Tollcraft Team | Core Maintainers | [@Tollcraft on Telegram](https://t.me/Tollcraft) |
 
 ## Contributors
