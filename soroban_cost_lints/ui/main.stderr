@@ -1,0 +1,75 @@
+warning: storage operation inside a loop
+  --> $DIR/main.rs:44:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:44:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:44:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:51:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:51:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:51:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:58:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:58:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:58:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: 9 warnings emitted
+
