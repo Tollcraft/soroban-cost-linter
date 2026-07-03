@@ -5,7 +5,6 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_lint;
 extern crate rustc_session;
-extern crate rustc_span;
 
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_hir as hir;
@@ -14,7 +13,7 @@ use clippy_utils::diagnostics::span_lint_and_help;
 
 dylint_linting::dylint_library!();
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
