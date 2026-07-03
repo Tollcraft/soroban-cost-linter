@@ -1,6 +1,5 @@
 [book]
 authors = ["Tollcraft Team"]
 language = "en"
-multilingual = false
 src = "src"
 title = "soroban-cost-linter Documentation"
