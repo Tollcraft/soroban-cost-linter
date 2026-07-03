@@ -26,7 +26,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
 }
 
-rustc_lint::declare_lint! {
+rustc_session::declare_lint! {
     /// ### What it does
     /// Detects storage operations (reads/writes) placed inside loop bodies.
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -34,7 +34,7 @@ rustc_lint::declare_lint! {
     "storage operations inside a loop"
 }
 pub struct SorobanStorageInLoop;
-rustc_lint::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]);
+rustc_session::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
@@ -75,7 +75,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     }
 }
 
-rustc_lint::declare_lint! {
+rustc_session::declare_lint! {
     /// ### What it does
     /// Detects unnecessary `.clone()` calls on the Soroban `Env` object.
     pub REDUNDANT_ENV_CLONE,
@@ -83,7 +83,7 @@ rustc_lint::declare_lint! {
     "redundant clone on Env object"
 }
 pub struct RedundantEnvClone;
-rustc_lint::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
+rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
@@ -114,7 +114,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     }
 }
 
-rustc_lint::declare_lint! {
+rustc_session::declare_lint! {
     /// ### What it does
     /// Identifies redundant calls to host functions inside loop bodies.
     pub UNNECESSARY_HOST_FUNCTION_CALL,
@@ -122,7 +122,7 @@ rustc_lint::declare_lint! {
     "unnecessary host function call inside loop"
 }
 pub struct UnnecessaryHostFunctionCall;
-rustc_lint::impl_lint_pass!(UnnecessaryHostFunctionCall => [UNNECESSARY_HOST_FUNCTION_CALL]);
+rustc_session::impl_lint_pass!(UnnecessaryHostFunctionCall => [UNNECESSARY_HOST_FUNCTION_CALL]);
 
 impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {

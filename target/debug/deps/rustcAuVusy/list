@@ -1,0 +1,8 @@
+{
+  global:
+    __rustc_proc_macro_decls_dcded7f98f09cd24__;
+    rust_metadata_serde_derive_dcded7f98f09cd24;
+
+  local:
+    *;
+};
