@@ -19,13 +19,13 @@ Soroban charges for CPU instructions, memory allocations, and storage operations
 
 Writing `env.storage().instance().set()` inside a `for` loop is mathematically guaranteed to be expensive. `soroban-cost-linter` catches these structural anti-patterns directly in your IDE or CI/CD pipeline before they make it to testnet.
 
-## Features (MVP Scope)
+## Features
 
-Our initial research and architecture focus on hooking into the Rust compiler's AST to catch specific Soroban anti-patterns:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.0`:
 
-*   **`soroban_storage_in_loop` (WIP):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
-*   **`redundant_env_clone` (WIP):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **`unnecessary_host_function_call` (WIP):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
+*   **[`soroban_storage_in_loop`](https://tollcraft.github.io/soroban-cost-linter/lints/soroban_storage_in_loop.html):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
+*   **[`redundant_env_clone`](https://tollcraft.github.io/soroban-cost-linter/lints/redundant_env_clone.html):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
+*   **[`unnecessary_host_function_call`](https://tollcraft.github.io/soroban-cost-linter/lints/unnecessary_host_function_call.html):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
 
 ## How it Fits into Tollcraft
 
@@ -52,7 +52,7 @@ cargo install cargo-dylint dylint-link
 Add the linter to your Soroban workspace:
 
 ```bash
-cargo install --git [https://github.com/your-org/soroban-cost-linter.git](https://github.com/your-org/soroban-cost-linter.git)
+cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 
 ```
 
@@ -68,9 +68,11 @@ cargo cost-lint
 To suppress a false positive or an intentionally expensive operation, standard Rust attributes are fully supported. Place this directly above the flagged function or block:
 
 ```rust
-#[allow(soroban_cost::storage_in_loop)]
-for item in items {
-    // Deliberate storage loop
+#[allow(soroban_storage_in_loop)]
+fn deliberate_storage_loop(env: Env) {
+    for item in items {
+        // Deliberate storage loop
+    }
 }
 
 ```
