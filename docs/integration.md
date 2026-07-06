@@ -1,4 +1,4 @@
-# 🔌 Integration Guide
+# Integration Guide
 
 `soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
 

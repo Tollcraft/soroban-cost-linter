@@ -1,4 +1,4 @@
-# ⚡ Introduction
+# Introduction
 
 > **The static analysis shield for Soroban smart contracts** — catch structurally expensive patterns before they are compiled and deployed to the network.
 
