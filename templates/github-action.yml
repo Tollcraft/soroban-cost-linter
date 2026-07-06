@@ -6,11 +6,13 @@ jobs:
   cost-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          # Keep this toolchain pin in sync with the soroban-cost-linter release you install
+          toolchain: nightly-2026-04-16
+          components: rustc-dev, llvm-tools-preview
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link
       - name: Install soroban-cost-linter
