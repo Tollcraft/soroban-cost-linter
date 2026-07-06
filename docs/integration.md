@@ -2,7 +2,7 @@
 
 `soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
 
-## ⚙️ Local Configuration (`budget.toml`)
+## Local Configuration (`budget.toml`)
 
 Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
 
@@ -16,10 +16,10 @@ unnecessary_host_function_call = "warn"
 {% endcode %}
 
 {% hint style="info" %}
-See the [Lint Reference](lints/README.md) for what each lint catches and its default severity.
+See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
-## 🤖 GitHub Actions
+## GitHub Actions
 
 We provide a template to easily integrate the linter into your GitHub Actions pipeline:
 
