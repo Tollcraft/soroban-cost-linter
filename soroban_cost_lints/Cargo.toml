@@ -1,6 +1,6 @@
 [package]
 name = "soroban_cost_lints"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["authors go here"]
 description = "description goes here"
 edition = "2024"

@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-cost-lint"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "serde",
@@ -1095,7 +1095,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "soroban_cost_lints"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clippy_utils",
  "dylint_linting",
