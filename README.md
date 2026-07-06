@@ -23,9 +23,9 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.0`:
 
-*   **[`soroban_storage_in_loop`](https://tollcraft.github.io/soroban-cost-linter/lints/soroban_storage_in_loop.html):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
-*   **[`redundant_env_clone`](https://tollcraft.github.io/soroban-cost-linter/lints/redundant_env_clone.html):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **[`unnecessary_host_function_call`](https://tollcraft.github.io/soroban-cost-linter/lints/unnecessary_host_function_call.html):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
+*   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
+*   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
+*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
 
 ## How it Fits into Tollcraft
 

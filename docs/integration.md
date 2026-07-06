@@ -1,20 +1,29 @@
-# Integration Guide
+# 🔌 Integration Guide
 
 `soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
 
-## Local Configuration (`budget.toml`)
+## ⚙️ Local Configuration (`budget.toml`)
+
 Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
 
+{% code title="budget.toml" %}
 ```toml
 [lints]
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
 ```
+{% endcode %}
 
-## GitHub Actions
+{% hint style="info" %}
+See the [Lint Reference](lints/README.md) for what each lint catches and its default severity.
+{% endhint %}
+
+## 🤖 GitHub Actions
+
 We provide a template to easily integrate the linter into your GitHub Actions pipeline:
 
+{% code title=".github/workflows/cost-lint.yml" %}
 ```yaml
 name: Soroban Cost Lint
 
@@ -38,3 +47,8 @@ jobs:
       - name: Run Cost Linter
         run: cargo cost-lint
 ```
+{% endcode %}
+
+{% hint style="warning" %}
+Keep the pinned `toolchain` in sync with the `soroban-cost-linter` release you install — a mismatched nightly will fail to link the lint library.
+{% endhint %}
