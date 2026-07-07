@@ -103,14 +103,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
 
 ## Community
 
-Join the discussion on our [Discord](https://discord.gg/tollcraft).
+Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 
 ## Maintainers
 
 | Name | Role | Contact |
 |---|---|---|
 | [mallison031](https://github.com/mallison031) | Maintainer | [GitHub](https://github.com/mallison031) |
-| Tollcraft Team | Core Maintainers | [@Tollcraft on Telegram](https://t.me/Tollcraft) |
+| Tollcraft Team | Core Maintainers | [Tollcraft on Telegram](https://t.me/+Gflo5jZStw1jMjE0) |
 
 ## Contributors
 
