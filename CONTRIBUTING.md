@@ -27,7 +27,25 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
 - Update the documentation and `README.md`.
 
-### 4. Submitting a Pull Request
+### 4. Code Quality Standards
+All PRs are checked by CI, and these checks must pass before a PR can be merged. Run them locally before pushing:
+
+1. Format your code with rustfmt (CI rejects unformatted code):
+   ```bash
+   cargo fmt --all
+   ```
+2. Make sure Clippy passes with no warnings:
+   ```bash
+   cargo clippy --workspace --all-targets -- -D warnings
+   ```
+3. Make sure the test suite passes:
+   ```bash
+   cargo test --workspace
+   ```
+
+Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
+
+### 5. Submitting a Pull Request
 - Ensure your PR targets the `v1` branch.
-- Make sure `cargo test` passes.
+- Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
