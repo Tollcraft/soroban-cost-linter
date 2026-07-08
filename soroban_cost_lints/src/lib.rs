@@ -86,28 +86,28 @@ rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            if path_segment.ident.name.as_str() == "clone" {
-                let receiver_ty = cx.typeck_results().expr_ty(receiver);
-                let peeled_ty = receiver_ty.peel_refs();
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "clone"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
 
-                let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                    let path = cx.tcx.def_path_str(adt_def.did());
-                    path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
-                } else {
-                    false
-                };
+            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let path = cx.tcx.def_path_str(adt_def.did());
+                path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
+            } else {
+                false
+            };
 
-                if is_env {
-                    span_lint_and_help(
-                        cx,
-                        REDUNDANT_ENV_CLONE,
-                        expr.span,
-                        "redundant clone on Env object",
-                        None,
-                        "pass Env by reference or value instead of cloning",
-                    );
-                }
+            if is_env {
+                span_lint_and_help(
+                    cx,
+                    REDUNDANT_ENV_CLONE,
+                    expr.span,
+                    "redundant clone on Env object",
+                    None,
+                    "pass Env by reference or value instead of cloning",
+                );
             }
         }
     }
