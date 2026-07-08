@@ -1,8 +1,8 @@
 use clap::Parser;
 use serde::Deserialize;
 use std::fs;
-use std::process::{Command, exit};
 use std::path::Path;
+use std::process::{exit, Command};
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
@@ -56,7 +56,10 @@ fn main() {
             }
         }
     } else {
-        eprintln!("Warning: {} not found, using default lint levels.", cli.config);
+        eprintln!(
+            "Warning: {} not found, using default lint levels.",
+            cli.config
+        );
     }
 
     let mut cmd = Command::new("cargo");
@@ -75,7 +78,9 @@ fn main() {
         }
     }
 
-    let status = cmd.status().expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let status = cmd
+        .status()
+        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
     if !status.success() {
         exit(status.code().unwrap_or(1));
     }

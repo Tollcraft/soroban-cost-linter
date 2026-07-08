@@ -2,14 +2,14 @@
 #![warn(unused_extern_crates)]
 
 extern crate rustc_hir;
-extern crate rustc_middle;
 extern crate rustc_lint;
+extern crate rustc_middle;
 extern crate rustc_session;
 
-use rustc_lint::{LateContext, LateLintPass, LintStore};
-use rustc_hir as hir;
-use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use rustc_hir as hir;
+use rustc_lint::{LateContext, LateLintPass, LintStore};
 
 dylint_linting::dylint_library!();
 
@@ -40,7 +40,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
-            
+
             let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                 let path = cx.tcx.def_path_str(adt_def.did());
                 path == "soroban_sdk::storage::Storage"
@@ -51,24 +51,24 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     || path.ends_with("::soroban_sdk::storage::Persistent")
                     || path == "soroban_sdk::storage::Temporary"
                     || path.ends_with("::soroban_sdk::storage::Temporary")
-                    || ((path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")) && path_segment.ident.name.as_str() == "storage")
+                    || ((path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env"))
+                        && path_segment.ident.name.as_str() == "storage")
             } else {
                 false
             };
 
-            if is_storage_access {
-                if let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr) {
-                    if let hir::ExprKind::Loop(..) = enclosing_expr.kind {
-                        span_lint_and_help(
-                            cx,
-                            SOROBAN_STORAGE_IN_LOOP,
-                            expr.span,
-                            "storage operation inside a loop",
-                            None,
-                            "move storage operations out of the loop or accumulate mutations in memory first",
-                        );
-                    }
-                }
+            if is_storage_access
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    SOROBAN_STORAGE_IN_LOOP,
+                    expr.span,
+                    "storage operation inside a loop",
+                    None,
+                    "move storage operations out of the loop or accumulate mutations in memory first",
+                );
             }
         }
     }
@@ -86,28 +86,28 @@ rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            if path_segment.ident.name.as_str() == "clone" {
-                let receiver_ty = cx.typeck_results().expr_ty(receiver);
-                let peeled_ty = receiver_ty.peel_refs();
-                
-                let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                    let path = cx.tcx.def_path_str(adt_def.did());
-                    path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
-                } else {
-                    false
-                };
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "clone"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
 
-                if is_env {
-                    span_lint_and_help(
-                        cx,
-                        REDUNDANT_ENV_CLONE,
-                        expr.span,
-                        "redundant clone on Env object",
-                        None,
-                        "pass Env by reference or value instead of cloning",
-                    );
-                }
+            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let path = cx.tcx.def_path_str(adt_def.did());
+                path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
+            } else {
+                false
+            };
+
+            if is_env {
+                span_lint_and_help(
+                    cx,
+                    REDUNDANT_ENV_CLONE,
+                    expr.span,
+                    "redundant clone on Env object",
+                    None,
+                    "pass Env by reference or value instead of cloning",
+                );
             }
         }
     }
@@ -128,27 +128,27 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
-            
+
             let is_host_function = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                 let path = cx.tcx.def_path_str(adt_def.did());
-                path == "soroban_sdk::ledger::Ledger" || path.ends_with("::soroban_sdk::ledger::Ledger")
+                path == "soroban_sdk::ledger::Ledger"
+                    || path.ends_with("::soroban_sdk::ledger::Ledger")
             } else {
                 false
             };
 
-            if is_host_function {
-                if let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr) {
-                    if let hir::ExprKind::Loop(..) = enclosing_expr.kind {
-                        span_lint_and_help(
-                            cx,
-                            UNNECESSARY_HOST_FUNCTION_CALL,
-                            expr.span,
-                            "unnecessary host function call inside loop",
-                            None,
-                            "call this function outside the loop and reuse the result",
-                        );
-                    }
-                }
+            if is_host_function
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    UNNECESSARY_HOST_FUNCTION_CALL,
+                    expr.span,
+                    "unnecessary host function call inside loop",
+                    None,
+                    "call this function outside the loop and reuse the result",
+                );
             }
         }
     }
