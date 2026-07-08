@@ -46,6 +46,6 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
 ### 5. Submitting a Pull Request
-- Ensure your PR targets the `v1` branch.
+- Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.

@@ -96,7 +96,7 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 
 1. Check the open issues to find tasks labeled `good first issue` or `help wanted`.
 2. Fork the repository.
-3. Ensure all Pull Requests target the `v1` branch.
+3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
