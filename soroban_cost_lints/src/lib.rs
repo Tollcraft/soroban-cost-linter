@@ -2,14 +2,14 @@
 #![warn(unused_extern_crates)]
 
 extern crate rustc_hir;
-extern crate rustc_middle;
 extern crate rustc_lint;
+extern crate rustc_middle;
 extern crate rustc_session;
 
-use rustc_lint::{LateContext, LateLintPass, LintStore};
-use rustc_hir as hir;
-use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use rustc_hir as hir;
+use rustc_lint::{LateContext, LateLintPass, LintStore};
 
 dylint_linting::dylint_library!();
 
@@ -40,7 +40,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
-            
+
             let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                 let path = cx.tcx.def_path_str(adt_def.did());
                 path == "soroban_sdk::storage::Storage"
@@ -51,7 +51,8 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     || path.ends_with("::soroban_sdk::storage::Persistent")
                     || path == "soroban_sdk::storage::Temporary"
                     || path.ends_with("::soroban_sdk::storage::Temporary")
-                    || ((path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")) && path_segment.ident.name.as_str() == "storage")
+                    || ((path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env"))
+                        && path_segment.ident.name.as_str() == "storage")
             } else {
                 false
             };
@@ -90,7 +91,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
             if path_segment.ident.name.as_str() == "clone" {
                 let receiver_ty = cx.typeck_results().expr_ty(receiver);
                 let peeled_ty = receiver_ty.peel_refs();
-                
+
                 let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                     let path = cx.tcx.def_path_str(adt_def.did());
                     path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
@@ -128,10 +129,11 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
-            
+
             let is_host_function = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                 let path = cx.tcx.def_path_str(adt_def.did());
-                path == "soroban_sdk::ledger::Ledger" || path.ends_with("::soroban_sdk::ledger::Ledger")
+                path == "soroban_sdk::ledger::Ledger"
+                    || path.ends_with("::soroban_sdk::ledger::Ledger")
             } else {
                 false
             };
