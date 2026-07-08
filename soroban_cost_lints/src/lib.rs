@@ -57,19 +57,18 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                 false
             };
 
-            if is_storage_access {
-                if let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr) {
-                    if let hir::ExprKind::Loop(..) = enclosing_expr.kind {
-                        span_lint_and_help(
-                            cx,
-                            SOROBAN_STORAGE_IN_LOOP,
-                            expr.span,
-                            "storage operation inside a loop",
-                            None,
-                            "move storage operations out of the loop or accumulate mutations in memory first",
-                        );
-                    }
-                }
+            if is_storage_access
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    SOROBAN_STORAGE_IN_LOOP,
+                    expr.span,
+                    "storage operation inside a loop",
+                    None,
+                    "move storage operations out of the loop or accumulate mutations in memory first",
+                );
             }
         }
     }
