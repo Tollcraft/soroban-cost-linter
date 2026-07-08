@@ -7,6 +7,20 @@ on:
     branches: [ "main", "v1" ]
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-04-16
+          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
   lint:
     runs-on: ubuntu-latest
     steps:
