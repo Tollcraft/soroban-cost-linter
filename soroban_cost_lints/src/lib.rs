@@ -137,19 +137,18 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
-            if is_host_function {
-                if let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr) {
-                    if let hir::ExprKind::Loop(..) = enclosing_expr.kind {
-                        span_lint_and_help(
-                            cx,
-                            UNNECESSARY_HOST_FUNCTION_CALL,
-                            expr.span,
-                            "unnecessary host function call inside loop",
-                            None,
-                            "call this function outside the loop and reuse the result",
-                        );
-                    }
-                }
+            if is_host_function
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    UNNECESSARY_HOST_FUNCTION_CALL,
+                    expr.span,
+                    "unnecessary host function call inside loop",
+                    None,
+                    "call this function outside the loop and reuse the result",
+                );
             }
         }
     }
