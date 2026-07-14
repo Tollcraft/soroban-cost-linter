@@ -48,7 +48,7 @@ fn main() {
                                 continue;
                             }
                         };
-                        lint_flags.push(format!("{}={}", level_flag, lint));
+                        lint_flags.push(format!("{} {}", level_flag, lint));
                     }
                 }
             } else {
@@ -68,14 +68,16 @@ fn main() {
     cmd.arg("soroban_cost_lints");
 
     if !lint_flags.is_empty() {
-        cmd.arg("--");
+        // Trailing args to `cargo dylint` are forwarded to `cargo check`, which
+        // rejects lint-level flags; they must reach rustc via DYLINT_RUSTFLAGS.
+        let mut rustflags = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
-            let parts: Vec<&str> = flag.split('=').collect();
-            cmd.arg(parts[0]);
-            // Add the soroban_cost prefix if not present or just the lint name?
-            // Dylint uses the exact lint name declared in declare_lint!
-            cmd.arg(parts[1]);
+            if !rustflags.is_empty() {
+                rustflags.push(' ');
+            }
+            rustflags.push_str(&flag);
         }
+        cmd.env("DYLINT_RUSTFLAGS", rustflags);
     }
 
     let status = cmd
