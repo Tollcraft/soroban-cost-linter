@@ -5,9 +5,13 @@
     <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </p>
+  <p>
+    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
+    <a href="https://asciinema.org/a/1DpqHMqqOOXoZzMI"><strong>Demo</strong></a>
+  </p>
 </div>
 
-> Part of the **[`Tollcraft`](https://github.com/Tollcraft)** initiative, funded by Drips Wave 7.
+> Part of the **[`Tollcraft`](https://github.com/Tollcraft)** initiative.
 
 `soroban-cost-linter` is a static analysis tool for Stellar smart contract developers. It analyzes your Rust code before compilation to detect input-independent, structurally expensive patterns that would unnecessarily drive up your Soroban resource metering and network fees.
 
