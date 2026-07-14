@@ -6,7 +6,8 @@
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </p>
   <p>
-    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a>
+    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
+    <a href="https://asciinema.org/a/1DpqHMqqOOXoZzMI"><strong>Demo</strong></a>
   </p>
 </div>
 
