@@ -1,0 +1,10 @@
+[package]
+name = "real-sdk-fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = "26"
+
+[workspace]
