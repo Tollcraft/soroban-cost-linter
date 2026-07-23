@@ -2,6 +2,10 @@
 
 * [Introduction](README.md)
 
+## Concepts
+
+* [Cost Rationale](cost_rationale.md)
+
 ## Lints
 
 * [Lint Reference](lints/README.md)
