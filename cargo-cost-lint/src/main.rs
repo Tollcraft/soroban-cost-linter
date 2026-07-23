@@ -17,6 +17,28 @@ struct BudgetConfig {
     lints: Option<std::collections::HashMap<String, String>>,
 }
 
+include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+
+fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
+    let mut lint_flags = Vec::new();
+    if let Some(lints) = &config.lints {
+        for (lint, level) in lints {
+            if !LINT_NAMES.contains(&lint.as_str()) {
+                let valid = LINT_NAMES.join(", ");
+                return Err(format!("Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}", lint, valid));
+            }
+            let level_flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => return Err(format!("Error: Unknown lint level '{}' for lint '{}'", level, lint)),
+            };
+            lint_flags.push(format!("{} {}", level_flag, lint));
+        }
+    }
+    Ok(lint_flags)
+}
+
 fn main() {
     // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
@@ -37,18 +59,11 @@ fn main() {
     if Path::new(&cli.config).exists() {
         if let Ok(config_str) = fs::read_to_string(&cli.config) {
             if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                if let Some(lints) = config.lints {
-                    for (lint, level) in lints {
-                        let level_flag = match level.as_str() {
-                            "allow" => "-A",
-                            "warn" => "-W",
-                            "deny" => "-D",
-                            _ => {
-                                eprintln!("Unknown lint level: {}", level);
-                                continue;
-                            }
-                        };
-                        lint_flags.push(format!("{} {}", level_flag, lint));
+                match validate_and_build_flags(&config) {
+                    Ok(flags) => lint_flags = flags,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        exit(1);
                     }
                 }
             } else {
@@ -85,5 +100,41 @@ fn main() {
         .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
     if !status.success() {
         exit(status.code().unwrap_or(1));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn test_unknown_lint_name() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loops".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint name"));
+    }
+
+    #[test]
+    fn test_unknown_lint_level() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 }
