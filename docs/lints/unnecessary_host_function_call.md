@@ -2,6 +2,8 @@
 
 **Default Severity:** `warn`
 
+**Target Resource:** [CPU — host function dispatch and execution](../cost_rationale.md#per-lint-resource-summary)
+
 ## What it does
 
 Identifies redundant calls to host functions, such as fetching the ledger sequence or timestamp, inside loop bodies.
@@ -9,7 +11,7 @@ Identifies redundant calls to host functions, such as fetching the ledger sequen
 ## Why is this bad?
 
 {% hint style="danger" %}
-Calling a host function crosses the boundary into the Soroban environment, which incurs a CPU cost. Repeating this unnecessarily inside a loop adds up to **significant waste**, especially when the result is constant across iterations.
+Calling a host function crosses the Wasm-host boundary, which incurs `DispatchHostFunction` overhead plus whatever work the function performs. Repeating this unnecessarily inside a loop adds up to **significant CPU waste**, especially when the result is constant across iterations. See the [Cost Rationale — What Dominates](../cost_rationale.md#what-dominates) for the relative cost hierarchy.
 {% endhint %}
 
 ## Example
