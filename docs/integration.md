@@ -19,6 +19,10 @@ unnecessary_host_function_call = "warn"
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
+{% hint style="danger" %}
+A `budget.toml` that exists but cannot be read or parsed is a hard error — the run will fail with a non-zero exit code and the parser's message and location will be reported.
+{% endhint %}
+
 ## GitHub Actions
 
 We provide a template to easily integrate the linter into your GitHub Actions pipeline:
