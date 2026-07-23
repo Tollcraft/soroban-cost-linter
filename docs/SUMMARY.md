@@ -12,6 +12,10 @@
 * [Integration Guide](integration.md)
 * [Handling False Positives](false_positives.md)
 
+## Concepts
+
+* [Cost Rationale](cost_rationale.md)
+
 ## Lints
 
 * [Lint Reference](lints/README.md)
