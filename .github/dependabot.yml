@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  # Cargo — workspace root. Dependabot resolves both workspace members
+  # (soroban_cost_lints, cargo-cost-lint) from the root manifest's
+  # [workspace.members] list, so a single entry here covers both crates.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
+    ignore:
+      # Pinned to a specific rust-clippy revision that must stay in lockstep
+      # with the nightly toolchain in `rust-toolchain` / .github/workflows/lint.yml
+      # (soroban_cost_lints links against rustc's private HIR/MIR APIs via this rev).
+      # Bumping it independently of the toolchain will break the build. Update
+      # manually, in the same PR as a toolchain bump.
+      - dependency-name: "clippy_utils"
+
+  # GitHub Actions — only .github/workflows/*.yml is in Dependabot's scan scope.
+  # templates/github-action.yml is a boilerplate workflow shipped for downstream
+  # consumers to copy into their own repos; it is not executed here, so
+  # Dependabot cannot see or update it. Its `dtolnay/rust-toolchain` pin needs a
+  # manual sync when the toolchain changes.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-dependencies:
+        patterns:
+          - "*"
