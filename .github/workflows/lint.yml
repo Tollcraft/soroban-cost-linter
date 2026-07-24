@@ -16,6 +16,8 @@ jobs:
         with:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
@@ -30,6 +32,8 @@ jobs:
         with:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link
       - name: Run tests
