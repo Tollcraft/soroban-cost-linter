@@ -25,13 +25,21 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
         for (lint, level) in lints {
             if !LINT_NAMES.contains(&lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
-                return Err(format!("Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}", lint, valid));
+                return Err(format!(
+                    "Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}",
+                    lint, valid
+                ));
             }
             let level_flag = match level.as_str() {
                 "allow" => "-A",
                 "warn" => "-W",
                 "deny" => "-D",
-                _ => return Err(format!("Error: Unknown lint level '{}' for lint '{}'", level, lint)),
+                _ => {
+                    return Err(format!(
+                        "Error: Unknown lint level '{}' for lint '{}'",
+                        level, lint
+                    ))
+                }
             };
             lint_flags.push(format!("{} {}", level_flag, lint));
         }
