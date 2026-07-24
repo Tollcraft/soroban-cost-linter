@@ -1,15 +1,15 @@
 use clap::Parser;
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::{exit, Command};
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
-    #[arg(long, help = "Path to budget.toml", default_value = "budget.toml")]
-    config: String,
+    #[arg(long, help = "Path to budget.toml")]
+    config: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -51,6 +51,20 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
     Ok(lint_flags)
 }
 
+fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
+    if let Some(path) = config {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let budget = PathBuf::from("budget.toml");
+    if budget.exists() {
+        return Some(budget);
+    }
+    None
+}
+
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
@@ -82,10 +96,7 @@ fn main() {
             Err(_) => eprintln!("Warning: Failed to read {}", cli.config),
         }
     } else {
-        eprintln!(
-            "Warning: {} not found, using default lint levels.",
-            cli.config
-        );
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let mut cmd = Command::new("cargo");
