@@ -16,12 +16,17 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.toolchain == 'nightly' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [nightly-2026-04-16, nightly]
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-04-16
+          toolchain: ${{ matrix.toolchain }}
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -30,12 +35,17 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.toolchain == 'nightly' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [nightly-2026-04-16, nightly]
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-04-16
+          toolchain: ${{ matrix.toolchain }}
           components: rustc-dev, llvm-tools-preview
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link --version "^6.0.1"
