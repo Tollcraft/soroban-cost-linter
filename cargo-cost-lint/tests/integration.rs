@@ -25,11 +25,14 @@ fn test_json_output() {
     target_dir.push("target");
     target_dir.push("debug");
 
-    // Build the soroban_cost_lints cdylib first to ensure the .so is present
+    // Build the soroban_cost_lints cdylib first from its own directory so it picks up .cargo/config.toml
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
     let status = Command::new("cargo")
         .arg("build")
-        .arg("-p")
-        .arg("soroban_cost_lints")
+        .current_dir(&lint_dir)
         .status()
         .expect("Failed to build soroban_cost_lints");
     assert!(status.success(), "Failed to build soroban_cost_lints");
