@@ -19,18 +19,16 @@ fn test_json_output() {
         fixture_dir
     );
 
-    // Find the workspace target/debug directory so dylint can locate the lint library
-    let mut target_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    target_dir.pop();
-    target_dir.push("target");
-    target_dir.push("debug");
+    // Find the workspace target directory dynamically based on the binary path
+    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
+    target_dir.pop(); // Remove the binary name, leaving the profile directory (e.g., target/debug)
 
     // Build the soroban_cost_lints cdylib first from its own directory so it picks up .cargo/config.toml
     let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     lint_dir.pop();
     lint_dir.push("soroban_cost_lints");
 
-    let status = Command::new("cargo")
+    let status = Command::new(env!("CARGO"))
         .arg("build")
         .current_dir(&lint_dir)
         .status()
