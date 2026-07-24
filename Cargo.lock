@@ -111,6 +111,7 @@ dependencies = [
  "clap",
  "ignore",
  "serde",
+ "tempfile",
  "toml 0.8.23",
 ]
 
