@@ -10,7 +10,7 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 ### 2. Setting up Locally
 1. Install Dylint:
    ```bash
-   cargo install cargo-dylint dylint-link
+   cargo install cargo-dylint dylint-link --version "^6.0.1"
    ```
 2. Clone the repository and build:
    ```bash
