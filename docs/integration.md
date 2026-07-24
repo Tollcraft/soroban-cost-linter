@@ -6,6 +6,10 @@
 
 Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
 
+The tool locates `budget.toml` by walking up from the current directory until it finds a `Cargo.toml` containing a `[workspace]` section, then looks for `budget.toml` in that directory. This means running `cargo cost-lint` from any member crate produces the same lint levels as running it from the workspace root.
+
+You can also pass an explicit path with `--config <PATH>`, which is used verbatim relative to the current directory.
+
 {% code title="budget.toml" %}
 ```toml
 [lints]

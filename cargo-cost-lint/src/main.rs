@@ -2,15 +2,15 @@ use clap::Parser;
 use ignore::WalkBuilder;
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::{exit, Command};
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
-    #[arg(long, help = "Path to budget.toml", default_value = "budget.toml")]
-    config: String,
+    #[arg(long, help = "Path to budget.toml")]
+    config: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
