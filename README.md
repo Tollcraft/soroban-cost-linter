@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.0`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -44,11 +44,10 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints.
+Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 ```bash
-cargo install cargo-dylint dylint-link
-
+cargo install cargo-dylint dylint-link --version "^6.0.1"
 ```
 
 ### Installation
@@ -60,25 +59,142 @@ cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-c
 
 ```
 
-### Usage
+## Quick Start
 
-Run the linter across your entire workspace:
+```bash
+# Install the tool
+cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+
+# Run it on your Soroban project
+cargo cost-lint
+```
+
+## Usage
+
+### Running the linter
+
+From the root of your Soroban contract workspace:
 
 ```bash
 cargo cost-lint
-
 ```
 
-To suppress a false positive or an intentionally expensive operation, standard Rust attributes are fully supported. Place this directly above the flagged function or block:
+The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
+
+```text
+warning: storage operation inside a loop
+  --> src/lib.rs:12:9
+   |
+LL |         env.storage().instance().set(&i, &1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
+
+warning: unnecessary host function call inside loop
+  --> src/lib.rs:20:20
+   |
+LL |         let _seq = env.ledger().sequence();
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+   = help: call this function outside the loop and reuse the result
+   = note: `#[warn(unnecessary_host_function_call)]` on by default
+
+warning: redundant clone on Env object
+  --> src/lib.rs:30:19
+   |
+LL |     let _cloned = env.clone();
+   |                   ^^^^^^^^^^^
+   = help: pass Env by reference or value instead of cloning
+   = note: `#[warn(redundant_env_clone)]` on by default
+```
+
+### Example: storage in a loop
+
+**Bad** &mdash; a storage write inside a `for` loop writes on every iteration, driving up fees:
+
+```rust
+// ❌ Triggers: soroban_storage_in_loop
+for item in items {
+    env.storage().instance().set(&item, &1);
+}
+```
+
+The linter flags this as:
+
+```text
+warning: storage operation inside a loop
+ --> src/lib.rs:4:9
+  |
+LL |         env.storage().instance().set(&item, &1);
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: move storage operations out of the loop or accumulate mutations in memory first
+```
+
+**Fix** &mdash; accumulate in memory, then write once:
+
+```rust
+// ✅ Fixed: single storage write after the loop
+let mut aggregated = Vec::new();
+for item in items {
+    aggregated.push((item, 1u32));
+}
+for (key, val) in aggregated {
+    env.storage().instance().set(&key, &val);
+}
+```
+
+This works for all three storage types (`instance`, `persistent`, `temporary`) and all loop forms (`for`, `while`, `loop`).
+
+### Example: redundant `Env` clone
+
+**Bad:**
+
+```rust
+// ❌ Triggers: redundant_env_clone
+let cloned = env.clone();
+```
+
+**Fix** &mdash; `Env` is cheap to copy by reference; just pass it through:
+
+```rust
+// ✅ Fixed
+fn my_function(env: &Env) {
+    // use &env
+}
+```
+
+### Example: host function call in a loop
+
+**Bad** &mdash; calling `env.ledger().sequence()` on every iteration is wasteful:
+
+```rust
+// ❌ Triggers: unnecessary_host_function_call
+for _ in 0..10 {
+    let _seq = env.ledger().sequence();
+}
+```
+
+**Fix** &mdash; call once, bind to a local, reuse:
+
+```rust
+// ✅ Fixed
+let seq = env.ledger().sequence();
+for _ in 0..10 {
+    // use seq
+}
+```
+
+### Suppressing false positives
+
+If a flagged pattern is intentional, suppress it with a standard Rust attribute:
 
 ```rust
 #[allow(soroban_storage_in_loop)]
 fn deliberate_storage_loop(env: Env) {
     for item in items {
-        // Deliberate storage loop
+        env.storage().instance().set(&item, &1);
     }
 }
-
 ```
 
 ### Configuration (`budget.toml`)

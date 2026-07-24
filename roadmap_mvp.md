@@ -45,9 +45,11 @@ Ensuring developer trust and minimizing friction is crucial for adoption.
 ### Suppression Mechanisms
 - **Rust Attributes**: Developers can suppress warnings directly in code:
   ```rust
-  #[allow(soroban_cost::storage_in_loop)]
-  for item in items {
-      // Deliberate storage loop
+  #[allow(soroban_storage_in_loop)]
+  fn allowed_storage_in_loop(env: Env) {
+      for item in items {
+          // Deliberate storage loop
+      }
   }
   ```
 - **Config file (`budget.toml`)**: Allows workspace-level severity adjustments:

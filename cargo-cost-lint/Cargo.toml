@@ -2,8 +2,12 @@
 name = "cargo-cost-lint"
 version = "0.1.1"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4.0", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

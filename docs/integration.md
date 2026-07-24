@@ -6,6 +6,10 @@
 
 Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
 
+The tool locates `budget.toml` by walking up from the current directory until it finds a `Cargo.toml` containing a `[workspace]` section, then looks for `budget.toml` in that directory. This means running `cargo cost-lint` from any member crate produces the same lint levels as running it from the workspace root.
+
+You can also pass an explicit path with `--config <PATH>`, which is used verbatim relative to the current directory.
+
 {% code title="budget.toml" %}
 ```toml
 [lints]
@@ -18,6 +22,12 @@ unnecessary_host_function_call = "warn"
 {% hint style="info" %}
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
+
+### Validation
+
+`cargo cost-lint` strictly validates your `budget.toml`:
+- If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
+- If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
 
 ## GitHub Actions
 
@@ -41,7 +51,7 @@ jobs:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
       - name: Install soroban-cost-linter
         run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
       - name: Run Cost Linter
