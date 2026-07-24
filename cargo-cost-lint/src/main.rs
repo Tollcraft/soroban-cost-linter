@@ -1,7 +1,7 @@
 use clap::Parser;
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{exit, Command};
 
 #[derive(Parser, Debug)]
