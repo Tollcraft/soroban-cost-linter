@@ -45,7 +45,27 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
-### 5. Submitting a Pull Request
+### 5. Upgrading the Nightly Toolchain
+
+The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files and the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`.
+
+**Procedure to upgrade:**
+
+1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-05-01`).
+2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `rustup` branch on that date, and update the `rev` field in `soroban_cost_lints/Cargo.toml`.
+3. Update `.github/workflows/lint.yml`, `templates/github-action.yml`, and `docs/integration.md` with the new nightly date.
+4. Run the drift guard to confirm everything agrees:
+   ```bash
+   bash .github/scripts/validate-toolchain-pins.sh
+   ```
+5. Run the full test suite:
+   ```bash
+   cargo test --workspace
+   ```
+
+If any file is out of sync, the drift guard will print an error naming the file, the mismatched value, and the expected one.
+
+### 6. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
