@@ -1,0 +1,74 @@
+name: 💡 Lint Proposal
+description: Propose a new input-independent costly pattern lint for Soroban
+title: "[Lint]: "
+labels: ["enhancement", "lint"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a new lint! Please ensure your proposal follows our Code Quality Standards and the process in [CONTRIBUTING.md §3](https://github.com/Tollcraft/soroban-cost-linter/blob/main/CONTRIBUTING.md#3-adding-a-new-lint).
+  - type: input
+    id: lint_name
+    attributes:
+      label: Proposed Lint Name
+      description: Snake_case name of the lint (e.g., unnecessary_host_function_call).
+      placeholder: my_custom_lint_name
+    validations:
+      required: true
+  - type: textarea
+    id: pattern_description
+    attributes:
+      label: Pattern Description
+      description: Describe the structural anti-pattern in Soroban AST/HIR that this lint detects.
+      placeholder: Explain what code structure is being targeted...
+    validations:
+      required: true
+  - type: textarea
+    id: cost_impact
+    attributes:
+      label: Why is it Expensive?
+      description: Explain why this pattern is input-independent and costly in Soroban execution/storage/CPU.
+      placeholder: Describe the resource consumption impact (CPU instructions, ledger read/write, storage footprint)...
+    validations:
+      required: true
+  - type: textarea
+    id: flagged_code
+    attributes:
+      label: Example of Flagged Code (Bad)
+      description: Provide a Rust code snippet that should be flagged by this lint.
+      placeholder: |
+        // Code that triggers the lint
+    validations:
+      required: true
+  - type: textarea
+    id: non_flagged_code
+    attributes:
+      label: Example of Non-Flagged Code (Good)
+      description: Provide an alternative code snippet that should NOT be flagged (or how code should be refactored).
+      placeholder: |
+        // Refactored code or valid usage
+    validations:
+      required: true
+  - type: dropdown
+    id: default_severity
+    attributes:
+      label: Default Severity
+      description: Recommended severity level for this lint.
+      options:
+        - Deny
+        - Warn
+        - Allow
+    validations:
+      required: true
+  - type: textarea
+    id: false_positives
+    attributes:
+      label: Expected False Positives & Edge Cases
+      description: What are potential false positives or edge cases where this lint might trigger incorrectly?
+      placeholder: Describe any situations where this pattern might be benign or intentional...
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        *Note: Complexity and category classification fields will be added once the taxonomy issue is finalized.*
