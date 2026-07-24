@@ -26,7 +26,7 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 
    ```bash
    cargo test
-   ```
+```
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
@@ -84,7 +84,7 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
 
    ```bash
    cargo test --workspace
-   ```
+```
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
