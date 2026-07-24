@@ -8,6 +8,7 @@ on:
 
 jobs:
   quality:
+    name: Code Quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
