@@ -41,7 +41,7 @@ jobs:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
       - name: Install soroban-cost-linter
         run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
       - name: Run Cost Linter

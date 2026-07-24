@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.0`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -44,11 +44,10 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints.
+Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 ```bash
-cargo install cargo-dylint dylint-link
-
+cargo install cargo-dylint dylint-link --version "^6.0.1"
 ```
 
 ### Installation
