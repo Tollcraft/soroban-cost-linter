@@ -58,10 +58,12 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
             return Some(p);
         }
     }
+
     let budget = PathBuf::from("budget.toml");
     if budget.exists() {
         return Some(budget);
     }
+
     None
 }
 
@@ -81,8 +83,8 @@ fn main() {
 
     let mut lint_flags = Vec::new();
 
-    if Path::new(&cli.config).exists() {
-        match fs::read_to_string(&cli.config) {
+    if let Some(config_path) = resolve_config(cli.config.as_deref()) {
+        match fs::read_to_string(&config_path) {
             Ok(config_str) => match toml::from_str::<BudgetConfig>(&config_str) {
                 Ok(config) => match validate_and_build_flags(&config) {
                     Ok(flags) => lint_flags = flags,
@@ -91,9 +93,9 @@ fn main() {
                         exit(1);
                     }
                 },
-                Err(_) => eprintln!("Warning: Failed to parse {}", cli.config),
+                Err(_) => eprintln!("Warning: Failed to parse {}", config_path.display()),
             },
-            Err(_) => eprintln!("Warning: Failed to read {}", cli.config),
+            Err(_) => eprintln!("Warning: Failed to read {}", config_path.display()),
         }
     } else {
         eprintln!("Warning: budget.toml not found, using default lint levels.");
