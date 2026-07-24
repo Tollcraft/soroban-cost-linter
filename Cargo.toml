@@ -3,4 +3,7 @@ members = [
     "soroban_cost_lints",
     "cargo-cost-lint"
 ]
+exclude = [
+    "soroban_cost_lints/test_fixtures/real_sdk"
+]
 resolver = "2"
