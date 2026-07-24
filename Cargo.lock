@@ -100,6 +100,7 @@ version = "0.1.1"
 dependencies = [
  "clap",
  "serde",
+ "serde_json",
  "tempfile",
  "toml 0.8.23",
 ]

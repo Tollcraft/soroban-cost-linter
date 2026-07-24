@@ -25,6 +25,15 @@ fn test_json_output() {
     target_dir.push("target");
     target_dir.push("debug");
 
+    // Build the soroban_cost_lints cdylib first to ensure the .so is present
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("-p")
+        .arg("soroban_cost_lints")
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
     // Run the built wrapper binary in the fixture directory with --format json
     let output = Command::new(bin_path)
         .arg("--format")
