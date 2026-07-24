@@ -17,41 +17,34 @@ struct BudgetConfig {
     lints: Option<std::collections::HashMap<String, String>>,
 }
 
-fn find_workspace_root_from(start: &Path) -> Option<PathBuf> {
-    let mut dir = start.canonicalize().ok()?;
-    loop {
-        let cargo_toml = dir.join("Cargo.toml");
-        if cargo_toml.is_file() {
-            if let Ok(content) = fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    return Some(dir);
-                }
+include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+
+fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
+    let mut lint_flags = Vec::new();
+    if let Some(lints) = &config.lints {
+        for (lint, level) in lints {
+            if !LINT_NAMES.contains(&lint.as_str()) {
+                let valid = LINT_NAMES.join(", ");
+                return Err(format!(
+                    "Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}",
+                    lint, valid
+                ));
             }
-        }
-        if !dir.pop() {
-            break;
+            let level_flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => {
+                    return Err(format!(
+                        "Error: Unknown lint level '{}' for lint '{}'",
+                        level, lint
+                    ))
+                }
+            };
+            lint_flags.push(format!("{} {}", level_flag, lint));
         }
     }
-    None
-}
-
-fn find_workspace_root() -> Option<PathBuf> {
-    find_workspace_root_from(&std::env::current_dir().ok()?)
-}
-
-fn resolve_config(config_arg: Option<&str>) -> Option<PathBuf> {
-    if let Some(path) = config_arg {
-        let p = Path::new(path);
-        if p.exists() {
-            Some(p.to_path_buf())
-        } else {
-            None
-        }
-    } else {
-        find_workspace_root()
-            .map(|root| root.join("budget.toml"))
-            .filter(|p| p.exists())
-    }
+    Ok(lint_flags)
 }
 
 fn main() {
@@ -75,18 +68,11 @@ fn main() {
         eprintln!("Using config: {}", path.display());
         if let Ok(config_str) = fs::read_to_string(path) {
             if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                if let Some(lints) = config.lints {
-                    for (lint, level) in lints {
-                        let level_flag = match level.as_str() {
-                            "allow" => "-A",
-                            "warn" => "-W",
-                            "deny" => "-D",
-                            _ => {
-                                eprintln!("Unknown lint level: {}", level);
-                                continue;
-                            }
-                        };
-                        lint_flags.push(format!("{} {}", level_flag, lint));
+                match validate_and_build_flags(&config) {
+                    Ok(flags) => lint_flags = flags,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        exit(1);
                     }
                 }
             } else {
@@ -126,127 +112,35 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
-    fn resolve_explicit_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let budget = dir.path().join("my-budget.toml");
-        fs::write(&budget, "[lints]\nfoo = \"deny\"\n").unwrap();
-
-        let found = resolve_config(Some(budget.to_str().unwrap()));
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().canonicalize().unwrap(), budget.canonicalize().unwrap());
+    fn test_valid_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
     }
 
     #[test]
-    fn resolve_explicit_path_not_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let budget = dir.path().join("nonexistent.toml");
-        assert!(resolve_config(Some(budget.to_str().unwrap())).is_none());
+    fn test_unknown_lint_name() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loops".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint name"));
     }
 
     #[test]
-    fn resolve_no_explicit_path_finds_workspace_budget() {
-        let dir = tempfile::tempdir().unwrap();
-        let ws_root = dir.path().join("ws");
-        fs::create_dir_all(&ws_root).unwrap();
-        fs::write(
-            ws_root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"member\"]\n",
-        )
-        .unwrap();
-        let budget = ws_root.join("budget.toml");
-        fs::write(&budget, "[lints]\nfoo = \"deny\"\n").unwrap();
-
-        let found = resolve_config_from(&ws_root, None);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().canonicalize().unwrap(), budget.canonicalize().unwrap());
-    }
-
-    #[test]
-    fn find_workspace_root_from_workspace_root() {
-        let dir = tempfile::tempdir().unwrap();
-        let ws_root = dir.path().join("ws");
-        fs::create_dir_all(&ws_root).unwrap();
-        fs::write(
-            ws_root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"member\"]\n",
-        )
-        .unwrap();
-
-        let found = find_workspace_root_from(&ws_root);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().canonicalize().unwrap(), ws_root.canonicalize().unwrap());
-    }
-
-    #[test]
-    fn find_workspace_root_from_member_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let ws_root = dir.path().join("ws");
-        let member = ws_root.join("member");
-        fs::create_dir_all(&member).unwrap();
-        fs::write(
-            ws_root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"member\"]\n",
-        )
-        .unwrap();
-        fs::write(
-            member.join("Cargo.toml"),
-            "[package]\nname = \"member\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .unwrap();
-
-        let found = find_workspace_root_from(&member);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().canonicalize().unwrap(), ws_root.canonicalize().unwrap());
-    }
-
-    #[test]
-    fn find_workspace_root_no_workspace() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::write(
-            dir.path().join("Cargo.toml"),
-            "[package]\nname = \"foo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .unwrap();
-
-        assert!(find_workspace_root_from(dir.path()).is_none());
-    }
-
-    #[test]
-    fn resolve_config_prefers_explicit_over_workspace() {
-        let dir = tempfile::tempdir().unwrap();
-        // Create workspace with budget.toml
-        let ws_root = dir.path().join("ws");
-        fs::create_dir_all(&ws_root).unwrap();
-        fs::write(
-            ws_root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"member\"]\n",
-        )
-        .unwrap();
-        let ws_budget = ws_root.join("budget.toml");
-        fs::write(&ws_budget, "[lints]\nfoo = \"deny\"\n").unwrap();
-
-        // Create an explicit budget.toml elsewhere
-        let explicit_budget = dir.path().join("explicit.toml");
-        fs::write(&explicit_budget, "[lints]\nbar = \"allow\"\n").unwrap();
-
-        let found = resolve_config_from(&ws_root, Some(explicit_budget.to_str().unwrap()));
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().canonicalize().unwrap(), explicit_budget.canonicalize().unwrap());
-    }
-
-    fn resolve_config_from(start: &Path, config_arg: Option<&str>) -> Option<PathBuf> {
-        if let Some(path) = config_arg {
-            let p = Path::new(path);
-            if p.exists() {
-                return Some(p.to_path_buf());
-            }
-            return None;
-        }
-        find_workspace_root_from(start)
-            .map(|root| root.join("budget.toml"))
-            .filter(|p| p.exists())
+    fn test_unknown_lint_level() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 }

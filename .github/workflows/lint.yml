@@ -7,6 +7,13 @@ on:
     branches: [ "main" ]
 
 jobs:
+  validate-toolchain-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all nightly toolchain pins are in sync
+        run: bash .github/scripts/validate-toolchain-pins.sh
+
   quality:
     runs-on: ubuntu-latest
     steps:
