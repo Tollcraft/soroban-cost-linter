@@ -37,40 +37,18 @@ rustc_session::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]
 
 impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            // TODO: Abstract this Adt pattern matching into a helper function to reduce duplication across lints.
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                let path = cx.tcx.def_path_str(adt_def.did());
-                path == "soroban_sdk::storage::Storage"
-                    || path.ends_with("::soroban_sdk::storage::Storage")
-                    || path == "soroban_sdk::storage::Instance"
-                    || path.ends_with("::soroban_sdk::storage::Instance")
-                    || path == "soroban_sdk::storage::Persistent"
-                    || path.ends_with("::soroban_sdk::storage::Persistent")
-                    || path == "soroban_sdk::storage::Temporary"
-                    || path.ends_with("::soroban_sdk::storage::Temporary")
-                    || ((path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env"))
-                        && path_segment.ident.name.as_str() == "storage")
-            } else {
-                false
-            };
-
-            if is_storage_access
-                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
-                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
-            {
-                span_lint_and_help(
-                    cx,
-                    SOROBAN_STORAGE_IN_LOOP,
-                    expr.span,
-                    "storage operation inside a loop",
-                    None,
-                    "move storage operations out of the loop or accumulate mutations in memory first",
-                );
-            }
+        if is_storage_access(cx, expr)
+            && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+            && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+        {
+            span_lint_and_help(
+                cx,
+                SOROBAN_STORAGE_IN_LOOP,
+                expr.span,
+                "storage operation inside a loop",
+                None,
+                "move storage operations out of the loop or accumulate mutations in memory first",
+            );
         }
     }
 }
@@ -91,16 +69,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
             && path_segment.ident.name.as_str() == "clone"
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                let path = cx.tcx.def_path_str(adt_def.did());
-                path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
-            } else {
-                false
-            };
-
-            if is_env {
+            if is_env_type(cx, receiver_ty) {
                 span_lint_and_help(
                     cx,
                     REDUNDANT_ENV_CLONE,
@@ -128,17 +97,7 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_host_function = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                let path = cx.tcx.def_path_str(adt_def.did());
-                path == "soroban_sdk::ledger::Ledger"
-                    || path.ends_with("::soroban_sdk::ledger::Ledger")
-            } else {
-                false
-            };
-
-            if is_host_function
+            if is_ledger_type(cx, receiver_ty)
                 && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
                 && let hir::ExprKind::Loop(..) = enclosing_expr.kind
             {
@@ -152,6 +111,50 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 );
             }
         }
+    }
+}
+
+fn is_env_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
+        let path = cx.tcx.def_path_str(adt_def.did());
+        path == "soroban_sdk::Env" || path.ends_with("::soroban_sdk::Env")
+    } else {
+        false
+    }
+}
+
+fn is_storage_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
+        let path = cx.tcx.def_path_str(adt_def.did());
+        path == "soroban_sdk::storage::Storage"
+            || path.ends_with("::soroban_sdk::storage::Storage")
+            || path == "soroban_sdk::storage::Instance"
+            || path.ends_with("::soroban_sdk::storage::Instance")
+            || path == "soroban_sdk::storage::Persistent"
+            || path.ends_with("::soroban_sdk::storage::Persistent")
+            || path == "soroban_sdk::storage::Temporary"
+            || path.ends_with("::soroban_sdk::storage::Temporary")
+    } else {
+        false
+    }
+}
+
+fn is_ledger_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
+        let path = cx.tcx.def_path_str(adt_def.did());
+        path == "soroban_sdk::ledger::Ledger" || path.ends_with("::soroban_sdk::ledger::Ledger")
+    } else {
+        false
+    }
+}
+
+fn is_storage_access<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+        let receiver_ty = cx.typeck_results().expr_ty(receiver);
+        is_storage_type(cx, receiver_ty)
+            || (is_env_type(cx, receiver_ty) && path_segment.ident.name.as_str() == "storage")
+    } else {
+        false
     }
 }
 
