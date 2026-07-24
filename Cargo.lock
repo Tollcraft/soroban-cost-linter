@@ -1098,6 +1098,8 @@ name = "soroban_cost_lints"
 version = "0.1.1"
 dependencies = [
  "clippy_utils",
+ "dylint",
+ "dylint_internal",
  "dylint_linting",
  "dylint_testing",
 ]

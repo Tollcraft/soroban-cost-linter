@@ -10,8 +10,11 @@ pub mod soroban_sdk {
         pub fn ledger(&self) -> ledger::Ledger {
             ledger::Ledger
         }
+        pub fn host(&self) -> host::Host {
+            host::Host
+        }
     }
-    
+
     pub mod storage {
         pub struct Storage;
         impl Storage {
@@ -19,7 +22,7 @@ pub mod soroban_sdk {
             pub fn persistent(&self) -> Persistent { Persistent }
             pub fn temporary(&self) -> Temporary { Temporary }
         }
-        
+
         pub struct Instance;
         impl Instance {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
@@ -46,6 +49,15 @@ pub mod soroban_sdk {
         pub struct Ledger;
         impl Ledger {
             pub fn sequence(&self) -> u32 { 0 }
+        }
+    }
+
+    pub mod host {
+        pub struct Host;
+        impl Host {
+            pub fn invoke_contract(&self) {}
+            pub fn invoke_static(&self) {}
+            pub fn budget_cloned(&self) {}
         }
     }
 }
