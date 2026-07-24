@@ -22,7 +22,8 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
    ```
 
 ### 3. Adding a New Lint
-- Find a structural anti-pattern in Soroban that is input-independent and costly.
+- Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
+- Find a structural anti-pattern in Soroban that is input-independent and costly, and that is **not** already covered by a Clippy lint with the same cost-relevant semantics.
 - Write a failing test case in the `ui` tests directory.
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
 - Update the documentation and `README.md`.
@@ -69,3 +70,4 @@ If any file is out of sync, the drift guard will print an error naming the file,
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
+- If your pull request includes a user-visible change, add an appropriate entry under the **Unreleased** section of `CHANGELOG.md`. The entry will be moved into the next versioned release when a release is cut.

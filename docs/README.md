@@ -27,7 +27,7 @@ Our linter hooks directly into the Rust compiler's High-Level Intermediate Repre
 ## Jump In
 
 {% hint style="info" %}
-New here? Start with the [**Integration Guide**](integration.md) to wire the linter into your workspace and CI in minutes.
+New here? Start with the [**Integration Guide**](integration.md) to wire the linter into your workspace and CI in minutes. Before proposing a new lint, read [**Scope: Clippy vs. soroban-cost-linter**](scope_boundary.md).
 {% endhint %}
 
 * 🔍 [**Lint Reference**](lints/) — every lint, what it catches, and how to fix it
@@ -35,3 +35,4 @@ New here? Start with the [**Integration Guide**](integration.md) to wire the lin
   * [`redundant_env_clone`](lints/redundant_env_clone.md)
   * [`unnecessary_host_function_call`](lints/unnecessary_host_function_call.md)
 * 🔌 [**Integration Guide**](integration.md) — `budget.toml` configuration and GitHub Actions setup
+* 📏 [**Scope: Clippy vs. soroban-cost-linter**](scope_boundary.md) — which patterns belong here and which belong to Clippy
