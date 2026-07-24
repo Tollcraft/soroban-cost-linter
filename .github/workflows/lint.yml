@@ -55,10 +55,16 @@ jobs:
         run: cargo install cargo-dylint dylint-link --version "^6.0.1"
       - name: Build lint library (release)
         run: cargo build --release -p soroban_cost_lints
+      - name: Find built dylib
+        id: dylib
+        run: |
+          DYLIB_PATH=$(find target/release -name "libsoroban_cost_lints*.so" -o -name "libsoroban_cost_lints*.dylib" | head -1)
+          echo "dylib_path=$DYLIB_PATH" >> $GITHUB_OUTPUT
+          echo "Found dylib at: $DYLIB_PATH"
       - name: Run cargo dylint against smoke test fixture
         run: |
           set -o pipefail
-          cargo dylint --lib soroban_cost_lints --manifest-path test_fixtures/smoke_test/Cargo.toml 2>&1 | tee /tmp/dylint-output.txt
+          cargo dylint --lib-path "${{ steps.dylib.outputs.dylib_path }}" --manifest-path test_fixtures/smoke_test/Cargo.toml 2>&1 | tee /tmp/dylint-output.txt
           DYLINT_EXIT_CODE=${PIPESTATUS[0]}
           echo "dylint_exit_code=$DYLINT_EXIT_CODE" >> $GITHUB_OUTPUT
           # Check for dylib load failure (different from lint firing)
