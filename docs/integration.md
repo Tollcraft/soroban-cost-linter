@@ -19,6 +19,12 @@ unnecessary_host_function_call = "warn"
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
+### Validation
+
+`cargo cost-lint` strictly validates your `budget.toml`:
+- If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
+- If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
+
 ## GitHub Actions
 
 We provide a template to easily integrate the linter into your GitHub Actions pipeline:
