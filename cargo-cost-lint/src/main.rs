@@ -47,6 +47,20 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
     Ok(lint_flags)
 }
 
+fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
+    if let Some(path) = config {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let budget = PathBuf::from("budget.toml");
+    if budget.exists() {
+        return Some(budget);
+    }
+    None
+}
+
 fn main() {
     // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
@@ -80,9 +94,7 @@ fn main() {
             }
         }
     } else {
-        eprintln!(
-            "Warning: budget.toml not found, using default lint levels."
-        );
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let mut cmd = Command::new("cargo");
