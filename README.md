@@ -44,11 +44,10 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints.
+Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 ```bash
-cargo install cargo-dylint dylint-link
-
+cargo install cargo-dylint dylint-link --version "^6.0.1"
 ```
 
 ### Installation
