@@ -14,7 +14,7 @@ jobs:
       - name: Validate all nightly toolchain pins are in sync
         run: bash .github/scripts/validate-toolchain-pins.sh
 
-  quality:
+  quality-matrix:
     name: Code Quality
     runs-on: ubuntu-latest
     strategy:
@@ -33,7 +33,13 @@ jobs:
       - name: Run Clippy
         run: cargo +${{ matrix.toolchain }} clippy --workspace --all-targets -- -D warnings
 
-  lint:
+  quality:
+    needs: quality-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Code Quality matrix passed"
+
+  lint-matrix:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -50,3 +56,9 @@ jobs:
         run: cargo +${{ matrix.toolchain }} install cargo-dylint dylint-link --version "^6.0.1"
       - name: Run tests
         run: cargo +${{ matrix.toolchain }} test --workspace
+
+  lint:
+    needs: lint-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Lint matrix passed"
