@@ -15,6 +15,7 @@ jobs:
         run: bash .github/scripts/validate-toolchain-pins.sh
 
   quality:
+    name: Code Quality
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.toolchain == 'nightly' }}
     strategy:
