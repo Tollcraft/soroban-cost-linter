@@ -35,10 +35,22 @@ pub struct LintMetadata {
 }
 
 pub const LINT_METADATA: &[LintMetadata] = &[
-    LintMetadata { lint: SOROBAN_STORAGE_IN_LOOP, category: LintCategory::StorageOperations },
-    LintMetadata { lint: REDUNDANT_ENV_CLONE, category: LintCategory::Memory },
-    LintMetadata { lint: UNNECESSARY_HOST_FUNCTION_CALL, category: LintCategory::Compute },
-    LintMetadata { lint: HOST_IN_LOOP, category: LintCategory::Compute },
+    LintMetadata {
+        lint: SOROBAN_STORAGE_IN_LOOP,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: REDUNDANT_ENV_CLONE,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: UNNECESSARY_HOST_FUNCTION_CALL,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
+        lint: HOST_IN_LOOP,
+        category: LintCategory::Compute,
+    },
 ];
 
 #[unsafe(no_mangle)]
