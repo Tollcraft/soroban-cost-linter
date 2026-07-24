@@ -42,7 +42,11 @@ fn test_json_output() {
         println!("Stderr output:\n{}", stderr_str);
     }
     // The fixture should have some lint violations.
-    assert!(!lines.is_empty(), "Expected JSON output, but stdout was empty. Stderr: {}", stderr_str);
+    assert!(
+        !lines.is_empty(),
+        "Expected JSON output, but stdout was empty. Stderr: {}",
+        stderr_str
+    );
 
     let mut found_storage_in_loop = false;
     for line in lines {
