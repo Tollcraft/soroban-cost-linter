@@ -1,8 +1,34 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::{exit, Command};
+use std::process::{exit, Command, Stdio};
+
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum OutputFormat {
+    Text,
+    Json,
+}
+
+#[derive(Serialize, Debug)]
+struct Span {
+    line_start: usize,
+    line_end: usize,
+    column_start: usize,
+    column_end: usize,
+}
+
+#[derive(Serialize, Debug)]
+struct LintFinding {
+    name: String,
+    level: String,
+    file: String,
+    span: Span,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    help: Option<String>,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
@@ -10,6 +36,9 @@ use std::process::{exit, Command};
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
+
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
+    format: OutputFormat,
 }
 
 #[derive(Deserialize, Debug)]
@@ -136,33 +165,76 @@ fn main() {
                             if let Some(code) = message.get("code") {
                                 if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                                     if LINT_NAMES.contains(&lint_name) {
-                                        let level = message.get("level").and_then(|l| l.as_str()).unwrap_or("unknown");
+                                        let level = message
+                                            .get("level")
+                                            .and_then(|l| l.as_str())
+                                            .unwrap_or("unknown");
                                         if level == "error" || level == "deny" {
                                             highest_exit_code = 1;
                                         }
 
-                                        let msg_text = message.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                                        let msg_text = message
+                                            .get("message")
+                                            .and_then(|m| m.as_str())
+                                            .unwrap_or("");
                                         let mut file = String::new();
-                                        let mut span_obj = Span { line_start: 0, line_end: 0, column_start: 0, column_end: 0 };
+                                        let mut span_obj = Span {
+                                            line_start: 0,
+                                            line_end: 0,
+                                            column_start: 0,
+                                            column_end: 0,
+                                        };
 
-                                        if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
+                                        if let Some(spans) =
+                                            message.get("spans").and_then(|s| s.as_array())
+                                        {
                                             for s in spans {
-                                                if s.get("is_primary").and_then(|p| p.as_bool()).unwrap_or(false) {
-                                                    file = s.get("file_name").and_then(|f| f.as_str()).unwrap_or("").to_string();
-                                                    span_obj.line_start = s.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
-                                                    span_obj.line_end = s.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
-                                                    span_obj.column_start = s.get("column_start").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
-                                                    span_obj.column_end = s.get("column_end").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+                                                if s.get("is_primary")
+                                                    .and_then(|p| p.as_bool())
+                                                    .unwrap_or(false)
+                                                {
+                                                    file = s
+                                                        .get("file_name")
+                                                        .and_then(|f| f.as_str())
+                                                        .unwrap_or("")
+                                                        .to_string();
+                                                    span_obj.line_start = s
+                                                        .get("line_start")
+                                                        .and_then(|l| l.as_u64())
+                                                        .unwrap_or(0)
+                                                        as usize;
+                                                    span_obj.line_end = s
+                                                        .get("line_end")
+                                                        .and_then(|l| l.as_u64())
+                                                        .unwrap_or(0)
+                                                        as usize;
+                                                    span_obj.column_start = s
+                                                        .get("column_start")
+                                                        .and_then(|c| c.as_u64())
+                                                        .unwrap_or(0)
+                                                        as usize;
+                                                    span_obj.column_end = s
+                                                        .get("column_end")
+                                                        .and_then(|c| c.as_u64())
+                                                        .unwrap_or(0)
+                                                        as usize;
                                                     break;
                                                 }
                                             }
                                         }
 
                                         let mut help_text = None;
-                                        if let Some(children) = message.get("children").and_then(|c| c.as_array()) {
+                                        if let Some(children) =
+                                            message.get("children").and_then(|c| c.as_array())
+                                        {
                                             for child_item in children {
-                                                if child_item.get("level").and_then(|l| l.as_str()) == Some("help") {
-                                                    help_text = child_item.get("message").and_then(|m| m.as_str()).map(|s| s.to_string());
+                                                if child_item.get("level").and_then(|l| l.as_str())
+                                                    == Some("help")
+                                                {
+                                                    help_text = child_item
+                                                        .get("message")
+                                                        .and_then(|m| m.as_str())
+                                                        .map(|s| s.to_string());
                                                     break;
                                                 }
                                             }
