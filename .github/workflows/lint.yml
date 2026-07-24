@@ -28,6 +28,8 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo +${{ matrix.toolchain }} fmt --all -- --check
       - name: Run Clippy
@@ -52,6 +54,8 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustc-dev, llvm-tools-preview
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
       - name: Install Dylint
         run: cargo +${{ matrix.toolchain }} install cargo-dylint dylint-link --version "^6.0.1"
       - name: Run tests
