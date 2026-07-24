@@ -1,44 +1,15 @@
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::process::{exit, Command, Stdio};
-
-#[derive(clap::ValueEnum, Clone, Default, Debug, PartialEq)]
-enum OutputFormat {
-    #[default]
-    Text,
-    Json,
-}
+use std::path::PathBuf;
+use std::process::{exit, Command};
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
-    #[arg(long, help = "Path to budget.toml", default_value = "budget.toml")]
-    config: String,
-
-    #[arg(long, help = "Output format (text or json)", default_value = "text")]
-    format: OutputFormat,
-}
-
-#[derive(Serialize)]
-struct LintFinding {
-    name: String,
-    level: String,
-    file: String,
-    span: Span,
-    message: String,
-    help: Option<String>,
-}
-
-#[derive(Serialize)]
-struct Span {
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
+    #[arg(long, help = "Path to budget.toml")]
+    config: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -76,6 +47,20 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
     Ok(lint_flags)
 }
 
+fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
+    if let Some(path) = config {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let budget = PathBuf::from("budget.toml");
+    if budget.exists() {
+        return Some(budget);
+    }
+    None
+}
+
 fn main() {
     // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
@@ -93,8 +78,9 @@ fn main() {
 
     let mut lint_flags = Vec::new();
 
-    if Path::new(&cli.config).exists() {
-        if let Ok(config_str) = fs::read_to_string(&cli.config) {
+    if let Some(ref path) = resolve_config(cli.config.as_deref()) {
+        eprintln!("Using config: {}", path.display());
+        if let Ok(config_str) = fs::read_to_string(path) {
             if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
                 match validate_and_build_flags(&config) {
                     Ok(flags) => lint_flags = flags,
@@ -104,14 +90,11 @@ fn main() {
                     }
                 }
             } else {
-                eprintln!("Warning: Failed to parse {}", cli.config);
+                eprintln!("Warning: Failed to parse {}", path.display());
             }
         }
     } else {
-        eprintln!(
-            "Warning: {} not found, using default lint levels.",
-            cli.config
-        );
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let mut cmd = Command::new("cargo");
@@ -120,8 +103,6 @@ fn main() {
     cmd.arg("soroban_cost_lints");
 
     if !lint_flags.is_empty() {
-        // Trailing args to `cargo dylint` are forwarded to `cargo check`, which
-        // rejects lint-level flags; they must reach rustc via DYLINT_RUSTFLAGS.
         let mut rustflags = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
             if !rustflags.is_empty() {
