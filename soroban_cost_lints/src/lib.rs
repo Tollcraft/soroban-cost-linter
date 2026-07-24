@@ -15,15 +15,10 @@ use rustc_span::def_id::DefId;
 
 dylint_linting::dylint_library!();
 
-fn match_soroban_def_path(cx: &LateContext<'tcx>, def_id: DefId, segments: &[&str]) -> bool {
-    let crate_name = cx.tcx.crate_name(def_id.krate);
-    if crate_name.as_str() == "soroban_sdk" {
-        clippy_utils::match_def_path(cx, def_id, segments)
-    } else {
-        let full = cx.tcx.def_path_str(def_id);
-        let suffix: String = segments.join("::");
-        full.ends_with(&suffix)
-    }
+fn match_soroban_def_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, segments: &[&str]) -> bool {
+    let full = cx.tcx.def_path_str(def_id);
+    let suffix: String = segments.join("::");
+    full.ends_with(&suffix)
 }
 
 #[unsafe(no_mangle)]
