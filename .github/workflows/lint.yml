@@ -55,15 +55,10 @@ jobs:
         run: cargo install cargo-dylint dylint-link --version "^6.0.1"
       - name: Build lint library (release)
         run: cargo build --release -p soroban_cost_lints
-      - name: Install cargo-cost-lint from local path
-        run: cargo install --path cargo-cost-lint --root ~/.cargo --force
-      - name: Add cargo bin to PATH
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-      - name: Run cargo cost-lint against smoke test fixture
-        working-directory: test_fixtures/smoke_test
+      - name: Run cargo dylint against smoke test fixture
         run: |
           set -o pipefail
-          cargo cost-lint 2>&1 | tee /tmp/dylint-output.txt
+          cargo dylint --lib soroban_cost_lints --manifest-path test_fixtures/smoke_test/Cargo.toml 2>&1 | tee /tmp/dylint-output.txt
           DYLINT_EXIT_CODE=${PIPESTATUS[0]}
           echo "dylint_exit_code=$DYLINT_EXIT_CODE" >> $GITHUB_OUTPUT
           # Check for dylib load failure (different from lint firing)
@@ -79,11 +74,11 @@ jobs:
             exit 0
           elif [ $DYLINT_EXIT_CODE -eq 0 ]; then
             echo "lint_fired=false" >> $GITHUB_OUTPUT
-            echo "::error::cargo cost-lint exited 0 but expected lint to fire - dylib may not be loading correctly"
+            echo "::error::cargo dylint exited 0 but expected lint to fire - dylib may not be loading correctly"
             exit 1
           else
             echo "lint_fired=false" >> $GITHUB_OUTPUT
-            echo "::error::cargo cost-lint exited with unexpected code $DYLINT_EXIT_CODE"
+            echo "::error::cargo dylint exited with unexpected code $DYLINT_EXIT_CODE"
             exit 1
           fi
         id: dylint-run
