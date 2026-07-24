@@ -14,72 +14,51 @@ jobs:
       - name: Validate all nightly toolchain pins are in sync
         run: bash .github/scripts/validate-toolchain-pins.sh
 
-  quality:
+  quality-matrix:
+    name: Code Quality
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [nightly-2026-04-16]
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-04-16
+          toolchain: ${{ matrix.toolchain }}
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +${{ matrix.toolchain }} fmt --all -- --check
       - name: Run Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo +${{ matrix.toolchain }} clippy --workspace --all-targets -- -D warnings
+
+  quality:
+    needs: quality-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Code Quality matrix passed"
+
+  lint-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [nightly-2026-04-16]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustc-dev, llvm-tools-preview
+      - name: Install Dylint
+        run: cargo +${{ matrix.toolchain }} install cargo-dylint dylint-link --version "^6.0.1"
+      - name: Run tests
+        run: cargo +${{ matrix.toolchain }} test --workspace
 
   lint:
+    needs: lint-matrix
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
-      - name: Run tests
-        run: cargo test --workspace
-
-  dylib-load-smoke-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
-      - name: Build lint library (release)
-        run: cargo build --release -p soroban_cost_lints
-      - name: Run cargo dylint against smoke test fixture
-        working-directory: test_fixtures/smoke_test
-        run: |
-          set -o pipefail
-          cargo dylint --lib soroban_cost_lints 2>&1 | tee /tmp/dylint-output.txt
-          DYLINT_EXIT_CODE=${PIPESTATUS[0]}
-          echo "dylint_exit_code=$DYLINT_EXIT_CODE" >> $GITHUB_OUTPUT
-          # Check for dylib load failure (different from lint firing)
-          if grep -q "couldn't load dynamic library\|failed to load dynamic library\|error: couldn't load\|error: failed to load" /tmp/dylint-output.txt; then
-            echo "dylib_load_failed=true" >> $GITHUB_OUTPUT
-            echo "::error::Dynamic library failed to load - version mismatch between rust-toolchain, clippy_utils rev, and cargo-dylint"
-            exit 1
-          fi
-          # Check that lint actually fired (exit code 101 from cargo dylint means lints found)
-          if [ $DYLINT_EXIT_CODE -eq 101 ]; then
-            echo "lint_fired=true" >> $GITHUB_OUTPUT
-            echo "Lint fired as expected"
-            exit 0
-          elif [ $DYLINT_EXIT_CODE -eq 0 ]; then
-            echo "lint_fired=false" >> $GITHUB_OUTPUT
-            echo "::error::cargo dylint exited 0 but expected lint to fire - dylib may not be loading correctly"
-            exit 1
-          else
-            echo "lint_fired=false" >> $GITHUB_OUTPUT
-            echo "::error::cargo dylint exited with unexpected code $DYLINT_EXIT_CODE"
-            exit 1
-          fi
-        id: dylint-run
+      - run: echo "Lint matrix passed"

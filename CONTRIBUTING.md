@@ -31,9 +31,10 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
 - Find a structural anti-pattern in Soroban that is input-independent and costly, and that is **not** already covered by a Clippy lint with the same cost-relevant semantics.
+- Assign the lint to one of the defined cost categories (`StorageOperations`, `Compute`, `Memory`, or `EntryLifecycle`) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
 - Write a failing test case in the `ui` tests directory.
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
-- Update the documentation and `README.md`.
+- Update the documentation and `README.md`, ensuring the new lint is placed under the correct category header.
 
 ### Lint Naming Convention
 
