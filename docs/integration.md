@@ -58,3 +58,37 @@ jobs:
 {% hint style="warning" %}
 Keep the pinned `toolchain` in sync with the `soroban-cost-linter` release you install — a mismatched nightly will fail to link the lint library.
 {% endhint %}
+
+## JSON Output and CI Annotations
+
+For machine-readable output, pass `--format json`. `cargo cost-lint` will emit JSON lines (NDJSON) detailing each lint finding. The exit code remains non-zero if a `deny` level lint fires.
+
+### JSON Schema
+Each line of stdout is a JSON object with the following schema:
+```json
+{
+  "name": "soroban_storage_in_loop",
+  "level": "warning",
+  "file": "src/lib.rs",
+  "span": {
+    "line_start": 42,
+    "line_end": 42,
+    "column_start": 13,
+    "column_end": 18
+  },
+  "message": "storage operations in loops are expensive",
+  "help": "consider lifting the storage operation outside the loop"
+}
+```
+
+### GitHub Actions Annotations Example
+You can pipe the JSON output into a tool like `jq` to create GitHub annotations (which show up directly on your PR's Files Changed tab).
+
+```yaml
+      - name: Run Cost Linter (JSON mode with annotations)
+        run: |
+          cargo cost-lint --format json | jq -r '
+            . | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"
+          '
+```
+*(Note: If the linter returns a non-zero exit code due to a `deny` lint, the step will still fail correctly in Actions).*

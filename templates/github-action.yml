@@ -19,3 +19,10 @@ jobs:
         run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
       - name: Run Cost Linter
         run: cargo cost-lint
+        
+      # Example: Run in JSON mode and create inline PR annotations
+      # - name: Run Cost Linter (JSON)
+      #   run: |
+      #     cargo cost-lint --format json | jq -r '
+      #       . | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"
+      #     '
