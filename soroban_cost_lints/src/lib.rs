@@ -21,6 +21,38 @@ fn match_soroban_def_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, segments:
     full.ends_with(&suffix)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintCategory {
+    StorageOperations,
+    Compute,
+    Memory,
+    EntryLifecycle,
+}
+
+pub struct LintMetadata {
+    pub lint: &'static rustc_lint::Lint,
+    pub category: LintCategory,
+}
+
+pub const LINT_METADATA: &[LintMetadata] = &[
+    LintMetadata {
+        lint: SOROBAN_STORAGE_IN_LOOP,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: REDUNDANT_ENV_CLONE,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: UNNECESSARY_HOST_FUNCTION_CALL,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
+        lint: HOST_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+];
+
 #[unsafe(no_mangle)]
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
