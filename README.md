@@ -82,6 +82,14 @@ From the root of your Soroban contract workspace:
 cargo cost-lint
 ```
 
+To inspect the machine-readable lint inventory that the CLI emits, run:
+
+```bash
+cargo cost-lint --list-lints --format json
+```
+
+The output is a versioned JSON object with the lint name, default level, description, category, and documentation URL for every registered lint.
+
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
 ```text

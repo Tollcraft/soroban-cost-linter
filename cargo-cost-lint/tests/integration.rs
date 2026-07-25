@@ -3,6 +3,76 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+fn test_list_lints_json() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(output.status.success(), "cargo-cost-lint --list-lints failed");
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&stdout_str).expect("Output is not valid JSON");
+
+    assert_eq!(inventory["version"], "1.0");
+    assert!(inventory["schema"].is_string());
+
+    let lints = inventory["lints"].as_array().expect("lints is not an array");
+    assert!(!lints.is_empty(), "lints array should not be empty");
+
+    let names: Vec<&str> = lints
+        .iter()
+        .map(|lint| lint["name"].as_str().expect("name is not a string"))
+        .collect();
+
+    let expected = [
+        "soroban_storage_in_loop",
+        "redundant_env_clone",
+        "unnecessary_host_function_call",
+        "host_in_loop",
+    ];
+    for name in &expected {
+        assert!(
+            names.contains(name),
+            "Expected lint '{}' to be in inventory",
+            name
+        );
+    }
+
+    for lint in lints {
+        assert!(lint.get("name").is_some(), "lint entry missing 'name'");
+        assert!(lint.get("default_level").is_some(), "lint entry missing 'default_level'");
+        assert!(lint.get("description").is_some(), "lint entry missing 'description'");
+        assert!(lint.get("category").is_some(), "lint entry missing 'category'");
+        assert!(lint.get("documentation_url").is_some(), "lint entry missing 'documentation_url'");
+    }
+}
+
+#[test]
+fn test_list_lints_text() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(output.status.success(), "cargo-cost-lint --list-lints failed");
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(stdout_str.contains("Lint inventory (version 1.0):"));
+    assert!(stdout_str.contains("soroban_storage_in_loop"));
+    assert!(stdout_str.contains("redundant_env_clone"));
+    assert!(stdout_str.contains("unnecessary_host_function_call"));
+    assert!(stdout_str.contains("host_in_loop"));
+}
+
+#[test]
 fn test_json_output() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 

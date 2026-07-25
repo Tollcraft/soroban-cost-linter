@@ -18,7 +18,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
+| [`host_in_loop`](host_in_loop.md)                                     | `warn`           | Host object usage inside loop bodies       |
 
 ## Memory
 
@@ -33,6 +34,14 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
+
+## Lint inventory schema
+
+The CLI can emit a versioned inventory of all registered lints via `cargo cost-lint --list-lints --format json`. The payload contains:
+
+- `version`: inventory schema version (`1.0`)
+- `schema`: the schema documentation URL
+- `lints`: an array of entries containing `name`, `default_level`, `description`, `category`, and `documentation_url`
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
