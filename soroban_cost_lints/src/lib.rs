@@ -457,7 +457,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         let reads: Vec<(String, String)> = Vec::new();
         let writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
 
-struct ReadVisitor<'a, 'tcx> {
+        struct ReadVisitor<'a, 'tcx> {
             cx: &'a LateContext<'tcx>,
             reads: Vec<(String, String)>,
         }
