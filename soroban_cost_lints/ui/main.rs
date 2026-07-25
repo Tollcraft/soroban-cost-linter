@@ -42,23 +42,23 @@ pub mod soroban_sdk {
 
         pub struct Instance;
         impl Instance {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Persistent;
         impl Persistent {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Temporary;
         impl Temporary {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
     }
 
@@ -124,7 +124,7 @@ pub mod soroban_sdk {
     pub struct Map;
     impl Map {
         pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
-        pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+        pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
     }
 }
 
@@ -303,22 +303,22 @@ fn allowed_symbol_new_short_literal(env: Env) {
 // =======================================================================
 
 fn bad_storage_write_without_read(env: Env) {
-    env.storage().instance().set("key1", &1); // Should Warn — no prior read
+    env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
 }
 
 fn good_storage_write_with_read(env: Env) {
-    let _: Option<i32> = env.storage().instance().get("key1"); // Read first
-    env.storage().instance().set("key1", &1); // Good — read before write
+    let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
+    env.storage().instance().set(&"key1", &1); // Good — read before write
 }
 
 fn good_storage_write_with_has(env: Env) {
-    let _exists = env.storage().instance().has("key1"); // Check first
-    env.storage().instance().set("key1", &1); // Good — has before write
+    let _exists = env.storage().instance().has(&"key1"); // Check first
+    env.storage().instance().set(&"key1", &1); // Good — has before write
 }
 
 #[allow(storage_write_without_read)]
 fn allowed_storage_write_without_read(env: Env) {
-    env.storage().instance().set("key1", &1); // Good (allowed)
+    env.storage().instance().set(&"key1", &1); // Good (allowed)
 }
 
 // =======================================================================
@@ -363,7 +363,7 @@ fn good_map_insert_outside_loop(env: Env) {
     let mut map = Map;
     map.insert(&1, &1); // Good — outside the loop
     for i in 0..10 {
-        let _ = map.get(&i);
+        let _: Option<i32> = map.get(&i);
     }
 }
 
