@@ -1,14 +1,19 @@
 #![feature(rustc_private)]
 #![warn(unused_extern_crates)]
 
+extern crate rustc_ast;
+extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use clippy_utils::source::snippet_opt;
+use rustc_ast::LitKind;
+use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_span::def_id::DefId;
@@ -27,6 +32,7 @@ pub enum LintCategory {
     Compute,
     Memory,
     EntryLifecycle,
+    SymbolOperations,
 }
 
 pub struct LintMetadata {
@@ -55,6 +61,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: HOST_IN_LOOP,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
+        category: LintCategory::SymbolOperations,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -65,12 +75,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
+        SYMBOL_NEW_FOR_SHORT_LITERAL,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
+    lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
 }
 
 rustc_session::declare_lint! {
@@ -269,6 +281,69 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
             }
         }
     }
+}
+
+// =======================================================================
+// symbol_new_for_short_literal — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub SYMBOL_NEW_FOR_SHORT_LITERAL,
+    Warn,
+    "Symbol::new used with a short literal that could use symbol_short! macro"
+}
+pub struct SymbolNewForShortLiteral;
+rustc_session::impl_lint_pass!(SymbolNewForShortLiteral => [SYMBOL_NEW_FOR_SHORT_LITERAL]);
+
+impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // Check for Symbol::new(&env, "literal") calls
+        if let hir::ExprKind::Call(callee, args) = expr.kind
+            && args.len() == 2
+            && let hir::ExprKind::Path(ref qpath) = callee.kind
+            && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+            && match_soroban_def_path(cx, def_id, &["soroban_sdk", "Symbol", "new"])
+        {
+            // Check if the second argument is a string literal
+            if let hir::ExprKind::Lit(lit) = args[1].kind
+                && let LitKind::Str(symbol, _) = lit.node
+            {
+                let s = symbol.as_str();
+                if is_valid_short_symbol(s) {
+                    // Check if there's a valid suggestion
+                    if let Some(snippet) = snippet_opt(cx, args[1].span) {
+                        let suggestion = format!("symbol_short!({})", snippet);
+                        span_lint_and_sugg(
+                            cx,
+                            SYMBOL_NEW_FOR_SHORT_LITERAL,
+                            expr.span,
+                            "Symbol::new called with a short literal that could use symbol_short! macro",
+                            "use symbol_short! macro for compile-time symbol creation",
+                            suggestion,
+                            Applicability::MachineApplicable,
+                        );
+                    } else {
+                        span_lint_and_help(
+                            cx,
+                            SYMBOL_NEW_FOR_SHORT_LITERAL,
+                            expr.span,
+                            "Symbol::new called with a short literal that could use symbol_short! macro",
+                            None,
+                            "use symbol_short! macro for compile-time symbol creation",
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Check if a string is a valid short symbol (<= 9 chars, only a-zA-Z0-9_)
+fn is_valid_short_symbol(s: &str) -> bool {
+    if s.len() > 9 || s.is_empty() {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[test]

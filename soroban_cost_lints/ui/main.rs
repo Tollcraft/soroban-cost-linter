@@ -66,9 +66,14 @@ pub mod soroban_sdk {
             pub fn budget_cloned(&self) {}
         }
     }
+
+    pub struct Symbol;
+    impl Symbol {
+        pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
+    }
 }
 
-use soroban_sdk::Env;
+use soroban_sdk::{Env, Symbol};
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -146,6 +151,48 @@ fn allowed_host_call_in_loop(env: Env) {
     for _ in 0..10 {
         let _seq = env.ledger().sequence(); // Good (allowed)
     }
+}
+
+// =======================================================================
+// symbol_new_for_short_literal — Fixtures
+// =======================================================================
+
+fn bad_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
+}
+
+fn bad_symbol_new_9_chars(env: Env) {
+    let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
+}
+
+fn bad_symbol_new_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+}
+
+fn bad_symbol_new_short_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
+}
+
+fn good_symbol_new_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
+}
+
+fn good_symbol_new_invalid_chars(env: Env) {
+    let _sym = Symbol::new(&env, "hello-world"); // Good - contains invalid char '-'
+}
+
+fn good_symbol_new_non_literal(env: Env) {
+    let s = "hello";
+    let _sym = Symbol::new(&env, s); // Good - not a literal
+}
+
+fn good_symbol_new_empty(env: Env) {
+    let _sym = Symbol::new(&env, ""); // Good - empty string
+}
+
+#[allow(symbol_new_for_short_literal)]
+fn allowed_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Good (allowed)
 }
 
 fn main() {}
