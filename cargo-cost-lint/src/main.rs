@@ -97,6 +97,7 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
 }
 
 fn main() {
+    // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
@@ -303,4 +304,13 @@ mod tests {
         assert!(result.unwrap_err().contains("Unknown lint name"));
     }
 
+    #[test]
+    fn test_unknown_lint_level() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = validate_and_build_flags(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
+    }
 }
