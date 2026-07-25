@@ -41,6 +41,13 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(
+        long,
+        help = "Pass through all compiler diagnostics, not just soroban lints. \
+                Useful when using cargo cost-lint as a rust-analyzer check command."
+    )]
+    all_diagnostics: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -147,71 +154,75 @@ fn main() {
             if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
                 if let Some(message) = msg.get("message") {
                     if let Some(code) = message.get("code") {
-                        if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
-                            if LINT_NAMES.contains(&lint_name) {
-                                let level = message
-                                    .get("level")
-                                    .and_then(|l| l.as_str())
-                                    .unwrap_or("unknown");
+                        let lint_name = code.get("code").and_then(|c| c.as_str());
+                        let is_soroban_lint = lint_name.is_some_and(|n| LINT_NAMES.contains(&n));
 
-                                let msg_text = message
-                                    .get("message")
-                                    .and_then(|m| m.as_str())
-                                    .unwrap_or("");
-                                let mut file = String::new();
-                                let mut span_obj = Span {
-                                    line_start: 0,
-                                    line_end: 0,
-                                    column_start: 0,
-                                    column_end: 0,
-                                };
+                        if cli.all_diagnostics || is_soroban_lint {
+                            let level = message
+                                .get("level")
+                                .and_then(|l| l.as_str())
+                                .unwrap_or("unknown");
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
-                                {
-                                    for s in spans {
-                                        if s.get("is_primary")
-                                            .and_then(|p| p.as_bool())
-                                            .unwrap_or(false)
-                                        {
-                                            file = s
-                                                .get("file_name")
-                                                .and_then(|f| f.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            span_obj.line_start = s
-                                                .get("line_start")
-                                                .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
+                            let msg_text = message
+                                .get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("");
+                            let mut file = String::new();
+                            let mut span_obj = Span {
+                                line_start: 0,
+                                line_end: 0,
+                                column_start: 0,
+                                column_end: 0,
+                            };
+
+                            if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
+                                for s in spans {
+                                    if s.get("is_primary")
+                                        .and_then(|p| p.as_bool())
+                                        .unwrap_or(false)
+                                    {
+                                        file = s
+                                            .get("file_name")
+                                            .and_then(|f| f.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        span_obj.line_start = s
+                                            .get("line_start")
+                                            .and_then(|l| l.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        span_obj.line_end =
+                                            s.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
-                                                .get("line_end")
-                                                .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            span_obj.column_start = s
-                                                .get("column_start")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            span_obj.column_end = s
-                                                .get("column_end")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            break;
-                                        }
+                                        span_obj.column_start = s
+                                            .get("column_start")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        span_obj.column_end = s
+                                            .get("column_end")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        break;
                                     }
                                 }
+                            }
 
-                                if !is_reportable(&file, &allowed) {
-                                    continue;
-                                }
+                            // Only apply .lintignore filtering to known soroban lints.
+                            // Regular compiler diagnostics always pass through.
+                            if is_soroban_lint && !is_reportable(&file, &allowed) {
+                                continue;
+                            }
 
-                                if level == "error" || level == "deny" {
-                                    highest_exit_code = 1;
-                                }
+                            if level == "error" || level == "deny" {
+                                highest_exit_code = 1;
+                            }
 
-                                if cli.format == OutputFormat::Json {
+                            if cli.format == OutputFormat::Json {
+                                // Custom JSON format requires a known lint name;
+                                // skip non-lint diagnostics in JSON mode.
+                                if let Some(name) = lint_name {
                                     let mut help_text = None;
                                     if let Some(children) =
                                         message.get("children").and_then(|c| c.as_array())
@@ -230,7 +241,7 @@ fn main() {
                                     }
 
                                     let finding = LintFinding {
-                                        name: lint_name.to_string(),
+                                        name: name.to_string(),
                                         level: level.to_string(),
                                         file,
                                         span: span_obj,
@@ -241,13 +252,13 @@ fn main() {
                                     if let Ok(json_str) = serde_json::to_string(&finding) {
                                         println!("{}", json_str);
                                     }
-                                } else {
-                                    let rendered = message
-                                        .get("rendered")
-                                        .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
-                                    print!("{}", rendered);
                                 }
+                            } else {
+                                let rendered = message
+                                    .get("rendered")
+                                    .and_then(|r| r.as_str())
+                                    .unwrap_or(msg_text);
+                                print!("{}", rendered);
                             }
                         }
                     }

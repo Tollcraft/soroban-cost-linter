@@ -1,6 +1,27 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
+`soroban-cost-linter` integrates directly into your workspace, CI/CD pipelines, and editor.
+
+## Prerequisites
+
+- Rust nightly toolchain (pinned in `rust-toolchain`)
+- [Dylint](https://github.com/trailofbits/dylint) `^6.0.1`
+- `cargo-cost-lint` installed
+
+```bash
+# Install Dylint
+cargo install cargo-dylint dylint-link --version "^6.0.1"
+
+# Install the linter
+cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+```
+
+## Quick Start
+
+```bash
+# Run the linter on your Soroban project
+cargo cost-lint
+```
 
 ## Local Configuration (`budget.toml`)
 
@@ -35,6 +56,87 @@ See the [Lint Reference](lints/) for what each lint catches and its default seve
 `cargo cost-lint` strictly validates your `budget.toml`:
 - If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
 - If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
+
+## Editor Integration
+
+### VS Code with rust-analyzer
+
+The linter provides inline diagnostics in VS Code by configuring rust-analyzer to use `cargo cost-lint` as its check command.
+
+#### `settings.json`
+
+Add the following to your VS Code workspace or user settings:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
+```
+
+#### How it works
+
+- This replaces rust-analyzer's normal `cargo check` invocation with `cargo cost-lint --all-diagnostics`.
+- The `--all-diagnostics` flag ensures both regular compiler diagnostics AND soroban cost-lint diagnostics appear inline.
+- Diagnostics use the standard rustc format, so errors show as red squiggles and warnings as yellow squiggles.
+- Deny-level lints (e.g. `soroban_storage_in_loop`) appear as errors.
+- The command is run in the background whenever you modify a file.
+
+#### Example
+
+After configuration, a storage operation inside a loop will show an inline error:
+
+```rust
+for item in items {
+    env.storage().instance().set(&item, &1);
+    // ^^^ error: storage operation inside a loop
+}
+```
+
+#### Requirements
+
+- `cargo-dylint` and `dylint-link` must be installed and on `$PATH`.
+- `cargo-cost-lint` must be installed from the same Soroban nightly toolchain used in your project.
+- The first invocation builds the lint library, which may take a minute. Subsequent runs are cached.
+
+#### Limitations
+
+- `cargo cost-lint` replaces `cargo check` entirely. You will still see all regular compile errors and warnings, but the invocation path is different.
+- `budget.toml` lint-level overrides are applied by the CLI wrapper and work the same as in terminal mode.
+- The lint library must be compiled for the exact nightly toolchain your project uses. A mismatch produces a link error.
+
+#### Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| No diagnostics appear | `cargo-dylint` or `dylint-link` not installed | Run `cargo install cargo-dylint dylint-link --version "^6.0.1"` |
+| Lint diagnostics appear but regular errors don't | `--all-diagnostics` flag is missing | Add `"--all-diagnostics"` to `overrideCommand` |
+| `error: no such command: dylint` | `cargo-dylint` not in `$PATH` | Install dylint and restart rust-analyzer |
+| Link errors about mismatched toolchain | Nightly toolchain mismatch | Ensure `rust-toolchain` matches the installed `cargo-cost-lint` |
+| Diagnostics are stale | rust-analyzer cache | Run "Rust Analyzer: Restart Server" from the command palette |
+
+#### Disabling the Integration
+
+To revert to normal `cargo check` behaviour, remove the `overrideCommand` setting from your VS Code configuration:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": null
+}
+```
+
+### Other Editors
+
+Any editor with rust-analyzer LSP support can use the same configuration:
+
+- **Neovim** (rustaceanvim): Set `rust-analyzer.check.overrideCommand` in your LSP settings.
+- **Helix**: Set `check.overrideCommand` in `.helix/languages.toml`.
+- **Emacs** (eglot): Pass the same settings via `lsp-register-client` or `eglot-workspace-configuration`.
+
+The principle is the same: point the check command at `cargo cost-lint --all-diagnostics`.
 
 ## GitHub Actions
 

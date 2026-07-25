@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Six lints ship in the current release:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Six lints ship in the current release, and diagnostics appear inline in VS Code and other editors via rust-analyzer (see [Editor Integration](#editor-integration)).
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -212,6 +212,24 @@ bytes_append_in_loop = "warn"          # default: warn
 symbol_new_for_short_literal = "warn"  # default: warn
 host_in_loop = "warn"                  # default: warn
 ```
+
+## Editor Integration
+
+Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
+```
+
+This shows soroban cost-lint warnings and errors directly in your editor alongside regular Rust diagnostics.
+
+Supports **VS Code**, **Neovim**, **Helix**, and **Emacs** — see the [Integration Guide](docs/integration.md#editor-integration) for full setup instructions and troubleshooting.
 
 ## Contributing
 
