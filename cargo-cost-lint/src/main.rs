@@ -311,10 +311,11 @@ fn apply_fixes(findings: &[LintFinding]) {
                 continue;
             }
             let line_idx = finding.span.line_start;
-            file_edits
-                .entry(file)
-                .or_default()
-                .push((line_idx, finding.message.clone(), suggestion.clone()));
+            file_edits.entry(file).or_default().push((
+                line_idx,
+                finding.message.clone(),
+                suggestion.clone(),
+            ));
         }
     }
 

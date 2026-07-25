@@ -445,7 +445,14 @@ pub struct StorageWriteWithoutRead;
 rustc_session::impl_lint_pass!(StorageWriteWithoutRead => [STORAGE_WRITE_WITHOUT_READ]);
 
 impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
-    fn check_fn(&mut self, cx: &LateContext<'tcx>, _: hir::FnKind<'tcx>, body: &'tcx hir::Body<'tcx>, _: rustc_span::Span, _: HirId) {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _: hir::FnKind<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _: rustc_span::Span,
+        _: HirId,
+    ) {
         let mut reads: Vec<(String, String)> = Vec::new();
         let mut writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
 
@@ -467,11 +474,13 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                     };
 
                     let method_name = path_segment.ident.name.as_str();
-                    if is_storage && (method_name == "get" || method_name == "has") && args.len() >= 1 {
-                        let receiver_snippet = snippet_opt(self.cx, receiver.span)
-                            .unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span)
-                            .unwrap_or_default();
+                    if is_storage
+                        && (method_name == "get" || method_name == "has")
+                        && args.len() >= 1
+                    {
+                        let receiver_snippet =
+                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
                         self.reads.push((receiver_snippet, key_snippet));
                     }
                 }
@@ -497,10 +506,9 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                     };
 
                     if is_storage && path_segment.ident.name.as_str() == "set" && args.len() >= 2 {
-                        let receiver_snippet = snippet_opt(self.cx, receiver.span)
-                            .unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span)
-                            .unwrap_or_default();
+                        let receiver_snippet =
+                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
                         self.writes.push((receiver_snippet, key_snippet, *span));
                     }
                 }
@@ -508,16 +516,23 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        let mut read_visitor = ReadVisitor { cx, reads: Vec::new() };
+        let mut read_visitor = ReadVisitor {
+            cx,
+            reads: Vec::new(),
+        };
         read_visitor.visit_body(body);
 
-        let mut write_visitor = WriteVisitor { cx, writes: Vec::new() };
+        let mut write_visitor = WriteVisitor {
+            cx,
+            writes: Vec::new(),
+        };
         write_visitor.visit_body(body);
 
         for (w_receiver, w_key, w_span) in &write_visitor.writes {
-            let has_read = read_visitor.reads.iter().any(|(r_receiver, r_key)| {
-                r_receiver == w_receiver && r_key == w_key
-            });
+            let has_read = read_visitor
+                .reads
+                .iter()
+                .any(|(r_receiver, r_key)| r_receiver == w_receiver && r_key == w_key);
             if !has_read {
                 span_lint_and_help(
                     cx,
