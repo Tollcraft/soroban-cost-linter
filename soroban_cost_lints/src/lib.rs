@@ -57,6 +57,14 @@ const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
 ];
 
+/// Soroban collection types that support linear-time scanning operations.
+const SOROBAN_COLLECTION_TYPES: &[&[&str]] = &[
+    &["soroban_sdk", "vec", "Vec"],
+    &["soroban_sdk", "map", "Map"],
+];
+
+const LINEAR_SCAN_METHODS: &[&str] = &["contains", "position", "find"];
+
 /// Host calls that live directly on `Env` rather than on an accessor type, and
 /// whose result is constant for the whole invocation.
 ///
@@ -186,6 +194,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
+    LintMetadata {
+        lint: LINEAR_SCAN_IN_LOOP,
+        category: LintCategory::Compute,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -196,12 +208,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
+        LINEAR_SCAN_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
+    lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
 }
 
 rustc_session::declare_lint! {

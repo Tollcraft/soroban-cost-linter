@@ -197,6 +197,32 @@ fn deliberate_storage_loop(env: Env) {
 }
 ```
 
+### Ratchet workflow with `--max-warnings`
+
+You can enforce a quality gate by setting a maximum number of warnings:
+
+```bash
+# Fail CI if more than 5 lint findings are emitted
+cargo cost-lint --max-warnings 5
+
+# Strict mode: zero warnings allowed
+cargo cost-lint --max-warnings 0
+```
+
+The threshold can also be set in `budget.toml` so both CI and local runs agree:
+
+```toml
+max_warnings = 5
+```
+
+The CLI flag takes precedence over `budget.toml`. When the threshold is exceeded, the tool prints:
+
+```
+error: number of warnings (N) exceeds --max-warnings (M)
+```
+
+and exits with code 1.
+
 ### Configuration (`budget.toml`)
 
 You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:

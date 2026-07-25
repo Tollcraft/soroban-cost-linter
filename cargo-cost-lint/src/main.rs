@@ -41,6 +41,9 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(long, help = "Exit with non-zero status if the number of warnings exceeds this threshold")]
+    max_warnings: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -49,6 +52,7 @@ struct BudgetConfig {
     // that reads this is a pre-existing stub, unrelated to .lintignore.
     #[allow(dead_code)]
     lints: Option<std::collections::HashMap<String, String>>,
+    max_warnings: Option<u32>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -98,16 +102,23 @@ fn main() {
     let allowed = allowed_files(Path::new("."));
 
     let lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
+    let config = if let Some(config_path) = &cli.config {
         if Path::new(config_path).exists() {
             if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
+                toml::from_str::<BudgetConfig>(&config_str).ok()
+            } else {
+                None
             }
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
+
+    let max_warnings = cli.max_warnings.or_else(|| {
+        config.as_ref().and_then(|c| c.max_warnings)
+    });
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
@@ -141,6 +152,7 @@ fn main() {
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
+    let mut warning_count: u32 = 0;
 
     for line_str in reader.lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
@@ -207,6 +219,8 @@ fn main() {
                                     continue;
                                 }
 
+                                warning_count += 1;
+
                                 if level == "error" || level == "deny" {
                                     highest_exit_code = 1;
                                 }
@@ -261,6 +275,16 @@ fn main() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
         exit(highest_exit_code);
+    }
+
+    if let Some(max_w) = max_warnings {
+        if warning_count > max_w {
+            eprintln!(
+                "error: number of warnings ({}) exceeds --max-warnings ({})",
+                warning_count, max_w
+            );
+            exit(1);
+        }
     }
 }
 
