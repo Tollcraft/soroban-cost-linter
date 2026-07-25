@@ -31,6 +31,10 @@ pub mod soroban_sdk {
     }
 
     pub struct Address;
+    impl Address {
+        pub fn require_auth(&self) {}
+        pub fn require_auth_for_args(&self, _args: &[Env]) {}
+    }
 
     pub mod storage {
         pub struct Storage;
@@ -113,7 +117,7 @@ pub mod soroban_sdk {
     }
 }
 
-use soroban_sdk::{Env, Symbol};
+use soroban_sdk::{Address, Env, Symbol};
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -281,6 +285,64 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// require_auth_in_loop — Fixtures
+// =======================================================================
+
+fn bad_require_auth_in_for_loop(_env: Env, addr: Address) {
+    for _ in 0..10 {
+        addr.require_auth(); // Should Warn
+    }
+}
+
+fn bad_require_auth_in_while_loop(_env: Env, addr: Address) {
+    let mut i = 0;
+    while i < 10 {
+        addr.require_auth(); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_require_auth_in_loop_loop(_env: Env, addr: Address) {
+    loop {
+        addr.require_auth(); // Should Warn
+        break;
+    }
+}
+
+fn bad_require_auth_for_args_in_for_loop(_env: Env, addr: Address) {
+    let args = [Env];
+    for _ in 0..10 {
+        addr.require_auth_for_args(&args); // Should Warn
+    }
+}
+
+fn good_require_auth_outside_loop(_env: Env, addr: Address) {
+    addr.require_auth(); // Good — hoisted before the loop
+    for _ in 0..10 {
+        let _ = addr;
+    }
+}
+
+fn good_no_require_auth_in_loop(_env: Env) {
+    for _ in 0..10 {
+        let _x = 1; // Good — no auth call
+    }
+}
+
+fn warn_require_auth_on_different_address_each_iter(addrs: &[Address]) {
+    for addr in addrs {
+        addr.require_auth(); // Should Warn — iterating distinct addresses is sometimes legitimate but still flagged
+    }
+}
+
+#[allow(require_auth_in_loop)]
+fn allowed_require_auth_in_loop(_env: Env, addr: Address) {
+    for _ in 0..10 {
+        addr.require_auth(); // Good (allowed)
+    }
 }
 
 fn main() {}

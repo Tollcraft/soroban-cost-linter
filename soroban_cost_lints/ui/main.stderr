@@ -133,5 +133,46 @@ warning: Symbol::new called with a short literal that could use symbol_short! ma
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: 17 warnings emitted
+warning: authorization call inside a loop
+  --> $DIR/main.rs:296:9
+   |
+LL |         addr.require_auth(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+   = note: `#[warn(require_auth_in_loop)]` on by default
+
+warning: authorization call inside a loop
+  --> $DIR/main.rs:303:9
+   |
+LL |         addr.require_auth(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/main.rs:310:9
+   |
+LL |         addr.require_auth(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/main.rs:318:9
+   |
+LL |         addr.require_auth_for_args(&args); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/main.rs:337:9
+   |
+LL |         addr.require_auth(); // Should Warn — iterating distinct addresses is sometimes legitimate but still flagged
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: 22 warnings emitted
 

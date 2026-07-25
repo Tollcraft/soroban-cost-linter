@@ -10,6 +10,7 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `require_auth_in_loop` detecting `Address::require_auth` and `Address::require_auth_for_args` calls inside loop bodies (`for`, `while`, `loop`) and suggesting that distinct addresses be authorized once before the loop.
 
 ### Changed
 

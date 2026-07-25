@@ -186,6 +186,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
+    LintMetadata {
+        lint: REQUIRE_AUTH_IN_LOOP,
+        category: LintCategory::Compute,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -196,12 +200,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
+        REQUIRE_AUTH_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
+    lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
 }
 
 rustc_session::declare_lint! {
@@ -412,6 +418,48 @@ fn is_valid_short_symbol(s: &str) -> bool {
         return false;
     }
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+// =======================================================================
+// require_auth_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub REQUIRE_AUTH_IN_LOOP,
+    Warn,
+    "Address::require_auth or require_auth_for_args called inside a loop"
+}
+pub struct RequireAuthInLoop;
+rustc_session::impl_lint_pass!(RequireAuthInLoop => [REQUIRE_AUTH_IN_LOOP]);
+
+const REQUIRE_AUTH_METHODS: &[&str] = &["require_auth", "require_auth_for_args"];
+
+impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && REQUIRE_AUTH_METHODS.contains(&path_segment.ident.name.as_str())
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_address = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
+            } else {
+                false
+            };
+
+            if is_address && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    REQUIRE_AUTH_IN_LOOP,
+                    expr.span,
+                    "authorization call inside a loop",
+                    None,
+                    "collect distinct addresses first and authorize each once before the loop",
+                );
+            }
+        }
+    }
 }
 
 #[test]
