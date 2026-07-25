@@ -448,10 +448,11 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
     fn check_fn(
         &mut self,
         cx: &LateContext<'tcx>,
-        _: hir::FnKind<'tcx>,
+        _: rustc_hir::intravisit::FnKind<'tcx>,
+        _: &'tcx hir::FnDecl<'tcx>,
         body: &'tcx hir::Body<'tcx>,
         _: rustc_span::Span,
-        _: HirId,
+        _: rustc_hir::def_id::LocalDefId,
     ) {
         let mut reads: Vec<(String, String)> = Vec::new();
         let mut writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
@@ -464,11 +465,11 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         impl<'tcx> Visitor<'tcx> for ReadVisitor<'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
-                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+                    let receiver_ty = (&self.cx).typeck_results().expr_ty(receiver);
                     let peeled_ty = receiver_ty.peel_refs();
 
                     let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                        matches_any_path(&self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
                     };
@@ -479,8 +480,9 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                         && args.len() >= 1
                     {
                         let receiver_snippet =
-                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                            snippet_opt(&self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet =
+                            snippet_opt(&self.cx, args[0].span).unwrap_or_default();
                         self.reads.push((receiver_snippet, key_snippet));
                     }
                 }
@@ -496,19 +498,20 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         impl<'tcx> Visitor<'tcx> for WriteVisitor<'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
-                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+                    let receiver_ty = (&self.cx).typeck_results().expr_ty(receiver);
                     let peeled_ty = receiver_ty.peel_refs();
 
                     let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                        matches_any_path(&self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
                     };
 
                     if is_storage && path_segment.ident.name.as_str() == "set" && args.len() >= 2 {
                         let receiver_snippet =
-                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                            snippet_opt(&self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet =
+                            snippet_opt(&self.cx, args[0].span).unwrap_or_default();
                         self.writes.push((receiver_snippet, key_snippet, *span));
                     }
                 }
@@ -561,29 +564,22 @@ rustc_session::impl_lint_pass!(InefficientBytesConcat => [INEFFICIENT_BYTES_CONC
 
 impl<'tcx> LateLintPass<'tcx> for InefficientBytesConcat {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::BinaryOp(op, lhs, rhs) = &expr.kind {
-            let is_in_loop = enclosing_loop(cx, expr).is_some();
-            if !is_in_loop {
-                return;
-            }
-
-            let is_bytes_add = if let hir::BinOpKind::Add = op.node {
+        if let hir::ExprKind::Binary(op, lhs, rhs) = &expr.kind {
+            if let hir::BinOpKind::Add = op.node {
                 let lhs_ty = cx.typeck_results().expr_ty(lhs);
                 let rhs_ty = cx.typeck_results().expr_ty(rhs);
-                is_bytes_type(cx, lhs_ty) || is_bytes_type(cx, rhs_ty)
-            } else {
-                false
-            };
-
-            if is_bytes_add {
-                span_lint_and_help(
-                    cx,
-                    INEFFICIENT_BYTES_CONCAT,
-                    expr.span,
-                    "inefficient bytes concatenation in a loop",
-                    None,
-                    "use a Vec<u8> buffer to accumulate bytes and convert to Bytes after the loop",
-                );
+                let is_bytes = is_bytes_type(cx, lhs_ty) || is_bytes_type(cx, rhs_ty);
+                let is_in_loop = enclosing_loop(cx, expr).is_some();
+                if is_bytes && is_in_loop {
+                    span_lint_and_help(
+                        cx,
+                        INEFFICIENT_BYTES_CONCAT,
+                        expr.span,
+                        "inefficient bytes concatenation in a loop",
+                        None,
+                        "use a Vec<u8> buffer to accumulate bytes and convert to Bytes after the loop",
+                    );
+                }
             }
         }
     }
