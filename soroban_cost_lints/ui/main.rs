@@ -94,13 +94,6 @@ pub mod soroban_sdk {
         }
     }
 
-    pub mod events {
-        pub struct Events;
-        impl Events {
-            pub fn publish<T, D>(&self, _topics: T, _data: D) {}
-        }
-    }
-
     pub mod deploy {
         pub struct Deployer;
         impl Deployer {
