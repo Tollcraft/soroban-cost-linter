@@ -458,18 +458,18 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         let mut writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
 
         struct ReadVisitor<'tcx> {
-            cx: LateContext<'tcx>,
+            cx: &'tcx LateContext<'tcx>,
             reads: Vec<(String, String)>,
         }
 
         impl<'tcx> Visitor<'tcx> for ReadVisitor<'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
-                    let receiver_ty = (&self.cx).typeck_results().expr_ty(receiver);
+                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
                     let peeled_ty = receiver_ty.peel_refs();
 
                     let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                        matches_any_path(&self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
                     };
@@ -480,8 +480,8 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                         && args.len() >= 1
                     {
                         let receiver_snippet =
-                            snippet_opt(&self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(&self.cx, args[0].span).unwrap_or_default();
+                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
                         self.reads.push((receiver_snippet, key_snippet));
                     }
                 }
@@ -490,26 +490,26 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         }
 
         struct WriteVisitor<'tcx> {
-            cx: LateContext<'tcx>,
+            cx: &'tcx LateContext<'tcx>,
             writes: Vec<(String, String, rustc_span::Span)>,
         }
 
         impl<'tcx> Visitor<'tcx> for WriteVisitor<'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
-                    let receiver_ty = (&self.cx).typeck_results().expr_ty(receiver);
+                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
                     let peeled_ty = receiver_ty.peel_refs();
 
                     let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                        matches_any_path(&self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
                     };
 
                     if is_storage && path_segment.ident.name.as_str() == "set" && args.len() >= 2 {
                         let receiver_snippet =
-                            snippet_opt(&self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(&self.cx, args[0].span).unwrap_or_default();
+                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
                         self.writes.push((receiver_snippet, key_snippet, *span));
                     }
                 }
