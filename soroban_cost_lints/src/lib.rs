@@ -67,6 +67,19 @@ const SOROBAN_HOST_TYPES: &[&[&str]] = &[
 /// because their cost is inherent to what the loop is doing.
 const SOROBAN_ENV_HOST_METHODS: &[&str] = &["current_contract_address"];
 
+/// Soroban SDK container types. Growth-method calls (append, push_back, insert,
+/// extend_from_array) on these inside a loop reallocate host-side state on
+/// every iteration.
+const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
+    &["soroban_sdk", "Bytes"],
+    &["soroban_sdk", "Vec"],
+    &["soroban_sdk", "Map"],
+];
+
+/// Methods on [`SOROBAN_CONTAINER_TYPES`] that grow the container's backing
+/// buffer, causing increasingly expensive host-side work per call.
+const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
+
 fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str]]) -> bool {
     paths
         .iter()
@@ -187,8 +200,8 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::SymbolOperations,
     },
     LintMetadata {
-        lint: REQUIRE_AUTH_IN_LOOP,
-        category: LintCategory::Compute,
+        lint: BYTES_APPEND_IN_LOOP,
+        category: LintCategory::Memory,
     },
 ];
 
@@ -200,14 +213,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
-        REQUIRE_AUTH_IN_LOOP,
+        BYTES_APPEND_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
-    lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
+    lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
 }
 
 rustc_session::declare_lint! {
@@ -407,6 +420,51 @@ impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
                         );
                     }
                 }
+            }
+        }
+    }
+}
+
+// =======================================================================
+// bytes_append_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub BYTES_APPEND_IN_LOOP,
+    Warn,
+    "repeatedly growing SDK containers inside loops"
+}
+pub struct BytesAppendInLoop;
+rustc_session::impl_lint_pass!(BytesAppendInLoop => [BYTES_APPEND_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if !BYTES_APPEND_METHODS.contains(&method_name) {
+                return;
+            }
+
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_container = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
+            } else {
+                false
+            };
+
+            if is_container && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    BYTES_APPEND_IN_LOOP,
+                    expr.span,
+                    "repeatedly growing SDK container inside a loop",
+                    None,
+                    "accumulate values in native Rust collections first, then batch host \
+                     operations or convert to SDK containers once after the loop; \
+                     pre-size where practical",
+                );
             }
         }
     }

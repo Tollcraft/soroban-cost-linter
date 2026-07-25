@@ -1,5 +1,5 @@
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
@@ -24,7 +24,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -32,7 +32,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -40,7 +40,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^
@@ -48,7 +48,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -56,7 +56,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -64,7 +64,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^
@@ -72,7 +72,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:160:19
+  --> $DIR/main.rs:180:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
    |                   ^^^^^^^^^^^
@@ -81,7 +81,7 @@ LL |     let _cloned = env.clone(); // Should Warn
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:178:20
+  --> $DIR/main.rs:198:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -90,7 +90,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:199:21
+  --> $DIR/main.rs:219:21
    |
 LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -98,7 +98,7 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:221:18
+  --> $DIR/main.rs:241:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -106,7 +106,7 @@ LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:227:21
+  --> $DIR/main.rs:247:21
    |
 LL |         let _addr = env.current_contract_address(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -114,7 +114,7 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:249:16
+  --> $DIR/main.rs:269:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -122,57 +122,33 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:253:16
+  --> $DIR/main.rs:273:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:261:16
+  --> $DIR/main.rs:281:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: authorization call inside a loop
-  --> $DIR/main.rs:296:9
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:313:9
    |
-LL |         addr.require_auth(); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^
+LL |         bytes.append(&Bytes); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
    |
-   = help: collect distinct addresses first and authorize each once before the loop
-   = note: `#[warn(require_auth_in_loop)]` on by default
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+   = note: `#[warn(bytes_append_in_loop)]` on by default
 
-warning: authorization call inside a loop
-  --> $DIR/main.rs:303:9
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:321:9
    |
-LL |         addr.require_auth(); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^
+LL |         v.push_back(i); // Should Warn
+   |         ^^^^^^^^^^^^^^
    |
-   = help: collect distinct addresses first and authorize each once before the loop
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: authorization call inside a loop
-  --> $DIR/main.rs:310:9
-   |
-LL |         addr.require_auth(); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^
-   |
-   = help: collect distinct addresses first and authorize each once before the loop
-
-warning: authorization call inside a loop
-  --> $DIR/main.rs:318:9
-   |
-LL |         addr.require_auth_for_args(&args); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: collect distinct addresses first and authorize each once before the loop
-
-warning: authorization call inside a loop
-  --> $DIR/main.rs:337:9
-   |
-LL |         addr.require_auth(); // Should Warn — iterating distinct addresses is sometimes legitimate but still flagged
-   |         ^^^^^^^^^^^^^^^^^^^
-   |
-   = help: collect distinct addresses first and authorize each once before the loop
-
-warning: 22 warnings emitted
+warning: 19 warnings emitted
 
