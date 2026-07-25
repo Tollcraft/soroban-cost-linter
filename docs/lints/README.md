@@ -35,6 +35,12 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
 
+## Symbol Operations
+
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
+
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}
