@@ -30,6 +30,8 @@ struct LintFinding {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     help: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -41,6 +43,9 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(long, help = "Automatically apply fixable lint suggestions")]
+    fix: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -142,6 +147,8 @@ fn main() {
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
 
+    let mut findings: Vec<LintFinding> = Vec::new();
+
     for line_str in reader.lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
             if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
@@ -211,34 +218,44 @@ fn main() {
                                     highest_exit_code = 1;
                                 }
 
-                                if cli.format == OutputFormat::Json {
-                                    let mut help_text = None;
-                                    if let Some(children) =
-                                        message.get("children").and_then(|c| c.as_array())
-                                    {
-                                        for child_item in children {
-                                            if child_item.get("level").and_then(|l| l.as_str())
-                                                == Some("help")
-                                            {
-                                                help_text = child_item
-                                                    .get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .map(|s| s.to_string());
-                                                break;
+                                let mut help_text = None;
+                                let mut suggestion = None;
+                                if let Some(children) =
+                                    message.get("children").and_then(|c| c.as_array())
+                                {
+                                    for child_item in children {
+                                        if child_item.get("level").and_then(|l| l.as_str())
+                                            == Some("help")
+                                        {
+                                            let child_msg = child_item
+                                                .get("message")
+                                                .and_then(|m| m.as_str())
+                                                .map(|s| s.to_string());
+                                            help_text = child_msg.clone();
+                                            if cli.fix {
+                                                suggestion =
+                                                    extract_suggestion(&child_msg, lint_name);
                                             }
+                                            break;
                                         }
                                     }
+                                }
 
-                                    let finding = LintFinding {
-                                        name: lint_name.to_string(),
-                                        level: level.to_string(),
-                                        file,
-                                        span: span_obj,
-                                        message: msg_text.to_string(),
-                                        help: help_text,
-                                    };
+                                let finding = LintFinding {
+                                    name: lint_name.to_string(),
+                                    level: level.to_string(),
+                                    file: file.clone(),
+                                    span: span_obj,
+                                    message: msg_text.to_string(),
+                                    help: help_text,
+                                    suggestion,
+                                };
 
-                                    if let Ok(json_str) = serde_json::to_string(&finding) {
+                                findings.push(finding);
+
+                                if cli.format == OutputFormat::Json {
+                                    let finding_json = findings.last().unwrap();
+                                    if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
                                     }
                                 } else {
@@ -256,11 +273,70 @@ fn main() {
         }
     }
 
+    if cli.fix {
+        apply_fixes(&findings);
+    }
+
     let status = child.wait().expect("Failed to wait on cargo dylint");
     if !status.success() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
         exit(highest_exit_code);
+    }
+}
+
+fn extract_suggestion(help: &Option<String>, lint_name: &str) -> Option<String> {
+    let help_text = help.as_ref()?;
+    match lint_name {
+        "symbol_new_for_short_literal" => {
+            if let Some(start) = help_text.find("symbol_short!(") {
+                let end = help_text[start..].find(')')? + start + 1;
+                Some(help_text[start..end].to_string())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn apply_fixes(findings: &[LintFinding]) {
+    let mut file_edits: std::collections::HashMap<String, Vec<(usize, String, String)>> =
+        std::collections::HashMap::new();
+
+    for finding in findings {
+        if let Some(ref suggestion) = finding.suggestion {
+            let file = finding.file.clone();
+            if file.is_empty() {
+                continue;
+            }
+            let line_idx = finding.span.line_start;
+            file_edits
+                .entry(file)
+                .or_default()
+                .push((line_idx, finding.message.clone(), suggestion.clone()));
+        }
+    }
+
+    for (file_path, edits) in &file_edits {
+        if let Ok(content) = fs::read_to_string(file_path) {
+            let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+            for (line_idx, _message, suggestion) in edits {
+                if *line_idx > 0 && *line_idx <= lines.len() {
+                    let line = &mut lines[*line_idx - 1];
+                    if let Some(start) = line.find("Symbol::new") {
+                        if let Some(end) = line[start..].find(')') {
+                            let replace_end = start + end + 1;
+                            line.replace_range(start..replace_end, suggestion);
+                        }
+                    }
+                }
+            }
+            let new_content = lines.join("\n");
+            if let Err(e) = fs::write(file_path, new_content) {
+                eprintln!("Failed to write {}: {}", file_path, e);
+            }
+        }
     }
 }
 

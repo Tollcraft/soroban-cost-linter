@@ -10,6 +10,10 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `storage_write_without_read` detecting storage `.set()` calls where the same key is never subsequently read, flagging wasteful storage writes that drive up Soroban fees.
+- New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
+- New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
+- `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 
 ### Changed
 

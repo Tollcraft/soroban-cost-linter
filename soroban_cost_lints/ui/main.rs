@@ -111,9 +111,24 @@ pub mod soroban_sdk {
     impl Symbol {
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
     }
+
+    pub struct Bytes(pub Vec<u8>);
+    impl Bytes {
+        pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
+    }
+    impl std::ops::Add for Bytes {
+        type Output = Bytes;
+        fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
+    }
+
+    pub struct Map;
+    impl Map {
+        pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
+        pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+    }
 }
 
-use soroban_sdk::{Env, Symbol};
+use soroban_sdk::{Bytes, Env, Map, Symbol};
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -281,6 +296,83 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// storage_write_without_read — Fixtures
+// =======================================================================
+
+fn bad_storage_write_without_read(env: Env) {
+    env.storage().instance().set("key1", &1); // Should Warn — no prior read
+}
+
+fn good_storage_write_with_read(env: Env) {
+    let _: Option<i32> = env.storage().instance().get("key1"); // Read first
+    env.storage().instance().set("key1", &1); // Good — read before write
+}
+
+fn good_storage_write_with_has(env: Env) {
+    let _exists = env.storage().instance().has("key1"); // Check first
+    env.storage().instance().set("key1", &1); // Good — has before write
+}
+
+#[allow(storage_write_without_read)]
+fn allowed_storage_write_without_read(env: Env) {
+    env.storage().instance().set("key1", &1); // Good (allowed)
+}
+
+// =======================================================================
+// inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Should Warn
+    }
+}
+
+fn good_efficient_bytes_concat(env: Env) {
+    let mut buf = Vec::new();
+    for _ in 0..10 {
+        buf.extend_from_slice(b"x"); // Good — aggregate in Vec first
+    }
+    let _result = Bytes(buf);
+}
+
+#[allow(inefficient_bytes_concat)]
+fn allowed_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// map_insert_in_loop — Fixtures
+// =======================================================================
+
+fn bad_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Should Warn
+    }
+}
+
+fn good_map_insert_outside_loop(env: Env) {
+    let mut map = Map;
+    map.insert(&1, &1); // Good — outside the loop
+    for i in 0..10 {
+        let _ = map.get(&i);
+    }
+}
+
+#[allow(map_insert_in_loop)]
+fn allowed_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Good (allowed)
+    }
 }
 
 fn main() {}
