@@ -26,3 +26,5 @@ jobs:
         run: cargo install cargo-dylint dylint-link
       - name: Run tests
         run: cargo test --workspace
+      - name: Check lint docs are up to date
+        run: cargo run -p generate-lint-docs -- --check

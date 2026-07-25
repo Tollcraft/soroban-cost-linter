@@ -34,7 +34,8 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 - Assign the lint to one of the defined cost categories (`StorageOperations`, `Compute`, `Memory`, or `EntryLifecycle`) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
 - Write a failing test case in the `ui` tests directory.
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
-- Update the documentation and `README.md`, ensuring the new lint is placed under the correct category header.
+- Update the `LINT_METADATA` entry with the correct category.
+- Run `cargo run -p generate-lint-docs` from the workspace root to regenerate `docs/lints/README.md` and `docs/lints/lint-registry.json`.
 
 ### Lint Naming Convention
 
