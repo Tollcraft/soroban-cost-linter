@@ -454,9 +454,6 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         _: rustc_span::Span,
         _: rustc_hir::def_id::LocalDefId,
     ) {
-        let reads: Vec<(String, String)> = Vec::new();
-        let writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
-
         struct ReadVisitor<'a, 'tcx> {
             cx: &'a LateContext<'tcx>,
             reads: Vec<(String, String)>,
@@ -477,7 +474,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                     let method_name = path_segment.ident.name.as_str();
                     if is_storage
                         && (method_name == "get" || method_name == "has")
-                        && args.len() >= 1
+                        && !args.is_empty()
                     {
                         let receiver_snippet =
                             snippet_opt(self.cx, receiver.span).unwrap_or_default();
@@ -558,22 +555,22 @@ rustc_session::impl_lint_pass!(InefficientBytesConcat => [INEFFICIENT_BYTES_CONC
 
 impl<'tcx> LateLintPass<'tcx> for InefficientBytesConcat {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::Binary(op, lhs, rhs) = &expr.kind {
-            if let hir::BinOpKind::Add = op.node {
-                let lhs_ty = cx.typeck_results().expr_ty(lhs);
-                let rhs_ty = cx.typeck_results().expr_ty(rhs);
-                let is_bytes = is_bytes_type(cx, lhs_ty) || is_bytes_type(cx, rhs_ty);
-                let is_in_loop = enclosing_loop(cx, expr).is_some();
-                if is_bytes && is_in_loop {
-                    span_lint_and_help(
-                        cx,
-                        INEFFICIENT_BYTES_CONCAT,
-                        expr.span,
-                        "inefficient bytes concatenation in a loop",
-                        None,
-                        "use a Vec<u8> buffer to accumulate bytes and convert to Bytes after the loop",
-                    );
-                }
+        if let hir::ExprKind::Binary(op, lhs, rhs) = &expr.kind
+            && let hir::BinOpKind::Add = op.node
+        {
+            let lhs_ty = cx.typeck_results().expr_ty(lhs);
+            let rhs_ty = cx.typeck_results().expr_ty(rhs);
+            let is_bytes = is_bytes_type(cx, lhs_ty) || is_bytes_type(cx, rhs_ty);
+            let is_in_loop = enclosing_loop(cx, expr).is_some();
+            if is_bytes && is_in_loop {
+                span_lint_and_help(
+                    cx,
+                    INEFFICIENT_BYTES_CONCAT,
+                    expr.span,
+                    "inefficient bytes concatenation in a loop",
+                    None,
+                    "use a Vec<u8> buffer to accumulate bytes and convert to Bytes after the loop",
+                );
             }
         }
     }
