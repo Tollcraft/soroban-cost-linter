@@ -95,7 +95,10 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
 
             if is_storage_access
                 && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
-                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+                && matches!(
+                    enclosing_expr.kind,
+                    hir::ExprKind::Loop(..) | hir::ExprKind::Closure(..)
+                )
             {
                 span_lint_and_help(
                     cx,

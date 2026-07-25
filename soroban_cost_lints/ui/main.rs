@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -99,6 +101,32 @@ fn allowed_storage_in_loop(env: Env) {
     for i in 0..10 {
         env.storage().instance().set(&i, &1); // Good (allowed)
     }
+}
+
+fn bad_storage_in_for_each_closure(env: Env) {
+    let items = [1, 2, 3];
+    items.iter().for_each(|x| {
+        env.storage().instance().set(x, &1); // Should Warn
+    });
+}
+
+fn bad_storage_in_iterator_map_closure(env: Env) {
+    let items = [1, 2, 3];
+    let _mapped: Vec<bool> = items
+        .iter()
+        .map(|x| {
+            env.storage().instance().set(x, &1); // Should Warn
+            true
+        })
+        .collect();
+}
+
+fn good_storage_in_option_map_closure(env: Env) {
+    let opt = Some(1);
+    let _val = opt.map(|x| {
+        env.storage().instance().set(&x, &1); // Good (single-call closure)
+        x * 2
+    });
 }
 
 // =======================================================================
