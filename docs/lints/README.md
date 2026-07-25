@@ -12,6 +12,7 @@ This section provides detailed documentation for all lints supported by `soroban
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn`           | Bytes concatenation (`push_back`/`append`) inside loops |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
 
 ## Memory

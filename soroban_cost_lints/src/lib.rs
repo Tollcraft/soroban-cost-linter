@@ -40,6 +40,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: SOROBAN_INEFFICIENT_BYTES_CONCAT,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: REDUNDANT_ENV_CLONE,
         category: LintCategory::Memory,
     },
@@ -57,11 +61,13 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        SOROBAN_INEFFICIENT_BYTES_CONCAT,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
@@ -104,6 +110,51 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     "storage operation inside a loop",
                     None,
                     "move storage operations out of the loop or accumulate mutations in memory first",
+                );
+            }
+        }
+    }
+}
+
+rustc_session::declare_lint! {
+    pub SOROBAN_INEFFICIENT_BYTES_CONCAT,
+    Warn,
+    "inefficient Bytes concatenation inside a loop"
+}
+pub struct SorobanInefficientBytesConcat;
+rustc_session::impl_lint_pass!(SorobanInefficientBytesConcat => [SOROBAN_INEFFICIENT_BYTES_CONCAT]);
+
+impl<'tcx> LateLintPass<'tcx> for SorobanInefficientBytesConcat {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            // Only flag concatenation-related methods: push_back and append
+            if method_name != "push_back" && method_name != "append" {
+                return;
+            }
+
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_bytes = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "Bytes"])
+                    || match_soroban_def_path(cx, did, &["soroban_sdk", "bytes", "Bytes"])
+            } else {
+                false
+            };
+
+            if is_bytes
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    SOROBAN_INEFFICIENT_BYTES_CONCAT,
+                    expr.span,
+                    "inefficient Bytes concatenation inside a loop",
+                    None,
+                    "accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice",
                 );
             }
         }

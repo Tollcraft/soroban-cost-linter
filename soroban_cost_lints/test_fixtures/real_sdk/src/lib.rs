@@ -55,3 +55,35 @@ fn good_host_outside_loop(env: Env) {
     }
     */
 }
+
+// =======================================================================
+// soroban_inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_bytes_push_back_in_loop(env: Env) {
+    let mut bytes = soroban_sdk::Bytes::new(&env);
+    for i in 0..10 {
+        bytes.push_back(i as u8); // Should Warn
+    }
+}
+
+fn bad_bytes_append_in_loop(env: Env) {
+    let mut bytes = soroban_sdk::Bytes::new(&env);
+    let other = soroban_sdk::Bytes::new(&env);
+    for _ in 0..10 {
+        bytes.append(&other); // Should Warn
+    }
+}
+
+fn good_bytes_concat_outside_loop(env: Env) {
+    let mut bytes = soroban_sdk::Bytes::new(&env);
+    bytes.push_back(1); // Good — outside loop
+}
+
+fn good_vec_build_then_convert(env: Env) {
+    let mut v: Vec<u8> = Vec::new();
+    for i in 0..10 {
+        v.push(i as u8); // Good — Vec<u8> is not Bytes
+    }
+    let _bytes = soroban_sdk::Bytes::from_slice(&env, &v);
+}

@@ -52,6 +52,12 @@ pub mod soroban_sdk {
         }
     }
 
+    pub struct Bytes;
+    impl Bytes {
+        pub fn push_back(&mut self, _val: u8) {}
+        pub fn append(&mut self, _other: &Bytes) {}
+    }
+
     pub mod host {
         pub struct Host;
         impl Host {
@@ -143,3 +149,63 @@ fn allowed_host_call_in_loop(env: Env) {
 }
 
 fn main() {}
+
+// =======================================================================
+// soroban_inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_bytes_push_back_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    for i in 0..10 {
+        bytes.push_back(i as u8); // Should Warn
+    }
+}
+
+fn bad_bytes_append_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    let other = soroban_sdk::Bytes;
+    for _ in 0..10 {
+        bytes.append(&other); // Should Warn
+    }
+}
+
+fn bad_bytes_push_back_in_while() {
+    let mut bytes = soroban_sdk::Bytes;
+    let mut i = 0;
+    while i < 10 {
+        bytes.push_back(i as u8); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_bytes_append_in_loop_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    let other = soroban_sdk::Bytes;
+    loop {
+        bytes.append(&other); // Should Warn
+        break;
+    }
+}
+
+fn good_bytes_concat_outside_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    bytes.push_back(1); // Good — outside loop
+    for _ in 0..10 {
+        let _x = 1;
+    }
+}
+
+fn good_vec_build_then_convert() {
+    let mut v: Vec<u8> = Vec::new();
+    for i in 0..10 {
+        v.push(i as u8); // Good — Vec<u8> is not Bytes
+    }
+}
+
+#[allow(soroban_inefficient_bytes_concat)]
+fn allowed_bytes_concat_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    for i in 0..10 {
+        bytes.push_back(i as u8); // Good (allowed)
+    }
+}

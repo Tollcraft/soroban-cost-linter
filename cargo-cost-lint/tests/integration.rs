@@ -59,6 +59,7 @@ fn test_json_output() {
     );
 
     let mut found_storage_in_loop = false;
+    let mut found_bytes_concat = false;
     for line in lines {
         // Assert that the line is valid JSON conforming to our schema
         let json: serde_json::Value =
@@ -76,10 +77,17 @@ fn test_json_output() {
         if json["name"] == "soroban_storage_in_loop" {
             found_storage_in_loop = true;
         }
+        if json["name"] == "soroban_inefficient_bytes_concat" {
+            found_bytes_concat = true;
+        }
     }
 
     assert!(
         found_storage_in_loop,
         "Expected to find 'soroban_storage_in_loop' lint, but it was not present"
+    );
+    assert!(
+        found_bytes_concat,
+        "Expected to find 'soroban_inefficient_bytes_concat' lint, but it was not present"
     );
 }

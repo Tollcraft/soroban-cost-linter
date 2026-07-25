@@ -89,5 +89,38 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = help: call this function outside the loop and reuse the result
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
-warning: 11 warnings emitted
+warning: inefficient Bytes concatenation inside a loop
+  --> $DIR/main.rs:160:9
+   |
+LL |         bytes.push_back(i as u8); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
+   = note: `#[warn(soroban_inefficient_bytes_concat)]` on by default
+
+warning: inefficient Bytes concatenation inside a loop
+  --> $DIR/main.rs:168:9
+   |
+LL |         bytes.append(&other); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
+
+warning: inefficient Bytes concatenation inside a loop
+  --> $DIR/main.rs:176:9
+   |
+LL |         bytes.push_back(i as u8); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
+
+warning: inefficient Bytes concatenation inside a loop
+  --> $DIR/main.rs:185:9
+   |
+LL |         bytes.append(&other); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
+
+warning: 15 warnings emitted
 
