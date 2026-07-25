@@ -11,7 +11,10 @@ extern crate rustc_span;
 
 use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use clippy_utils::res::MaybeResPath;
 use clippy_utils::source::snippet_opt;
+use clippy_utils::ty::peel_and_count_ty_refs;
+use clippy_utils::usage::local_used_after_expr;
 use clippy_utils::usage::mutated_variables;
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
@@ -264,6 +267,24 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
             };
 
             if is_env {
+                // Clone on &Env produces an owned Env from a reference — genuinely needed.
+                let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
+                if ref_count > 0 {
+                    return;
+                }
+
+                // If the receiver is a local binding that is still used after
+                // the clone, the original and the clone are both live — skip.
+                if let Some(local_id) = receiver.res_local_id() {
+                    if local_used_after_expr(cx, local_id, expr) {
+                        return;
+                    }
+                } else {
+                    // Cannot statically determine whether the receiver is used
+                    // after the clone — be conservative and skip.
+                    return;
+                }
+
                 span_lint_and_help(
                     cx,
                     REDUNDANT_ENV_CLONE,

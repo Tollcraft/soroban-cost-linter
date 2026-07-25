@@ -172,6 +172,23 @@ fn good_no_clone_needed(env: Env) {
     let _ref = &env; // Good — no clone, just a reference
 }
 
+fn good_env_ref_clone(env: &Env) {
+    let _cloned = env.clone(); // Good — &Env, clone produces owned Env
+}
+
+fn good_env_used_after_clone(env: Env) {
+    let _cloned = env.clone(); // Good — env used after on next line
+    let _also_env = env;
+}
+
+fn good_fn_takes_env_by_value(env: Env) {
+    let cloned = env.clone(); // Good — env used after the clone
+    takes_env(cloned);
+    let _still_here = env;
+}
+
+fn takes_env(_e: Env) {}
+
 #[allow(redundant_env_clone)]
 fn allowed_clone_env(env: Env) {
     let _cloned = env.clone(); // Good (allowed)
