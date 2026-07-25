@@ -1,5 +1,5 @@
 warning: storage operation inside a loop
-  --> $DIR/main.rs:73:9
+  --> $DIR/main.rs:78:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:73:9
+  --> $DIR/main.rs:78:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:73:9
+  --> $DIR/main.rs:78:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
@@ -24,7 +24,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:80:30
+  --> $DIR/main.rs:85:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -32,7 +32,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:80:30
+  --> $DIR/main.rs:85:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -40,7 +40,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:80:30
+  --> $DIR/main.rs:85:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^
@@ -48,7 +48,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:87:12
+  --> $DIR/main.rs:92:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -56,7 +56,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:87:12
+  --> $DIR/main.rs:92:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -64,7 +64,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:87:12
+  --> $DIR/main.rs:92:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^
@@ -72,7 +72,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:109:19
+  --> $DIR/main.rs:114:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
    |                   ^^^^^^^^^^^
@@ -81,7 +81,7 @@ LL |     let _cloned = env.clone(); // Should Warn
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:127:20
+  --> $DIR/main.rs:132:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -89,46 +89,25 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = help: call this function outside the loop and reuse the result
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
-warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:153:27
+warning: Symbol::new called with a short literal that could use symbol_short! macro
+  --> $DIR/main.rs:155:16
    |
-LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
-   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
    |
-   = help: store the value from the first read and reuse it instead of reading again
-   = note: `#[warn(soroban_redundant_storage_read)]` on by default
+   = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
-warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:158:28
+warning: Symbol::new called with a short literal that could use symbol_short! macro
+  --> $DIR/main.rs:159:16
    |
-LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
-   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: store the value from the first read and reuse it instead of reading again
+LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
-warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:163:13
+warning: Symbol::new called with a short literal that could use symbol_short! macro
+  --> $DIR/main.rs:167:16
    |
-LL |     let _b = env.storage().instance().has(&key); // Should Warn
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: store the value from the first read and reuse it instead of reading again
+LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:168:27
-   |
-LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
-   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: store the value from the first read and reuse it instead of reading again
-
-warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:173:27
-   |
-LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
-   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: store the value from the first read and reuse it instead of reading again
-
-warning: 16 warnings emitted
+warning: 14 warnings emitted
 
