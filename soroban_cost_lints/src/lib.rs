@@ -454,15 +454,15 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         _: rustc_span::Span,
         _: rustc_hir::def_id::LocalDefId,
     ) {
-        let mut reads: Vec<(String, String)> = Vec::new();
-        let mut writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
+        let reads: Vec<(String, String)> = Vec::new();
+        let writes: Vec<(String, String, rustc_span::Span)> = Vec::new();
 
-        struct ReadVisitor<'tcx> {
-            cx: &'tcx LateContext<'tcx>,
+struct ReadVisitor<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
             reads: Vec<(String, String)>,
         }
 
-        impl<'tcx> Visitor<'tcx> for ReadVisitor<'tcx> {
+        impl<'a, 'tcx> Visitor<'tcx> for ReadVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
                     let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
@@ -489,12 +489,12 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        struct WriteVisitor<'tcx> {
-            cx: &'tcx LateContext<'tcx>,
+        struct WriteVisitor<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
             writes: Vec<(String, String, rustc_span::Span)>,
         }
 
-        impl<'tcx> Visitor<'tcx> for WriteVisitor<'tcx> {
+        impl<'a, 'tcx> Visitor<'tcx> for WriteVisitor<'a, 'tcx> {
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
                     let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
@@ -517,16 +517,12 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        let mut read_visitor = ReadVisitor {
-            cx,
-            reads: Vec::new(),
-        };
+        let reads = Vec::new();
+        let writes = Vec::new();
+        let mut read_visitor = ReadVisitor { cx, reads };
         read_visitor.visit_body(body);
 
-        let mut write_visitor = WriteVisitor {
-            cx,
-            writes: Vec::new(),
-        };
+        let mut write_visitor = WriteVisitor { cx, writes };
         write_visitor.visit_body(body);
 
         for (w_receiver, w_key, w_span) in &write_visitor.writes {
