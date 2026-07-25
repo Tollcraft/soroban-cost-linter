@@ -199,6 +199,21 @@ fn bad_host_call_in_loop(env: Env) {
     }
 }
 
+fn bad_host_call_in_while_loop(env: Env) {
+    let mut i = 0;
+    while i < 10 {
+        let _seq = env.ledger().sequence(); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_host_call_in_loop_loop(env: Env) {
+    loop {
+        let _seq = env.ledger().sequence(); // Should Warn
+        break;
+    }
+}
+
 fn good_host_call_outside_loop(env: Env) {
     let seq = env.ledger().sequence(); // Good — called once before the loop
     for _ in 0..10 {
