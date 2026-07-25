@@ -17,6 +17,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
+| [`contract_call_in_loop`](contract_call_in_loop.md)                   | `warn`           | `env.invoke_contract(...)` cross-contract calls inside loop bodies |
 
 ## Memory
 

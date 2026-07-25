@@ -17,6 +17,7 @@
   * [soroban\_storage\_in\_loop](lints/soroban_storage_in_loop.md)
   * [redundant\_env\_clone](lints/redundant_env_clone.md)
   * [unnecessary\_host\_function\_call](lints/unnecessary_host_function_call.md)
+  * [contract\_call\_in\_loop](lints/contract_call_in_loop.md)
 
 ## Branding
 

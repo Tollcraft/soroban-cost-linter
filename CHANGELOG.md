@@ -10,6 +10,7 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `contract_call_in_loop` detecting `env.invoke_contract(...)` cross-contract calls made inside `for`/`while`/`loop` bodies, suggesting a batched callee endpoint or hoisting invariant calls out of the loop.
 
 ### Changed
 

@@ -116,6 +116,7 @@ Each lint in this repository targets a specific resource dimension:
 | [`soroban_storage_in_loop`](lints/soroban_storage_in_loop.md) | **Storage** (ledger entry accesses + I/O bytes) | Storage writes are the #1 cost driver; multiplying them by loop count is the most expensive pattern this tool detects. |
 | [`unnecessary_host_function_call`](lints/unnecessary_host_function_call.md) | **CPU** (host function dispatch) | Host calls are expensive relative to pure Wasm; repeating a constant-result call inside a loop wastes CPU. |
 | [`redundant_env_clone`](lints/redundant_env_clone.md) | **CPU** (memory + dispatch overhead) | Cloning `Env` triggers `MemAlloc`/`MemCpy` and unnecessary object visits; the clone is never needed. |
+| [`contract_call_in_loop`](lints/contract_call_in_loop.md) | **CPU** (cross-contract VM instantiation + dispatch) | Each `invoke_contract` call spins up a new VM context; repeating it per iteration multiplies that overhead by the loop count. |
 
 ---
 

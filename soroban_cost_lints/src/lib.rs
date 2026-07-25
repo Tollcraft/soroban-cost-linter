@@ -183,6 +183,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: CONTRACT_CALL_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
@@ -195,12 +199,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
+        CONTRACT_CALL_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
+    lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
 }
 
@@ -345,6 +351,46 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
                     "use of Host object inside a loop",
                     None,
                     "consider moving the Host usage outside the loop if possible",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// contract_call_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub CONTRACT_CALL_IN_LOOP,
+    Warn,
+    "cross-contract invocation inside a loop"
+}
+pub struct ContractCallInLoop;
+rustc_session::impl_lint_pass!(ContractCallInLoop => [CONTRACT_CALL_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "invoke_contract"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
+            } else {
+                false
+            };
+
+            if is_env && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    CONTRACT_CALL_IN_LOOP,
+                    expr.span,
+                    "cross-contract call inside a loop",
+                    None,
+                    "add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations",
                 );
             }
         }

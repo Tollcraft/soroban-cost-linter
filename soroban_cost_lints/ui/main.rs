@@ -28,6 +28,12 @@ pub mod soroban_sdk {
         pub fn current_contract_address(&self) -> Address {
             Address
         }
+        pub fn invoke_contract<T>(&self, _contract: &Address, _func: &Symbol, _args: ()) -> T
+        where
+            T: Default,
+        {
+            T::default()
+        }
     }
 
     pub struct Address;
@@ -238,6 +244,42 @@ fn good_deployer_call_outside_loop(env: Env) {
     let hash = env.deployer().uploaded_wasm_hash(); // Good — called once before the loop
     for _ in 0..10 {
         let _hash = hash;
+    }
+}
+
+// =======================================================================
+// contract_call_in_loop — Fixtures
+// =======================================================================
+
+fn bad_invoke_contract_in_for_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    for _ in 0..10 {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+    }
+}
+
+fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    let mut i = 0;
+    while i < 10 {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    loop {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        break;
+    }
+}
+
+fn good_invoke_contract_outside_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    let _: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
+}
+
+#[allow(contract_call_in_loop)]
+fn allowed_invoke_contract_in_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    for _ in 0..10 {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
     }
 }
 

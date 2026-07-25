@@ -25,11 +25,12 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
 *   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable.
+*   **[`contract_call_in_loop`](docs/lints/contract_call_in_loop.md):** Flags cross-contract calls made via `env.invoke_contract(...)` inside loop bodies, suggesting a batched callee endpoint or hoisting invariant calls out of the loop.
 
 ## How it Fits into Tollcraft
 
@@ -184,6 +185,28 @@ for _ in 0..10 {
 }
 ```
 
+### Example: cross-contract call in a loop
+
+**Bad** &mdash; invoking another contract on every iteration re-instantiates its VM context each time:
+
+```rust
+// ❌ Triggers: contract_call_in_loop
+for item in items.iter() {
+    let _: i128 = env.invoke_contract(&token_address, &symbol_short!("balance"), (item,).into_val(&env));
+}
+```
+
+**Fix** &mdash; add a batched endpoint on the callee, or call once and reuse the result if it's invariant:
+
+```rust
+// ✅ Fixed: a single batched call
+let balances: Vec<i128> = env.invoke_contract(
+    &token_address,
+    &symbol_short!("balances"),
+    (items.clone(),).into_val(&env),
+);
+```
+
 ### Suppressing false positives
 
 If a flagged pattern is intentional, suppress it with a standard Rust attribute:
@@ -207,6 +230,7 @@ You can define project-wide linting rules and severity levels in the same `budge
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
+contract_call_in_loop = "warn"
 
 ```
 
