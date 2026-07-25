@@ -133,5 +133,22 @@ warning: Symbol::new called with a short literal that could use symbol_short! ma
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: 17 warnings emitted
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:313:9
+   |
+LL |         bytes.append(&Bytes); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+   = note: `#[warn(bytes_append_in_loop)]` on by default
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:321:9
+   |
+LL |         v.push_back(i); // Should Warn
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: 19 warnings emitted
 
