@@ -152,6 +152,14 @@ fn allowed_storage_in_loop(env: Env) {
     }
 }
 
+// Realistic false-positive scenario: batch-writing different keys per iteration
+#[allow(soroban_storage_in_loop)]
+fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
+    for (key, val) in pairs {
+        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
+    }
+}
+
 // =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================

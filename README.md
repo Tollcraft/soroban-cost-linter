@@ -197,6 +197,8 @@ fn deliberate_storage_loop(env: Env) {
 }
 ```
 
+See the [Handling False Positives](docs/false_positives.md) guide for a comprehensive overview of all suppression methods — per-site `#[allow]`, per-file `.lintignore`, and per-workspace `budget.toml`.
+
 ### Configuration (`budget.toml`)
 
 You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
