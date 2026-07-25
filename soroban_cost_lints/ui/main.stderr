@@ -89,5 +89,46 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = help: call this function outside the loop and reuse the result
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
-warning: 11 warnings emitted
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/main.rs:153:27
+   |
+LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+   = note: `#[warn(soroban_redundant_storage_read)]` on by default
+
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/main.rs:158:28
+   |
+LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/main.rs:163:13
+   |
+LL |     let _b = env.storage().instance().has(&key); // Should Warn
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/main.rs:168:27
+   |
+LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/main.rs:173:27
+   |
+LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: 16 warnings emitted
 

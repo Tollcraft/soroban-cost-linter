@@ -59,6 +59,7 @@ fn test_json_output() {
     );
 
     let mut found_storage_in_loop = false;
+    let mut found_redundant_storage_read = false;
     for line in lines {
         // Assert that the line is valid JSON conforming to our schema
         let json: serde_json::Value =
@@ -76,10 +77,17 @@ fn test_json_output() {
         if json["name"] == "soroban_storage_in_loop" {
             found_storage_in_loop = true;
         }
+        if json["name"] == "soroban_redundant_storage_read" {
+            found_redundant_storage_read = true;
+        }
     }
 
     assert!(
         found_storage_in_loop,
         "Expected to find 'soroban_storage_in_loop' lint, but it was not present"
+    );
+    assert!(
+        found_redundant_storage_read,
+        "Expected to find 'soroban_redundant_storage_read' lint, but it was not present"
     );
 }

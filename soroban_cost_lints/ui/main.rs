@@ -143,3 +143,53 @@ fn allowed_host_call_in_loop(env: Env) {
 }
 
 fn main() {}
+
+// =======================================================================
+// soroban_redundant_storage_read — Fixtures
+// =======================================================================
+
+fn bad_sequential_get_same_key(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_get(env: Env, key: i32) {
+    let exists = env.storage().instance().has(&key);
+    let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_has(env: Env, key: i32) {
+    let _a = env.storage().instance().has(&key);
+    let _b = env.storage().instance().has(&key); // Should Warn
+}
+
+fn bad_sequential_persistent_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().persistent().get(&key);
+    let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
+}
+
+fn bad_sequential_temporary_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().temporary().get(&key);
+    let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
+}
+
+fn good_set_resets_tracking(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    env.storage().instance().set(&key, &1);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
+}
+
+fn good_different_keys(env: Env, key1: i32, key2: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key1);
+    let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+}
+
+fn good_single_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
+}
+
+#[allow(soroban_redundant_storage_read)]
+fn allowed_sequential_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
+}
