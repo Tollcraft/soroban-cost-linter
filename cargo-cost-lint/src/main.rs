@@ -145,6 +145,8 @@ fn main() {
             rustflags.push_str(&flag);
         }
 
+        cmd.env("DYLINT_RUSTFLAGS", rustflags);
+    }
     if cli.format == OutputFormat::Json {
         cmd.arg("--");
         cmd.arg("--message-format=json");
@@ -301,15 +303,4 @@ mod tests {
         assert!(result.unwrap_err().contains("Unknown lint name"));
     }
 
-    match cmd.status() {
-        Ok(status) => {
-            if !status.success() {
-                exit(status.code().unwrap_or(1));
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to execute cargo dylint: {}", e);
-            exit(1);
-        }
-    }
 }
