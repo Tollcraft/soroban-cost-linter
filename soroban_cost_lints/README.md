@@ -9,5 +9,6 @@ The lint crate for `soroban-cost-linter`. Compiled as a dynamic library and load
 | [`soroban_storage_in_loop`](../docs/lints/soroban_storage_in_loop.md) | Flags storage read/write operations inside loop bodies, suggesting memory aggregation instead. |
 | [`redundant_env_clone`](../docs/lints/redundant_env_clone.md) | Detects unnecessary `.clone()` calls on the Soroban `Env` object. |
 | [`unnecessary_host_function_call`](../docs/lints/unnecessary_host_function_call.md) | Identifies calls to host accessors (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside loops with unchanged inputs, which should be called once and cached. |
+| [`event_in_loop`](../docs/lints/event_in_loop.md) | Detects `env.events().publish(...)` (and similar) calls inside loop bodies, where each emission charges CPU and bloats the transaction footprint. |
 
 See the [lint reference](../docs/lints/README.md) for full documentation.

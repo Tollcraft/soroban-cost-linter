@@ -56,12 +56,13 @@ fn good_host_outside_loop(env: Env) {
     */
 }
 
-// fn good_host_outside_loop(env: Env) {
-//     /*
-//     let host = env.host().clone();
-//     let _ = host.budget_cloned();
-//     for _ in 0..10 {
-//         // do not use host inside loop
-//     }
-//     */
-// }
+fn bad_event_in_loop(env: Env) {
+    for _ in 0..10 {
+        env.events().publish((soroban_sdk::symbol_short!("tick"),), &1u32);
+    }
+}
+
+fn good_event_outside_loop(env: Env) {
+    let _ = env.ledger().sequence();
+    env.events().publish((soroban_sdk::symbol_short!("batch"),), &1u32);
+}

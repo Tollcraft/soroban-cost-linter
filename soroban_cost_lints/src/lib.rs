@@ -225,6 +225,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: EVENT_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
@@ -253,6 +257,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
+        EVENT_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         STORAGE_WRITE_WITHOUT_READ,
         INEFFICIENT_BYTES_CONCAT,
@@ -263,6 +268,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
+    lint_store.register_late_pass(|_| Box::new(EventInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
@@ -395,6 +401,14 @@ rustc_session::declare_lint! {
 pub struct HostInLoop;
 rustc_session::impl_lint_pass!(HostInLoop => [HOST_IN_LOOP]);
 
+rustc_session::declare_lint! {
+    pub EVENT_IN_LOOP,
+    Warn,
+    "event emission inside a loop"
+}
+pub struct EventInLoop;
+rustc_session::impl_lint_pass!(EventInLoop => [EVENT_IN_LOOP]);
+
 impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
@@ -453,6 +467,38 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
                     "use of Host object inside a loop",
                     None,
                     "consider moving the Host usage outside the loop if possible",
+                );
+            }
+        }
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for EventInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_event_publish = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "events", "Events"])
+                    || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
+                        && path_segment.ident.name.as_str() == "events")
+            } else {
+                false
+            };
+
+            if is_event_publish
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(..) = enclosing_expr.kind
+            {
+                span_lint_and_help(
+                    cx,
+                    EVENT_IN_LOOP,
+                    expr.span,
+                    "event emission inside a loop",
+                    None,
+                    "accumulate events in memory and publish them once after the loop",
                 );
             }
         }

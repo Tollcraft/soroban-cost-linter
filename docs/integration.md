@@ -28,6 +28,7 @@ cargo cost-lint --config /etc/soroban-cost-linter/budget.toml
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
+event_in_loop = "warn"
 ```
 {% endcode %}
 
