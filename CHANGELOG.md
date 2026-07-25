@@ -45,6 +45,13 @@ and this project adheres to Semantic Versioning.
   `Reads (get, has)` section, each with its own suggested-fix hint that lines
   up with the diagnostic help text.
 
+### Changed
+
+- `unnecessary_host_function_call` now covers every host accessor reachable from
+  `Env` — `crypto()`, `prng()`, `events()`, `deployer()` and
+  `current_contract_address()` alongside `ledger()` — and no longer reports
+  calls whose receiver or arguments change from iteration to iteration.
+
 ## [0.1.1]
 
 ### Changed
