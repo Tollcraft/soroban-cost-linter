@@ -29,7 +29,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
+*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable.
 
 ## How it Fits into Tollcraft
 
