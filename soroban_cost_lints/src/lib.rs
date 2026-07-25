@@ -481,8 +481,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                     {
                         let receiver_snippet =
                             snippet_opt(&self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet =
-                            snippet_opt(&self.cx, args[0].span).unwrap_or_default();
+                        let key_snippet = snippet_opt(&self.cx, args[0].span).unwrap_or_default();
                         self.reads.push((receiver_snippet, key_snippet));
                     }
                 }
@@ -510,8 +509,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                     if is_storage && path_segment.ident.name.as_str() == "set" && args.len() >= 2 {
                         let receiver_snippet =
                             snippet_opt(&self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet =
-                            snippet_opt(&self.cx, args[0].span).unwrap_or_default();
+                        let key_snippet = snippet_opt(&self.cx, args[0].span).unwrap_or_default();
                         self.writes.push((receiver_snippet, key_snippet, *span));
                     }
                 }
