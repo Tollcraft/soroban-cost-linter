@@ -24,6 +24,7 @@
   * [unnecessary\_host\_function\_call](lints/unnecessary_host_function_call.md)
   * [bytes\_append\_in\_loop](lints/bytes_append_in_loop.md)
   * [event_in_loop](lints/event_in_loop.md)
+  * [bytes\_append\_in_loop](lints/bytes_append_in_loop.md)
 
 ## Branding
 
