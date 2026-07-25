@@ -13,11 +13,18 @@ You can also pass an explicit path with `--config <PATH>`, which is used verbati
 {% code title="budget.toml" %}
 ```toml
 [lints]
-soroban_storage_in_loop = "deny"
-redundant_env_clone = "warn"
-unnecessary_host_function_call = "warn"
+soroban_storage_in_loop = "deny"       # default: deny (high confidence)
+redundant_env_clone = "warn"           # default: warn
+unnecessary_host_function_call = "warn" # default: warn
+bytes_append_in_loop = "warn"          # default: warn
+symbol_new_for_short_literal = "warn"  # default: warn
+host_in_loop = "warn"                  # default: warn
 ```
 {% endcode %}
+
+{% hint style="warning" %}
+**Breaking change:** `soroban_storage_in_loop` was upgraded from `warn` to `deny` in v0.2.0. If this breaks your CI, set `soroban_storage_in_loop = "warn"` in `budget.toml` to restore the previous behaviour.
+{% endhint %}
 
 {% hint style="info" %}
 See the [Lint Reference](lints/) for what each lint catches and its default severity.

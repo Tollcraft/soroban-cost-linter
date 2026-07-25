@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Six lints ship in the current release:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -82,14 +82,14 @@ cargo cost-lint
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
 ```text
-warning: storage operation inside a loop
+error: storage operation inside a loop
   --> src/lib.rs:12:9
    |
 LL |         env.storage().instance().set(&i, &1);
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
-   = note: `#[warn(soroban_storage_in_loop)]` on by default
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 
 warning: unnecessary host function call inside loop
   --> src/lib.rs:20:20
@@ -122,12 +122,13 @@ for item in items {
 The linter flags this as:
 
 ```text
-warning: storage operation inside a loop
- --> src/lib.rs:4:9
-  |
+error: storage operation inside a loop
+  --> src/lib.rs:4:9
+   |
 LL |         env.storage().instance().set(&item, &1);
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: move storage operations out of the loop or accumulate mutations in memory first
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 ```
 
 **Fix** &mdash; accumulate in memory, then write once:
@@ -204,10 +205,12 @@ You can define project-wide linting rules and severity levels in the same `budge
 ```toml
 [lints]
 # Set to "warn", "deny", or "allow"
-soroban_storage_in_loop = "deny"
-redundant_env_clone = "warn"
-unnecessary_host_function_call = "warn"
-
+soroban_storage_in_loop = "deny"       # default: deny (high confidence)
+redundant_env_clone = "warn"           # default: warn
+unnecessary_host_function_call = "warn" # default: warn
+bytes_append_in_loop = "warn"          # default: warn
+symbol_new_for_short_literal = "warn"  # default: warn
+host_in_loop = "warn"                  # default: warn
 ```
 
 ## Contributing

@@ -1,6 +1,6 @@
 # `soroban_storage_in_loop`
 
-**Default Severity:** `warn`
+**Default Severity:** `deny` (High Confidence, High Impact)
 
 **Target Resource:** [Storage — ledger entry accesses and ledger I/O bytes](../cost_rationale.md#per-lint-resource-summary)
 
