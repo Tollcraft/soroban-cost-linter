@@ -86,7 +86,7 @@ If the performance overhead is too high for daily development, consider these al
 
 ## GitHub Actions
 
-We provide a template to easily integrate the linter into your GitHub Actions pipeline:
+We provide a template to easily integrate the linter into your GitHub Actions pipeline. The template runs on both Linux and Windows:
 
 {% code title=".github/workflows/cost-lint.yml" %}
 ```yaml
@@ -96,7 +96,11 @@ on: [push, pull_request]
 
 jobs:
   cost-lint:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust

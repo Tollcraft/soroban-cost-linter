@@ -54,6 +54,8 @@ Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint
 cargo install cargo-dylint dylint-link --version "^6.0.1"
 ```
 
+> **Windows:** Install via PowerShell after setting up Rust through [rustup](https://rustup.rs/). The command is identical. Make sure the nightly toolchain with `rustc-dev` and `llvm-tools-preview` components is installed (`rustup toolchain install nightly --component rustc-dev llvm-tools-preview`).
+
 ### Installation
 
 Add the linter to your Soroban workspace:

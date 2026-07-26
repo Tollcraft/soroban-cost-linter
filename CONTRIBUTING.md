@@ -10,6 +10,8 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 
 ### 2. Setting up Locally
 
+#### Linux / macOS
+
 1. Install Dylint:
 
    ```bash
@@ -19,14 +21,51 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 2. Clone the repository and build:
 
    ```bash
+   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   cd soroban-cost-linter
    cargo build
    ```
 
 3. Run tests:
 
    ```bash
-   cargo test
-```
+   cargo test --workspace
+   ```
+
+#### Windows (PowerShell)
+
+1. **Install the Rust toolchain.** Use [rustup](https://rustup.rs/) to install the nightly toolchain with the required components:
+
+   ```powershell
+   rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
+   rustup default nightly-2026-04-16
+   ```
+
+   The `rust-toolchain` file in the repository root will pin the correct nightly automatically once the toolchain is installed, but running the command above ensures the required components are present.
+
+2. **Install Dylint** (the lint driver this project depends on):
+
+   ```powershell
+   cargo install cargo-dylint dylint-link --version "^6.0.1"
+   ```
+
+3. **Clone the repository and build:**
+
+   ```powershell
+   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   cd soroban-cost-linter
+   cargo build
+   ```
+
+4. **Run the full quality checks** (these must pass before opening a PR):
+
+   ```powershell
+   cargo fmt --all -- --check
+   cargo clippy --workspace --all-targets -- -D warnings
+   cargo test --workspace
+   ```
+
+> **Note:** All `cargo` commands work identically in PowerShell, CMD, and Git Bash. If you use Git Bash, you can also use the `bash` code blocks above.
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
@@ -67,7 +106,7 @@ are already part of the public interface. Although they do not fully match the c
 
 ### 4. Code Quality Standards
 
-All PRs are checked by CI, and these checks must pass before a PR can be merged. Run them locally before pushing:
+All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing:
 
 1. Format your code with rustfmt (CI rejects unformatted code):
 
@@ -85,7 +124,9 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
 
    ```bash
    cargo test --workspace
-```
+   ```
+
+> **Windows tip:** All three commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
@@ -100,7 +141,11 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 3. Update `.github/workflows/lint.yml`, `templates/github-action.yml`, and `docs/integration.md` with the new nightly date.
 4. Run the drift guard to confirm everything agrees:
    ```bash
+   # Linux / macOS
    bash .github/scripts/validate-toolchain-pins.sh
+
+   # Windows (PowerShell)
+   powershell -ExecutionPolicy Bypass -File .github/scripts/validate-toolchain-pins.ps1
    ```
 5. Run the full test suite:
    ```bash
