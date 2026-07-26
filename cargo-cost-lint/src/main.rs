@@ -338,7 +338,7 @@ fn main() {
         let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
         let mut rules: Vec<serde_json::Value> = Vec::new();
         let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
 
         for finding in &findings {
             if seen_rules.insert(finding.name.clone()) {
@@ -354,29 +354,27 @@ fn main() {
             };
 
             let region = if finding.span.line_start > 0 {
-                Some(serde_json::json!({
-                    "startLine": finding.span.line_start,
-                    "startColumn": finding.span.column_start,
-                    "endLine": finding.span.line_end,
-                    "endColumn": finding.span.column_end,
-                }))
+                Some(SarifRegion {
+                    startLine: finding.span.line_start,
+                    startColumn: Some(finding.span.column_start),
+                    endLine: Some(finding.span.line_end),
+                    endColumn: Some(finding.span.column_end),
+                })
             } else {
                 None
             };
 
-            let physical_location = serde_json::json!({
-                "artifactLocation": { "uri": finding.file },
-                "region": region,
-            });
+            let physical_location = SarifPhysicalLocation {
+                artifactLocation: SarifArtifactLocation { uri: finding.file.clone() },
+                region,
+            };
 
-            sarif_results.push(serde_json::json!({
-                "ruleId": finding.name,
-                "level": level,
-                "message": { "text": finding.message },
-                "locations": [
-                    { "physicalLocation": physical_location }
-                ],
-            }));
+            sarif_results.push(SarifResult {
+                ruleId: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage { text: finding.message.clone() },
+                locations: vec![SarifLocation { physicalLocation: physical_location }],
+            });
         }
 
         let sarif = SarifReport {

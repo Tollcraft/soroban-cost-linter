@@ -146,10 +146,10 @@ fn test_cli_workspace_lints_all_contracts() {
 
         let file = json["file"].as_str().unwrap_or("");
         if file.contains("alpha") {
-            found_contracts.insert("alpha");
+            found_contracts.insert("alpha".to_string());
         }
         if file.contains("beta") {
-            found_contracts.insert("beta");
+            found_contracts.insert("beta".to_string());
         }
     }
 
