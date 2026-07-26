@@ -138,6 +138,14 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    |
    = help: call this function outside the loop and reuse the result
 
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:254:20
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:274:16
    |
