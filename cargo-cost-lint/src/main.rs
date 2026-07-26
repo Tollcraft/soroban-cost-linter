@@ -46,6 +46,13 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
+
+    #[arg(
+        long,
+        help = "Pass through all compiler diagnostics, not just soroban lints. \
+                Useful when using cargo cost-lint as a rust-analyzer check command."
+    )]
+    all_diagnostics: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -219,6 +226,7 @@ fn main() {
                                 highest_exit_code = 1;
                             }
 
+                            if let Some(name) = lint_name {
                                 let mut help_text = None;
                                 let mut suggestion = None;
                                 if let Some(children) =
@@ -234,8 +242,7 @@ fn main() {
                                                 .map(|s| s.to_string());
                                             help_text = child_msg.clone();
                                             if cli.fix {
-                                                suggestion =
-                                                    extract_suggestion(&child_msg, lint_name);
+                                                suggestion = extract_suggestion(&child_msg, name);
                                             }
                                             break;
                                         }
@@ -243,7 +250,7 @@ fn main() {
                                 }
 
                                 let finding = LintFinding {
-                                    name: lint_name.to_string(),
+                                    name: name.to_string(),
                                     level: level.to_string(),
                                     file: file.clone(),
                                     span: span_obj,
@@ -260,7 +267,7 @@ fn main() {
                                         println!("{}", json_str);
                                     }
                                 }
-                            } else {
+                            } else if cli.format != OutputFormat::Json {
                                 let rendered = message
                                     .get("rendered")
                                     .and_then(|r| r.as_str())
