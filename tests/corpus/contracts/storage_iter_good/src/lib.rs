@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{symbol_short, Env, Symbol};
+use soroban_sdk::{symbol_short, vec, Env, Symbol, Vec};
 
 const SAFE: Symbol = symbol_short!("safe");
 
