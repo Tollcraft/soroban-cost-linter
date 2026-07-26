@@ -6,8 +6,7 @@
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </p>
   <p>
-    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
-    <a href="https://asciinema.org/a/1DpqHMqqOOXoZzMI"><strong>Demo</strong></a>
+    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a>
   </p>
 </div>
 
@@ -21,15 +20,19 @@ This tool acts as the preventative shield in the Tollcraft two-tiered cost pipel
 
 Soroban charges for CPU instructions, memory allocations, and storage operations. While testing your contract against the network is the only way to measure *input-dependent* costs (like unbounded loops or dynamic vector sizing), many expensive mistakes are structurally obvious without ever running the code. 
 
-Writing `env.storage().instance().set()` inside a `for` loop is mathematically guaranteed to be expensive. `soroban-cost-linter` catches these structural anti-patterns directly in your IDE or CI/CD pipeline before they make it to testnet.
+Writing `env.storage().instance().set()` inside a `for` loop is mathematically guaranteed to be expensive. `soroban-cost-linter` catches these structural anti-patterns directly in your [editor](docs/integration.md#editor--ide-integration) or [CI/CD pipeline](docs/integration.md#github-actions) before they make it to testnet.
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Seven lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
+*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable.
+*   **[`storage_write_without_read`](docs/lints/storage_write_without_read.md):** Flags storage writes where the same key is never subsequently read.
+*   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
+*   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
+*   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
 
 ## How it Fits into Tollcraft
 
@@ -90,6 +93,35 @@ LL |         env.storage().instance().set(&i, &1);
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[warn(soroban_storage_in_loop)]` on by default
+```
+
+#### Output format
+
+Use `--format` to choose the output format:
+
+| Format  | Description                                                  |
+| ------- | ------------------------------------------------------------ |
+| `text`  | Human-readable console output (default)                      |
+| `json`  | One JSON object per line, suitable for programmatic parsing  |
+| `sarif` | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+
+Example — generate SARIF output for GitHub Advanced Security:
+
+```bash
+cargo cost-lint --format sarif > results.sarif
+```
+
+The SARIF file can then be uploaded to GitHub or integrated into your CI pipeline to annotate PR diffs with line-specific warnings.
+
+```text
+warning: storage operation inside a loop
+  --> src/lib.rs:12:9
+   |
+LL |         env.storage().instance().set(&i, &1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: unnecessary host function call inside loop
   --> src/lib.rs:20:20
@@ -104,7 +136,8 @@ warning: redundant clone on Env object
    |
 LL |     let _cloned = env.clone();
    |                   ^^^^^^^^^^^
-   = help: pass Env by reference or value instead of cloning
+   |
+   = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 ```
 
@@ -197,9 +230,20 @@ fn deliberate_storage_loop(env: Env) {
 }
 ```
 
+### Automatically fixing lints
+
+`cargo-cost-lint` includes a `--fix` flag that automatically applies safe, machine-applicable suggestions for simple lints. For example, it can replace `Symbol::new(&env, "short")` with `symbol_short!("short")`:
+
+```bash
+# Check and auto-fix fixable lints
+cargo cost-lint --fix
+```
+
+When `--fix` is passed, the tool applies all `MachineApplicable` suggestions in-place and writes the updated source files.
+
 ### Configuration (`budget.toml`)
 
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
+You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. To apply that file, pass it explicitly with `--config` — see the next subsection. Without `--config`, no config file is loaded — the lints fall back to their rustc-declared default level (currently `warn` for all shipped lints):
 
 ```toml
 [lints]
@@ -207,8 +251,28 @@ You can define project-wide linting rules and severity levels in the same `budge
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
+storage_write_without_read = "warn"
+inefficient_bytes_concat = "warn"
+map_insert_in_loop = "warn"
 
 ```
+
+#### Pointing `cargo cost-lint` at a config — the `--config` flag
+
+`cargo cost-lint` accepts a single `--config <PATH>` option. When the flag is omitted, **no config file is loaded** — the lints fall back to their rustc-declared default level (currently `warn` for all shipped lints). Today `--config` is the **only** way to apply a `budget.toml`: the tool does not auto-discover a workspace-root config.
+
+To point the tool at a `budget.toml` that lives next to your code (or anywhere reachable), pass the path:
+
+```bash
+# relative path — resolved against the directory you run cargo cost-lint from
+cargo cost-lint --config ./configs/strict.budget.toml
+
+# absolute path — bypasses any workspace search
+cargo cost-lint --config /abs/path/to/budget.toml
+```
+
+Unknown lint names or invalid levels fail validation identically whether the config comes from this flag or any other path.
+
 
 ## Contributing
 
@@ -219,7 +283,7 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements. If you are writing your first custom Dylint lint, read the [How to add a new lint developer guide](DEVELOPING_LINTS.md) for a step-by-step walkthrough of lint registration, HIR matching, UI tests, and `clippy_utils`.
 
 ## Community
 
@@ -235,3 +299,6 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=Tollcraft/soroban-cost-linter)](https://github.com/Tollcraft/soroban-cost-linter/graphs/contributors)
+
+
+<!-- [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert). -->
