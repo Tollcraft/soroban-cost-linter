@@ -11,6 +11,10 @@ and this project adheres to Semantic Versioning.
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
 
+### Fixed
+
+- Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
+
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from
