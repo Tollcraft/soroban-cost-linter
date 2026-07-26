@@ -37,3 +37,5 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}
+
+<!-- ? -->
