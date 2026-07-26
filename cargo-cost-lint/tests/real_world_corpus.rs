@@ -113,6 +113,23 @@ fn triage_findings(findings: &[Finding]) -> (Vec<Finding>, Vec<Finding>) {
     (tps, fps)
 }
 
+fn build_soroban_cost_lints() {
+    let binding = env::var("CARGO");
+    let cargo = binding.as_deref().unwrap_or("cargo");
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(cargo)
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+}
+
 fn collect_and_report(contract_dir: &Path) -> (String, Vec<Finding>) {
     let name = contract_dir
         .file_name()
@@ -157,6 +174,7 @@ fn save_baseline(baseline: &Baseline) {
 
 #[test]
 fn real_world_corpus_triage() {
+    build_soroban_cost_lints();
     let bless = env::var("BLESS").is_ok();
     let contracts = contracts_dir();
     assert!(
