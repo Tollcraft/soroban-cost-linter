@@ -52,6 +52,7 @@ pub mod soroban_sdk {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn extend_ttl<K>(&self, _k: &K, _threshold: &()) {}
         }
 
         pub struct Temporary;
@@ -281,6 +282,37 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// persistent_read_without_ttl_extension — Fixtures
+// =======================================================================
+
+fn bad_persistent_read_no_ttl_extension(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+}
+
+fn bad_persistent_has_no_ttl_extension(env: Env) {
+    if env.storage().persistent().has(&1) { // Should Warn
+    }
+}
+
+fn good_persistent_read_with_ttl_extension(env: Env) {
+    env.storage().persistent().extend_ttl(&1, &());
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good
+}
+
+fn good_instance_read(env: Env) {
+    let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
+}
+
+fn good_temporary_read(env: Env) {
+    let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
+}
+
+#[allow(persistent_read_without_ttl_extension)]
+fn allowed_persistent_read(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
 }
 
 fn main() {}

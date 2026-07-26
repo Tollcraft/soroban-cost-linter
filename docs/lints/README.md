@@ -30,6 +30,12 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
 
+## Entry Lifecycle
+
+| Lint                                                                                          | Default Severity | Catches                                    |
+| --------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md)           | `warn`           | Persistent reads without matching TTL extension |
+
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}
