@@ -26,7 +26,7 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 
    ```bash
    cargo test
-```
+   ```
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
@@ -85,7 +85,7 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
 
    ```bash
    cargo test --workspace
-```
+   ```
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
@@ -109,7 +109,13 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 
 If any file is out of sync, the drift guard will print an error naming the file, the mismatched value, and the expected one.
 
-### 6. Submitting a Pull Request
+### 6. Releasing a New Lint
+
+A new lint is released as part of the next project version after its implementation has been merged. The release process is documented in [Releasing a New Lint](docs/release_process.md).
+
+Before a release, maintainers must confirm that the lint is complete, documented, registered, covered by UI tests, and included in the changelog. The lint name must remain stable after release because it is part of the public configuration and command-line interface.
+
+### 7. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
