@@ -18,7 +18,7 @@ and this project adheres to Semantic Versioning.
 ### Fixed
 
 - Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
-
+ <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from

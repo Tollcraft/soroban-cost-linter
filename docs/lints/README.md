@@ -43,13 +43,8 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 |---|---|---|---|
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Medium Impact | `Symbol::new` with short literal arguments |
 
-## User Overrides
+{% hint style="info" %}
+Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
+{% endhint %}
 
-All default levels can be overridden per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
-
-### Breaking Change Notice
-
-Changing a default level from `warn` to `deny` (as done for `soroban_storage_in_loop` in v0.2.0) **may break existing CI pipelines** that run with `-D warnings` or treat warnings as errors. Projects that relied on the previous `warn` default should either:
-
-- Add `#[allow(soroban_storage_in_loop)]` to deliberate call sites, or
-- Set `soroban_storage_in_loop = "warn"` in `budget.toml` to restore the old level.
+<!-- ? -->
