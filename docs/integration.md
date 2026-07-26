@@ -4,15 +4,23 @@
 
 ## Local Configuration (`budget.toml`)
 
-Create a `budget.toml` file to adjust lint severities across your workspace.
+Create a `budget.toml` file to adjust lint severities, then point `cargo cost-lint` at it with `--config`. Today the only way to apply a config is to pass `--config <PATH>` explicitly — the tool does **not** automatically walk up to a workspace-root `budget.toml`. When `--config` is omitted, every lint runs at its declared default level (currently `warn` for all shipped lints).
 
-Supply it via the `--config <PATH>` flag:
+The `--config` flag accepts a single path (relative or absolute). A relative path is resolved against the directory you run `cargo cost-lint` from; an absolute path is used verbatim.
+
+**Example — config in a subdirectory:**
 
 ```bash
-cargo cost-lint --config budget.toml
+cargo cost-lint --config ./configs/strict.budget.toml
 ```
 
-If the path does not exist or is not a valid TOML file, it is silently ignored.
+**Example — config at an absolute path:**
+
+```bash
+cargo cost-lint --config /etc/soroban-cost-linter/budget.toml
+```
+
+`budget.toml` may live anywhere on disk; this flag is the single supported way to point the tool at it. The path you pass goes through the same `BudgetConfig` parser regardless of location, so unknown lint names or invalid levels fail validation identically.
 
 {% code title="budget.toml" %}
 ```toml
@@ -37,7 +45,7 @@ Each value must be one of the three standard Rust lint levels:
 | `warn`  | Produce a warning (default for all lints)              |
 | `deny`  | Produce a hard error — fails the build                 |
 
-A level that is not one of these three currently produces **no error**; the entry is silently skipped. (This will become a hard validation in a future release — see [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177).)
+A level that is not one of `allow`, `warn`, or `deny` causes the tool to print an error and exit immediately.
 
 ### Lint names
 
@@ -49,8 +57,13 @@ Each key under `[lints]` must match a lint name **exactly** as shown in the comp
 | `redundant_env_clone`               | `warn`        |
 | `unnecessary_host_function_call`    | `warn`        |
 | `symbol_new_for_short_literal`      | `warn`        |
+| `bytes_append_in_loop`              | `warn`        |
+| `storage_write_without_read`        | `warn`        |
+| `inefficient_bytes_concat`          | `warn`        |
+| `map_insert_in_loop`                | `warn`        |
+| `host_in_loop`                      | `warn`        |
 
-A key that does not match one of these names currently produces **no error**; the entry is silently skipped. (Exhaustive validation against this list is tracked in [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177).)
+An unknown lint name causes the tool to print an error listing valid lints and exit immediately.
 
 ### How it reaches the compiler
 
@@ -75,9 +88,60 @@ Rustc resolves the effective lint level in this order (highest priority first):
 
 A `deny` in `budget.toml` raises the level from `warn` (the default) to `deny`. An `#[allow]` attribute on a function body suppresses a `warn`-level lint for that function just as it normally would — but a `deny` in `budget.toml` will cause that same function to fail, because `#[allow]` cannot override `-D`. Conversely, `allow` in budget.toml suppresses the lint everywhere, even overriding `#[deny]` in source code.
 
-### Current limitations
+## Editor / IDE Integration
 
-- **The `[lints]` section is parsed but its contents are currently discarded.** The documentation above describes the *intended* design. Until the validation and flag-building logic is wired up (tracked in [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177)), budget.toml has no effect on the lint output. The file exists now so that users can set up the right file structure ahead of time; `cargo cost-lint --config budget.toml` will succeed but produce the same results as without it.
+`soroban-cost-linter` can surface lint warnings directly in your editor through **rust-analyzer**'s check override mechanism. This works in any editor that supports rust-analyzer (VS Code, Zed, Helix, Neovim, etc.).
+
+{% hint style="info" %}
+**Prerequisites:** You must have `cargo-dylint`, `dylint-link`, and `cargo-cost-lint` [installed](../README.md#installation) before configuring IDE integration.
+{% endhint %}
+
+### How it works
+
+rust-analyzer runs `cargo check` by default to provide real-time diagnostics. By overriding the check command to use `cargo dylint` with the `soroban_cost_lints` library, the linter's output is parsed and displayed as standard warnings and errors right in your editor's problem panel. This mirrors the same `cargo dylint` invocation that `cargo cost-lint` uses internally.
+
+### VS Code setup
+
+Add the following to your workspace's `.vscode/settings.json`:
+
+```json
+{
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "dylint",
+        "--lib",
+        "soroban_cost_lints",
+        "--",
+        "--all-targets",
+        "--message-format=json"
+    ]
+}
+```
+
+Once saved, rust-analyzer will restart its check process. Lint findings will appear in the **Problems** panel (Ctrl+Shift+M) with the same formatting shown in the [Usage](../README.md#usage) section.
+
+{% hint style="warning" %}
+Dylint-based IDE integration relies on `rust-analyzer.check.overrideCommand`, which replaces the default `cargo check` entirely. This is a stable rust-analyzer feature and is the approach [recommended by Dylint](https://github.com/trailofbits/dylint), but it is not tested against every editor and Rust toolchain combination. If you encounter issues, please [file a bug report](https://github.com/Tollcraft/soroban-cost-linter/issues/new?template=bug_report.yml).
+{% endhint %}
+
+### Other editors
+
+Any editor that uses rust-analyzer can apply the same override. Consult your editor's rust-analyzer configuration documentation for equivalent settings:
+
+- **Zed:** `"lsp": { "rust-analyzer": { "check": { "overrideCommand": [...] } } }` in your project settings
+- **Helix:** `[language-server.rust-analyzer.config.check]` in `languages.toml`
+- **Neovim (lspconfig):** `settings = { ["rust-analyzer"] = { check = { overrideCommand = {...} } } }`
+
+### Performance considerations
+
+{% hint style="warning" %}
+Running `cargo dylint` on every save is **slower** than the default `cargo check`, because it loads and executes dynamic lint libraries in addition to the compiler's normal analysis pass. For most Soroban projects the overhead is modest, but it scales with project size.
+{% endhint %}
+
+If the performance overhead is too high for daily development, consider these alternatives:
+
+- **On-demand only:** Remove the override from your workspace settings and run `cargo cost-lint` manually in a terminal when you want lint feedback.
+- **CI-only:** Keep the linter in your [GitHub Actions](#github-actions) pipeline and rely on PR checks for enforcement.
 
 ## GitHub Actions
 
