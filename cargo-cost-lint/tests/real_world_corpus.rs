@@ -179,7 +179,7 @@ fn real_world_corpus_triage() {
         let (name, findings) = collect_and_report(&entry.path());
         eprintln!("\n=== {}: {} findings ===", name, findings.len());
         for f in &findings {
-        eprintln!("  {}:{} — {} — {}", f.file, f.line, f.lint_name, f.message);
+            eprintln!("  {}:{} — {} — {}", f.file, f.line, f.lint_name, f.message);
         }
         all_findings.insert(name.clone(), findings);
         grand_total += all_findings.get(&name).map_or(0, |v| v.len());
