@@ -134,7 +134,7 @@ fn test_cli_workspace_lints_all_contracts() {
         stderr_str
     );
 
-    let mut found_contracts: std::collections::HashSet<String> =
+    let mut found_contracts: std::collections::HashSet<&str> =
         std::collections::HashSet::new();
 
     for line in lines {
