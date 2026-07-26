@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{symbol_short, Env, Symbol};
+use soroban_sdk::{symbol_short, vec, Env, Symbol, Vec};
 
 const SAFE: Symbol = symbol_short!("safe");
 
@@ -16,5 +16,5 @@ pub fn loop_with_buffer(env: Env) {
 pub fn map_then_store(env: Env) {
     let keys: Vec<i32> = vec![1, 2, 3];
     let sum: i32 = keys.iter().map(|k| k * 2).sum();
-    env.storage().persistent().set(&MIXED, &sum);
+    env.storage().persistent().set(&SAFE, &sum);
 }
