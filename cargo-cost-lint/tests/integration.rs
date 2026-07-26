@@ -83,3 +83,79 @@ fn test_json_output() {
         "Expected to find 'soroban_storage_in_loop' lint, but it was not present"
     );
 }
+
+/// Integration test: run cargo-cost-lint against a mock workspace with
+/// multiple contracts and verify it lints all of them.
+#[test]
+fn test_cli_workspace_lints_all_contracts() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let mut target_dir = PathBuf::from(bin_path);
+    target_dir.pop();
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    let mut workspace_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    workspace_dir.pop();
+    workspace_dir.push("tests");
+    workspace_dir.push("cli_integration_workspace");
+
+    assert!(
+        workspace_dir.exists(),
+        "Mock workspace directory not found: {:?}",
+        workspace_dir
+    );
+
+    let output = Command::new(bin_path)
+        .arg("--format")
+        .arg("json")
+        .current_dir(&workspace_dir)
+        .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let stderr_str = String::from_utf8(output.stderr).expect("Stderr is not valid UTF-8");
+
+    let lines: Vec<&str> = stdout_str.lines().filter(|l| !l.is_empty()).collect();
+
+    assert!(
+        !lines.is_empty(),
+        "Expected lint findings from workspace, but stdout was empty. Stderr: {}",
+        stderr_str
+    );
+
+    let mut found_contracts: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
+    for line in lines {
+        let json: serde_json::Value =
+            serde_json::from_str(line).expect("Output line is not valid JSON");
+
+        assert!(json.get("name").is_some(), "JSON missing 'name' field");
+        assert!(json.get("file").is_some(), "JSON missing 'file' field");
+        assert!(json.get("span").is_some(), "JSON missing 'span' field");
+
+        let file = json["file"].as_str().unwrap_or("");
+        if file.contains("alpha") {
+            found_contracts.insert("alpha");
+        }
+        if file.contains("beta") {
+            found_contracts.insert("beta");
+        }
+    }
+
+    assert!(
+        found_contracts.contains("alpha"),
+        "Expected findings from alpha contract"
+    );
+}
