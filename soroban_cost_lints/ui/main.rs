@@ -42,23 +42,23 @@ pub mod soroban_sdk {
 
         pub struct Instance;
         impl Instance {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Persistent;
         impl Persistent {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Temporary;
         impl Temporary {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
     }
 
@@ -107,24 +107,29 @@ pub mod soroban_sdk {
         }
     }
 
-    pub struct Bytes;
+    // Tuple struct so `Bytes::from(_s)` and `Bytes(buf)` (HEAD's ineffective_bytes_concat) still work.
+    // Also has `append` to support upstream's bytes_append_in_loop fixtures.
+    pub struct Bytes(pub std::vec::Vec<u8>);
     impl Bytes {
+        pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
         pub fn append(&mut self, _other: &Bytes) {}
-        pub fn push_back(&mut self, _v: i32) {}
-        pub fn insert(&mut self, _pos: u32, _v: i32) {}
-        pub fn extend_from_array(&mut self, _v: &[i32]) {}
+    }
+    impl std::ops::Add for Bytes {
+        type Output = Bytes;
+        fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
     }
 
+    // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
     pub struct Vec;
     impl Vec {
         pub fn push_back(&mut self, _v: i32) {}
-        pub fn insert(&mut self, _pos: u32, _v: i32) {}
-        pub fn extend_from_array(&mut self, _v: &[i32]) {}
     }
 
+    // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
     pub struct Map;
     impl Map {
-        pub fn insert(&mut self, _k: i32, _v: i32) {}
+        pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
+        pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
     }
 
     pub struct Symbol;
@@ -172,6 +177,14 @@ fn allowed_storage_in_loop(env: Env) {
     }
 }
 
+// Realistic false-positive scenario: batch-writing different keys per iteration
+#[allow(soroban_storage_in_loop)]
+fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
+    for (key, val) in pairs {
+        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
+    }
+}
+
 // =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================
@@ -183,6 +196,23 @@ fn bad_clone_env(env: Env) {
 fn good_no_clone_needed(env: Env) {
     let _ref = &env; // Good — no clone, just a reference
 }
+
+fn good_env_ref_clone(env: &Env) {
+    let _cloned = env.clone(); // Good — &Env, clone produces owned Env
+}
+
+fn good_env_used_after_clone(env: Env) {
+    let _cloned = env.clone(); // Good — env used after on next line
+    let _also_env = env;
+}
+
+fn good_fn_takes_env_by_value(env: Env) {
+    let cloned = env.clone(); // Good — env used after the clone
+    takes_env(cloned);
+    let _still_here = env;
+}
+
+fn takes_env(_e: Env) {}
 
 #[allow(redundant_env_clone)]
 fn allowed_clone_env(env: Env) {
@@ -319,13 +349,90 @@ fn allowed_symbol_new_short_literal(env: Env) {
 }
 
 // =======================================================================
+// storage_write_without_read — Fixtures
+// =======================================================================
+
+fn bad_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
+}
+
+fn good_storage_write_with_read(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
+    env.storage().instance().set(&"key1", &1); // Good — read before write
+}
+
+fn good_storage_write_with_has(env: Env) {
+    let _exists = env.storage().instance().has(&"key1"); // Check first
+    env.storage().instance().set(&"key1", &1); // Good — has before write
+}
+
+#[allow(storage_write_without_read)]
+fn allowed_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Good (allowed)
+}
+
+// =======================================================================
+// inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Should Warn
+    }
+}
+
+fn good_efficient_bytes_concat(env: Env) {
+    let mut buf: std::vec::Vec<u8> = std::vec::Vec::new();
+    for _ in 0..10 {
+        buf.extend_from_slice(b"x"); // Good — aggregate in Vec first
+    }
+    let _result = Bytes(buf);
+}
+
+#[allow(inefficient_bytes_concat)]
+fn allowed_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// map_insert_in_loop — Fixtures
+// =======================================================================
+
+fn bad_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Should Warn
+    }
+}
+
+fn good_map_insert_outside_loop(env: Env) {
+    let mut map = Map;
+    map.insert(&1, &1); // Good — outside the loop
+    for i in 0..10 {
+        let _: Option<i32> = map.get(&i);
+    }
+}
+
+#[allow(map_insert_in_loop)]
+fn allowed_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Good (allowed)
+    }
+}
+
+// =======================================================================
 // bytes_append_in_loop — Fixtures
 // =======================================================================
 
 fn bad_bytes_append_in_for_loop() {
-    let mut bytes = Bytes;
+    let mut bytes = Bytes(vec![]);
     for _ in 0..10 {
-        bytes.append(&Bytes); // Should Warn
+        bytes.append(&Bytes(vec![])); // Should Warn
     }
 }
 
@@ -339,8 +446,8 @@ fn bad_vec_push_back_in_while_loop() {
 }
 
 fn good_single_append_outside_loop() {
-    let mut bytes = Bytes;
-    bytes.append(&Bytes); // Good - single append outside loop
+    let mut bytes = Bytes(vec![]);
+    bytes.append(&Bytes(vec![])); // Good - single append outside loop
 }
 
 fn main() {}

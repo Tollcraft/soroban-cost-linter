@@ -17,9 +17,11 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 
 ## Storage Operations
 
-| Lint | Default Severity | Confidence / Impact | Catches |
-|---|---|---|---|
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `deny` | High Confidence, High Impact | Storage reads/writes inside loop bodies |
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
+| [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
 
 ## CPU/Compute
 
@@ -29,10 +31,11 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 
 ## Memory
 
-| Lint | Default Severity | Confidence / Impact | Catches |
-|---|---|---|---|
-| [`redundant_env_clone`](redundant_env_clone.md) | `warn` | Medium Impact | Unnecessary `.clone()` calls on `Env` |
-| [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | Medium Impact, Context-Dependent | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
+| [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
+| [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
 
 ## Symbol Operations
 
