@@ -106,6 +106,23 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |
    = help: call this function outside the loop and reuse the result
 
+warning: event emission inside a loop
+  --> $DIR/main.rs:253:9
+   |
+LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate events in memory and publish them once after the loop
+   = note: `#[warn(event_in_loop)]` on by default
+
+warning: event emission inside a loop
+  --> $DIR/main.rs:253:9
+   |
+LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
+   |         ^^^^^^^^^^^^
+   |
+   = help: accumulate events in memory and publish them once after the loop
+
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:318:16
    |
@@ -185,5 +202,5 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 23 warnings emitted
+warning: 25 warnings emitted
 
