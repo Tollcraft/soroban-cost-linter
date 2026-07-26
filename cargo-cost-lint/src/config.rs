@@ -56,7 +56,10 @@ soroban_storage_in_loop = "deny"
         );
         let config = Config::from_file_or_default(&path);
         let lints = config.lints.expect("lints should be present");
-        assert_eq!(lints.get("soroban_storage_in_loop").map(|s| s.as_str()), Some("deny"));
+        assert_eq!(
+            lints.get("soroban_storage_in_loop").map(|s| s.as_str()),
+            Some("deny")
+        );
     }
 
     #[test]

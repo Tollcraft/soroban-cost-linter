@@ -337,8 +337,7 @@ fn main() {
     if cli.format == OutputFormat::Sarif {
         let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
         let mut rules: Vec<serde_json::Value> = Vec::new();
-        let mut seen_rules: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut sarif_results: Vec<serde_json::Value> = Vec::new();
 
         for finding in &findings {
