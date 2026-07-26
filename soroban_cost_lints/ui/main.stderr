@@ -186,3 +186,4 @@ LL |         v.push_back(i); // Should Warn
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: 23 warnings emitted
+
