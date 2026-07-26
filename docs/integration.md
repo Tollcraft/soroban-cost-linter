@@ -57,86 +57,60 @@ See the [Lint Reference](lints/) for what each lint catches and its default seve
 - If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
 - If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
 
-## Editor Integration
+## Editor / IDE Integration
 
-### VS Code with rust-analyzer
+`soroban-cost-linter` can surface lint warnings directly in your editor through **rust-analyzer**'s check override mechanism. This works in any editor that supports rust-analyzer (VS Code, Zed, Helix, Neovim, etc.).
 
-The linter provides inline diagnostics in VS Code by configuring rust-analyzer to use `cargo cost-lint` as its check command.
+{% hint style="info" %}
+**Prerequisites:** You must have `cargo-dylint`, `dylint-link`, and `cargo-cost-lint` [installed](../README.md#installation) before configuring IDE integration.
+{% endhint %}
 
-#### `settings.json`
+### How it works
 
-Add the following to your VS Code workspace or user settings:
+rust-analyzer runs `cargo check` by default to provide real-time diagnostics. By overriding the check command to use `cargo dylint` with the `soroban_cost_lints` library, the linter's output is parsed and displayed as standard warnings and errors right in your editor's problem panel. This mirrors the same `cargo dylint` invocation that `cargo cost-lint` uses internally.
 
-```json
-{
-  "rust-analyzer.check.overrideCommand": [
-    "cargo",
-    "cost-lint",
-    "--all-diagnostics"
-  ]
-}
-```
+### VS Code setup
 
-#### How it works
-
-- This replaces rust-analyzer's normal `cargo check` invocation with `cargo cost-lint --all-diagnostics`.
-- The `--all-diagnostics` flag ensures both regular compiler diagnostics AND soroban cost-lint diagnostics appear inline.
-- Diagnostics use the standard rustc format, so errors show as red squiggles and warnings as yellow squiggles.
-- Deny-level lints (e.g. `soroban_storage_in_loop`) appear as errors.
-- The command is run in the background whenever you modify a file.
-
-#### Example
-
-After configuration, a storage operation inside a loop will show an inline error:
-
-```rust
-for item in items {
-    env.storage().instance().set(&item, &1);
-    // ^^^ error: storage operation inside a loop
-}
-```
-
-#### Requirements
-
-- `cargo-dylint` and `dylint-link` must be installed and on `$PATH`.
-- `cargo-cost-lint` must be installed from the same Soroban nightly toolchain used in your project.
-- The first invocation builds the lint library, which may take a minute. Subsequent runs are cached.
-
-#### Limitations
-
-- `cargo cost-lint` replaces `cargo check` entirely. You will still see all regular compile errors and warnings, but the invocation path is different.
-- `budget.toml` lint-level overrides are applied by the CLI wrapper and work the same as in terminal mode.
-- The lint library must be compiled for the exact nightly toolchain your project uses. A mismatch produces a link error.
-
-#### Troubleshooting
-
-| Symptom | Likely Cause | Fix |
-|---|---|---|
-| No diagnostics appear | `cargo-dylint` or `dylint-link` not installed | Run `cargo install cargo-dylint dylint-link --version "^6.0.1"` |
-| Lint diagnostics appear but regular errors don't | `--all-diagnostics` flag is missing | Add `"--all-diagnostics"` to `overrideCommand` |
-| `error: no such command: dylint` | `cargo-dylint` not in `$PATH` | Install dylint and restart rust-analyzer |
-| Link errors about mismatched toolchain | Nightly toolchain mismatch | Ensure `rust-toolchain` matches the installed `cargo-cost-lint` |
-| Diagnostics are stale | rust-analyzer cache | Run "Rust Analyzer: Restart Server" from the command palette |
-
-#### Disabling the Integration
-
-To revert to normal `cargo check` behaviour, remove the `overrideCommand` setting from your VS Code configuration:
+Add the following to your workspace's `.vscode/settings.json`:
 
 ```json
 {
-  "rust-analyzer.check.overrideCommand": null
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "dylint",
+        "--lib",
+        "soroban_cost_lints",
+        "--",
+        "--all-targets",
+        "--message-format=json"
+    ]
 }
 ```
 
-### Other Editors
+Once saved, rust-analyzer will restart its check process. Lint findings will appear in the **Problems** panel (Ctrl+Shift+M) with the same formatting shown in the [Usage](../README.md#usage) section.
 
-Any editor with rust-analyzer LSP support can use the same configuration:
+{% hint style="warning" %}
+Dylint-based IDE integration relies on `rust-analyzer.check.overrideCommand`, which replaces the default `cargo check` entirely. This is a stable rust-analyzer feature and is the approach [recommended by Dylint](https://github.com/trailofbits/dylint), but it is not tested against every editor and Rust toolchain combination. If you encounter issues, please [file a bug report](https://github.com/Tollcraft/soroban-cost-linter/issues/new?template=bug_report.yml).
+{% endhint %}
 
-- **Neovim** (rustaceanvim): Set `rust-analyzer.check.overrideCommand` in your LSP settings.
-- **Helix**: Set `check.overrideCommand` in `.helix/languages.toml`.
-- **Emacs** (eglot): Pass the same settings via `lsp-register-client` or `eglot-workspace-configuration`.
+### Other editors
 
-The principle is the same: point the check command at `cargo cost-lint --all-diagnostics`.
+Any editor that uses rust-analyzer can apply the same override. Consult your editor's rust-analyzer configuration documentation for equivalent settings:
+
+- **Zed:** `"lsp": { "rust-analyzer": { "check": { "overrideCommand": [...] } } }` in your project settings
+- **Helix:** `[language-server.rust-analyzer.config.check]` in `languages.toml`
+- **Neovim (lspconfig):** `settings = { ["rust-analyzer"] = { check = { overrideCommand = {...} } } }`
+
+### Performance considerations
+
+{% hint style="warning" %}
+Running `cargo dylint` on every save is **slower** than the default `cargo check`, because it loads and executes dynamic lint libraries in addition to the compiler's normal analysis pass. For most Soroban projects the overhead is modest, but it scales with project size.
+{% endhint %}
+
+If the performance overhead is too high for daily development, consider these alternatives:
+
+- **On-demand only:** Remove the override from your workspace settings and run `cargo cost-lint` manually in a terminal when you want lint feedback.
+- **CI-only:** Keep the linter in your [GitHub Actions](#github-actions) pipeline and rely on PR checks for enforcement.
 
 ## GitHub Actions
 
