@@ -14,13 +14,10 @@ impl Config {
         if !path.exists() {
             return Config::default();
         }
-        match fs::read_to_string(path) {
-            Ok(content) => match toml::from_str::<Config>(&content) {
-                Ok(config) => config,
-                Err(_) => Config::default(),
-            },
-            Err(_) => Config::default(),
-        }
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|content| toml::from_str::<Config>(&content).ok())
+            .unwrap_or_default()
     }
 }
 

@@ -49,7 +49,7 @@ struct SarifReport {
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
-    results: Vec<SarifResult>,
+    results: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -61,49 +61,8 @@ struct SarifTool {
 struct SarifToolDriver {
     name: String,
     version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    informationUri: Option<String>,
-}
-
-#[derive(Serialize)]
-struct SarifResult {
-    ruleId: String,
-    level: String,
-    message: SarifMessage,
-    locations: Vec<SarifLocation>,
-}
-
-#[derive(Serialize)]
-struct SarifMessage {
-    text: String,
-}
-
-#[derive(Serialize)]
-struct SarifLocation {
-    physicalLocation: SarifPhysicalLocation,
-}
-
-#[derive(Serialize)]
-struct SarifPhysicalLocation {
-    artifactLocation: SarifArtifactLocation,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    region: Option<SarifRegion>,
-}
-
-#[derive(Serialize)]
-struct SarifArtifactLocation {
-    uri: String,
-}
-
-#[derive(Serialize)]
-struct SarifRegion {
-    startLine: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    startColumn: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endLine: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endColumn: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "informationUri")]
+    information_uri: Option<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -387,7 +346,7 @@ fn main() {
                     driver: SarifToolDriver {
                         name: "cargo-cost-lint".to_string(),
                         version: package_version.to_string(),
-                        informationUri: Some(
+                        information_uri: Some(
                             "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
                         ),
                     },
