@@ -290,6 +290,13 @@ fn bad_current_contract_address_in_loop(env: Env) {
     }
 }
 
+fn bad_host_call_in_iterator_closure(env: Env) {
+    let items = [1u32, 2, 3];
+    items.iter().for_each(|_| {
+        let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+    });
+}
+
 fn good_events_publish_of_loop_value(env: Env) {
     for i in 0..10 {
         env.events().publish((i,), i); // Good — publishes the value of this iteration

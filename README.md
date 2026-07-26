@@ -94,6 +94,35 @@ LL |         env.storage().instance().set(&i, &1);
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[warn(soroban_storage_in_loop)]` on by default
+```
+
+#### Output format
+
+Use `--format` to choose the output format:
+
+| Format  | Description                                                  |
+| ------- | ------------------------------------------------------------ |
+| `text`  | Human-readable console output (default)                      |
+| `json`  | One JSON object per line, suitable for programmatic parsing  |
+| `sarif` | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+
+Example — generate SARIF output for GitHub Advanced Security:
+
+```bash
+cargo cost-lint --format sarif > results.sarif
+```
+
+The SARIF file can then be uploaded to GitHub or integrated into your CI pipeline to annotate PR diffs with line-specific warnings.
+
+```text
+warning: storage operation inside a loop
+  --> src/lib.rs:12:9
+   |
+LL |         env.storage().instance().set(&i, &1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: unnecessary host function call inside loop
   --> src/lib.rs:20:20
@@ -214,7 +243,7 @@ When `--fix` is passed, the tool applies all `MachineApplicable` suggestions in-
 
 ### Configuration (`budget.toml`)
 
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
+You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. To apply that file, pass it explicitly with `--config` — see the next subsection. Without `--config`, the lints run at their declared default levels (`warn`):
 
 ```toml
 [lints]
@@ -227,6 +256,23 @@ inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
 
 ```
+
+#### Pointing `cargo cost-lint` at a config — the `--config` flag
+
+`cargo cost-lint` accepts a single `--config <PATH>` option. When the flag is omitted, **no config file is loaded** — the lints fall back to their rustc-declared default level (currently `warn` for all shipped lints). Today `--config` is the **only** way to apply a `budget.toml`: the tool does not auto-discover a workspace-root config.
+
+To point the tool at a `budget.toml` that lives next to your code (or anywhere reachable), pass the path:
+
+```bash
+# relative path — resolved against the directory you run cargo cost-lint from
+cargo cost-lint --config ./configs/strict.budget.toml
+
+# absolute path — bypasses any workspace search
+cargo cost-lint --config /abs/path/to/budget.toml
+```
+
+Unknown lint names or invalid levels fail validation identically whether the config comes from this flag or any other path.
+
 
 ## Contributing
 
