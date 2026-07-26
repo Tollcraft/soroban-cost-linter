@@ -1,3 +1,9 @@
+# This is the easiest way to add Soroban cost linting to your CI.
+# Add this file to .github/workflows/cost-lint.yml in your Soroban workspace.
+#
+# For advanced usage (custom config, extra args, monorepo subdirectory), see:
+# https://tollcraft.gitbook.io/docs
+
 name: Soroban Cost Lint
 
 on: [push, pull_request]
@@ -7,22 +13,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          # Keep this toolchain pin in sync with the soroban-cost-linter release you install
-          toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
-      - name: Install soroban-cost-linter
-        run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-      - name: Run Cost Linter
-        run: cargo cost-lint
-        
-      # Example: Run in JSON mode and create inline PR annotations
-      # - name: Run Cost Linter (JSON)
-      #   run: |
-      #     cargo cost-lint --format json | jq -r '
-      #       . | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"
-      #     '
+      - uses: Tollcraft/soroban-cost-linter@v1

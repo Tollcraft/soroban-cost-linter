@@ -97,7 +97,7 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 
 1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-05-01`).
 2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `rustup` branch on that date, and update the `rev` field in `soroban_cost_lints/Cargo.toml`.
-3. Update `.github/workflows/lint.yml`, `templates/github-action.yml`, and `docs/integration.md` with the new nightly date.
+3. Update `.github/workflows/lint.yml`, `action.yml` (the `toolchain` input default), and `docs/integration.md` with the new nightly date.
 4. Run the drift guard to confirm everything agrees:
    ```bash
    bash .github/scripts/validate-toolchain-pins.sh

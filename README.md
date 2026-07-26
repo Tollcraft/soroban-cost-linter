@@ -42,7 +42,21 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ## Getting Started
 
-### Prerequisites
+### GitHub Actions (recommended)
+
+The easiest way to add cost linting to CI is a single `uses:` line:
+
+```yaml
+- uses: Tollcraft/soroban-cost-linter@v1
+```
+
+This installs the correct Rust nightly, Dylint, and the linter — then runs `cargo cost-lint`. A `deny`-level finding fails the job.
+
+See the [Integration Guide](docs/integration.md) for all configuration options.
+
+### Local Installation
+
+#### Prerequisites
 
 Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
@@ -50,13 +64,10 @@ Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint
 cargo install cargo-dylint dylint-link --version "^6.0.1"
 ```
 
-### Installation
-
-Add the linter to your Soroban workspace:
+#### Install the CLI
 
 ```bash
 cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-
 ```
 
 ## Quick Start
