@@ -6,8 +6,7 @@
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
   </p>
   <p>
-    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
-    <a href="https://asciinema.org/a/1DpqHMqqOOXoZzMI"><strong>Demo</strong></a>
+    <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a>
   </p>
 </div>
 
@@ -137,7 +136,8 @@ warning: redundant clone on Env object
    |
 LL |     let _cloned = env.clone();
    |                   ^^^^^^^^^^^
-   = help: pass Env by reference or value instead of cloning
+   |
+   = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 ```
 
@@ -243,7 +243,7 @@ When `--fix` is passed, the tool applies all `MachineApplicable` suggestions in-
 
 ### Configuration (`budget.toml`)
 
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. To apply that file, pass it explicitly with `--config` — see the next subsection. Without `--config`, the lints run at their declared default levels (`warn`):
+You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. To apply that file, pass it explicitly with `--config` — see the next subsection. Without `--config`, no config file is loaded — the lints fall back to their rustc-declared default level (currently `warn` for all shipped lints):
 
 ```toml
 [lints]
@@ -283,7 +283,7 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements. If you are writing your first custom Dylint lint, read the [How to add a new lint developer guide](DEVELOPING_LINTS.md) for a step-by-step walkthrough of lint registration, HIR matching, UI tests, and `clippy_utils`.
 
 ## Community
 
@@ -299,3 +299,6 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=Tollcraft/soroban-cost-linter)](https://github.com/Tollcraft/soroban-cost-linter/graphs/contributors)
+
+
+<!-- [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert). -->
