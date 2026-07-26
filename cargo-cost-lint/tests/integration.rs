@@ -134,8 +134,7 @@ fn test_cli_workspace_lints_all_contracts() {
         stderr_str
     );
 
-    let mut found_contracts: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut found_contracts: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in lines {
         let json: serde_json::Value =
@@ -147,10 +146,10 @@ fn test_cli_workspace_lints_all_contracts() {
 
         let file = json["file"].as_str().unwrap_or("");
         if file.contains("alpha") {
-            found_contracts.insert("alpha");
+            found_contracts.insert("alpha".to_string());
         }
         if file.contains("beta") {
-            found_contracts.insert("beta");
+            found_contracts.insert("beta".to_string());
         }
     }
 
@@ -209,7 +208,10 @@ fn test_sarif_output() {
         Some("https://json.schemastore.org/sarif-2.1.0")
     );
     assert_eq!(sarif.get("version").and_then(|v| v.as_str()), Some("2.1.0"));
-    let runs = sarif.get("runs").and_then(|r| r.as_array()).expect("Missing runs");
+    let runs = sarif
+        .get("runs")
+        .and_then(|r| r.as_array())
+        .expect("Missing runs");
     assert!(!runs.is_empty(), "SARIF runs should not be empty");
 
     let first_run = &runs[0];
@@ -238,10 +240,7 @@ fn test_sarif_output() {
             result.get("ruleId").is_some(),
             "SARIF result missing ruleId"
         );
-        assert!(
-            result.get("level").is_some(),
-            "SARIF result missing level"
-        );
+        assert!(result.get("level").is_some(), "SARIF result missing level");
         assert!(
             result.get("message").is_some(),
             "SARIF result missing message"

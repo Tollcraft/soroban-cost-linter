@@ -61,13 +61,14 @@ struct SarifTool {
 struct SarifToolDriver {
     name: String,
     version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    informationUri: Option<String>,
+    #[serde(rename = "informationUri", skip_serializing_if = "Option::is_none")]
+    information_uri: Option<String>,
 }
 
 #[derive(Serialize)]
 struct SarifResult {
-    ruleId: String,
+    #[serde(rename = "ruleId")]
+    rule_id: String,
     level: String,
     message: SarifMessage,
     locations: Vec<SarifLocation>,
@@ -80,12 +81,14 @@ struct SarifMessage {
 
 #[derive(Serialize)]
 struct SarifLocation {
-    physicalLocation: SarifPhysicalLocation,
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Serialize)]
 struct SarifPhysicalLocation {
-    artifactLocation: SarifArtifactLocation,
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
     region: Option<SarifRegion>,
 }
@@ -97,13 +100,14 @@ struct SarifArtifactLocation {
 
 #[derive(Serialize)]
 struct SarifRegion {
-    startLine: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    startColumn: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endLine: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endColumn: Option<usize>,
+    #[serde(rename = "startLine")]
+    start_line: usize,
+    #[serde(rename = "startColumn", skip_serializing_if = "Option::is_none")]
+    start_column: Option<usize>,
+    #[serde(rename = "endLine", skip_serializing_if = "Option::is_none")]
+    end_line: Option<usize>,
+    #[serde(rename = "endColumn", skip_serializing_if = "Option::is_none")]
+    end_column: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -351,9 +355,8 @@ fn main() {
     if cli.format == OutputFormat::Sarif {
         let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
         let mut rules: Vec<serde_json::Value> = Vec::new();
-        let mut seen_rules: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
 
         for finding in &findings {
             if seen_rules.insert(finding.name.clone()) {
@@ -369,29 +372,31 @@ fn main() {
             };
 
             let region = if finding.span.line_start > 0 {
-                Some(serde_json::json!({
-                    "startLine": finding.span.line_start,
-                    "startColumn": finding.span.column_start,
-                    "endLine": finding.span.line_end,
-                    "endColumn": finding.span.column_end,
-                }))
+                Some(SarifRegion {
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
+                })
             } else {
                 None
             };
 
-            let physical_location = serde_json::json!({
-                "artifactLocation": { "uri": finding.file },
-                "region": region,
+            sarif_results.push(SarifResult {
+                rule_id: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
             });
-
-            sarif_results.push(serde_json::json!({
-                "ruleId": finding.name,
-                "level": level,
-                "message": { "text": finding.message },
-                "locations": [
-                    { "physicalLocation": physical_location }
-                ],
-            }));
         }
 
         let sarif = SarifReport {
@@ -402,7 +407,7 @@ fn main() {
                     driver: SarifToolDriver {
                         name: "cargo-cost-lint".to_string(),
                         version: package_version.to_string(),
-                        informationUri: Some(
+                        information_uri: Some(
                             "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
                         ),
                     },
