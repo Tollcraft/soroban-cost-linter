@@ -1,16 +1,20 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 
+mod config;
+use config::Config;
+
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Text,
     Json,
+    Sarif,
 }
 
 #[derive(Serialize, Debug)]
@@ -34,6 +38,74 @@ struct LintFinding {
     suggestion: Option<String>,
 }
 
+#[derive(Serialize)]
+struct SarifReport {
+    #[serde(rename = "$schema")]
+    schema: String,
+    version: String,
+    runs: Vec<SarifRun>,
+}
+
+#[derive(Serialize)]
+struct SarifRun {
+    tool: SarifTool,
+    results: Vec<SarifResult>,
+}
+
+#[derive(Serialize)]
+struct SarifTool {
+    driver: SarifToolDriver,
+}
+
+#[derive(Serialize)]
+struct SarifToolDriver {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    informationUri: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SarifResult {
+    ruleId: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct SarifLocation {
+    physicalLocation: SarifPhysicalLocation,
+}
+
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    artifactLocation: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+#[derive(Serialize)]
+struct SarifRegion {
+    startLine: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    startColumn: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endLine: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endColumn: Option<usize>,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
@@ -53,14 +125,6 @@ struct Cli {
                 Useful when using cargo cost-lint as a rust-analyzer check command."
     )]
     all_diagnostics: bool,
-}
-
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -111,14 +175,7 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
-            }
-        }
+        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let mut cmd = Command::new("cargo");
@@ -266,6 +323,12 @@ fn main() {
                                     if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
                                     }
+                                } else if cli.format != OutputFormat::Sarif {
+                                    let rendered = message
+                                        .get("rendered")
+                                        .and_then(|r| r.as_str())
+                                        .unwrap_or(msg_text);
+                                    print!("{}", rendered);
                                 }
                             } else if cli.format != OutputFormat::Json {
                                 let rendered = message
@@ -283,6 +346,74 @@ fn main() {
 
     if cli.fix {
         apply_fixes(&findings);
+    }
+
+    if cli.format == OutputFormat::Sarif {
+        let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+        let mut rules: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+
+        for finding in &findings {
+            if seen_rules.insert(finding.name.clone()) {
+                rules.push(serde_json::json!({
+                    "id": finding.name,
+                    "shortDescription": { "text": finding.message }
+                }));
+            }
+
+            let level = match finding.level.as_str() {
+                "error" | "deny" => "error",
+                _ => "warning",
+            };
+
+            let region = if finding.span.line_start > 0 {
+                Some(serde_json::json!({
+                    "startLine": finding.span.line_start,
+                    "startColumn": finding.span.column_start,
+                    "endLine": finding.span.line_end,
+                    "endColumn": finding.span.column_end,
+                }))
+            } else {
+                None
+            };
+
+            let physical_location = serde_json::json!({
+                "artifactLocation": { "uri": finding.file },
+                "region": region,
+            });
+
+            sarif_results.push(serde_json::json!({
+                "ruleId": finding.name,
+                "level": level,
+                "message": { "text": finding.message },
+                "locations": [
+                    { "physicalLocation": physical_location }
+                ],
+            }));
+        }
+
+        let sarif = SarifReport {
+            schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifToolDriver {
+                        name: "cargo-cost-lint".to_string(),
+                        version: package_version.to_string(),
+                        informationUri: Some(
+                            "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
+                        ),
+                    },
+                },
+                results: sarif_results,
+            }],
+        };
+
+        if let Ok(sarif_json) = serde_json::to_string_pretty(&sarif) {
+            println!("{}", sarif_json);
+        }
     }
 
     let status = child.wait().expect("Failed to wait on cargo dylint");
