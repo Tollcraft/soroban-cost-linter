@@ -147,7 +147,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    = help: call this function outside the loop and reuse the result
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:274:16
+  --> $DIR/main.rs:306:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -155,19 +155,19 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:278:16
+  --> $DIR/main.rs:310:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:286:16
+  --> $DIR/main.rs:318:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:316:30
+  --> $DIR/main.rs:348:30
    |
 LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
    |                              ^^^^^^^^^^^^^^^^
@@ -175,7 +175,7 @@ LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior 
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: inefficient bytes concatenation in a loop
-  --> $DIR/main.rs:341:18
+  --> $DIR/main.rs:373:18
    |
 LL |         result = result + Bytes::from("x"); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -184,7 +184,7 @@ LL |         result = result + Bytes::from("x"); // Should Warn
    = note: `#[warn(inefficient_bytes_concat)]` on by default
 
 warning: Map::insert inside a loop is expensive
-  --> $DIR/main.rs:368:9
+  --> $DIR/main.rs:400:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -193,7 +193,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(map_insert_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:368:9
+  --> $DIR/main.rs:400:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -202,7 +202,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:384:9
+  --> $DIR/main.rs:416:9
    |
 LL |         map.insert(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^
@@ -210,7 +210,7 @@ LL |         map.insert(&i, &1); // Good (allowed)
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:395:9
+  --> $DIR/main.rs:427:9
    |
 LL |         bytes.append(&Bytes(vec![])); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -218,12 +218,12 @@ LL |         bytes.append(&Bytes(vec![])); // Should Warn
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:403:9
+  --> $DIR/main.rs:435:9
    |
 LL |         v.push_back(i); // Should Warn
    |         ^^^^^^^^^^^^^^
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 27 warnings emitted
+warning: 28 warnings emitted
 
