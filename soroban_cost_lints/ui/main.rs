@@ -107,28 +107,38 @@ pub mod soroban_sdk {
         }
     }
 
-    pub struct Symbol;
-    impl Symbol {
-        pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
-    }
-
-    pub struct Bytes(pub Vec<u8>);
+    // Tuple struct so `Bytes::from(_s)` and `Bytes(buf)` (HEAD's ineffective_bytes_concat) still work.
+    // Also has `append` to support upstream's bytes_append_in_loop fixtures.
+    pub struct Bytes(pub std::vec::Vec<u8>);
     impl Bytes {
         pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
+        pub fn append(&mut self, _other: &Bytes) {}
     }
     impl std::ops::Add for Bytes {
         type Output = Bytes;
         fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
     }
 
+    // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
+    pub struct Vec;
+    impl Vec {
+        pub fn push_back(&mut self, _v: i32) {}
+    }
+
+    // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
     pub struct Map;
     impl Map {
         pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
         pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
     }
+
+    pub struct Symbol;
+    impl Symbol {
+        pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
+    }
 }
 
-use soroban_sdk::{Bytes, Env, Map, Symbol};
+use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -333,7 +343,7 @@ fn bad_inefficient_bytes_concat(env: Env) {
 }
 
 fn good_efficient_bytes_concat(env: Env) {
-    let mut buf = Vec::new();
+    let mut buf: std::vec::Vec<u8> = std::vec::Vec::new();
     for _ in 0..10 {
         buf.extend_from_slice(b"x"); // Good — aggregate in Vec first
     }
@@ -373,6 +383,31 @@ fn allowed_map_insert_in_loop(env: Env) {
     for i in 0..10 {
         map.insert(&i, &1); // Good (allowed)
     }
+}
+
+// =======================================================================
+// bytes_append_in_loop — Fixtures
+// =======================================================================
+
+fn bad_bytes_append_in_for_loop() {
+    let mut bytes = Bytes(vec![]);
+    for _ in 0..10 {
+        bytes.append(&Bytes(vec![])); // Should Warn
+    }
+}
+
+fn bad_vec_push_back_in_while_loop() {
+    let mut v = Vec;
+    let mut i = 0;
+    while i < 10 {
+        v.push_back(i); // Should Warn
+        i += 1;
+    }
+}
+
+fn good_single_append_outside_loop() {
+    let mut bytes = Bytes(vec![]);
+    bytes.append(&Bytes(vec![])); // Good - single append outside loop
 }
 
 fn main() {}
