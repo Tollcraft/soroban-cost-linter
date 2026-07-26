@@ -8,5 +8,11 @@ exclude = [
     "tests/corpus/contracts/token",
     "tests/corpus/contracts/timelock",
     "tests/corpus/contracts/swap",
+    "tests/corpus/contracts/storage_iter_simple",
+    "tests/corpus/contracts/storage_iter_nested",
+    "tests/corpus/contracts/storage_iter_while",
+    "tests/corpus/contracts/storage_iter_closure",
+    "tests/corpus/contracts/storage_iter_good",
+    "tests/corpus/contracts/storage_iter_mixed",
 ]
 resolver = "2"
