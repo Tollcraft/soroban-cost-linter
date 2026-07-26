@@ -8,44 +8,12 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:144:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:144:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
   --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:151:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:151:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:158:12
@@ -53,23 +21,7 @@ warning: storage operation inside a loop
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:158:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:158:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:180:19
@@ -113,8 +65,16 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    |
    = help: call this function outside the loop and reuse the result
 
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:254:20
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:269:16
+  --> $DIR/main.rs:276:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -122,19 +82,19 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:273:16
+  --> $DIR/main.rs:280:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:281:16
+  --> $DIR/main.rs:288:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:313:9
+  --> $DIR/main.rs:320:9
    |
 LL |         bytes.append(&Bytes); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^
@@ -143,12 +103,11 @@ LL |         bytes.append(&Bytes); // Should Warn
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:321:9
+  --> $DIR/main.rs:328:9
    |
 LL |         v.push_back(i); // Should Warn
    |         ^^^^^^^^^^^^^^
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 19 warnings emitted
-
+warning: 14 warnings emitted

@@ -4,11 +4,23 @@
 
 ## Local Configuration (`budget.toml`)
 
-Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
+Create a `budget.toml` file to adjust lint severities, then point `cargo cost-lint` at it with `--config`. Today the only way to apply a config is to pass `--config <PATH>` explicitly — the tool does **not** automatically walk up to a workspace-root `budget.toml`. When `--config` is omitted, every lint runs at its declared default level (currently `warn` for all shipped lints).
 
-The tool locates `budget.toml` by walking up from the current directory until it finds a `Cargo.toml` containing a `[workspace]` section, then looks for `budget.toml` in that directory. This means running `cargo cost-lint` from any member crate produces the same lint levels as running it from the workspace root.
+The `--config` flag accepts a single path (relative or absolute). A relative path is resolved against the directory you run `cargo cost-lint` from; an absolute path is used verbatim.
 
-You can also pass an explicit path with `--config <PATH>`, which is used verbatim relative to the current directory.
+**Example — config in a subdirectory:**
+
+```bash
+cargo cost-lint --config ./configs/strict.budget.toml
+```
+
+**Example — config at an absolute path:**
+
+```bash
+cargo cost-lint --config /etc/soroban-cost-linter/budget.toml
+```
+
+`budget.toml` may live anywhere on disk; this flag is the single supported way to point the tool at it. The path you pass goes through the same `BudgetConfig` parser regardless of location, so unknown lint names or invalid levels fail validation identically.
 
 {% code title="budget.toml" %}
 ```toml

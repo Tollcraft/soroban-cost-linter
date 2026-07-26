@@ -199,7 +199,7 @@ fn deliberate_storage_loop(env: Env) {
 
 ### Configuration (`budget.toml`)
 
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
+You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. To apply that file, pass it explicitly with `--config` — see the next subsection. Without `--config`, the lints run at their declared default levels (`warn`):
 
 ```toml
 [lints]
@@ -209,6 +209,23 @@ redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
 
 ```
+
+#### Pointing `cargo cost-lint` at a config — the `--config` flag
+
+`cargo cost-lint` accepts a single `--config <PATH>` option. When the flag is omitted, **no config file is loaded** — the lints fall back to their rustc-declared default level (currently `warn` for all shipped lints). Today `--config` is the **only** way to apply a `budget.toml`: the tool does not auto-discover a workspace-root config.
+
+To point the tool at a `budget.toml` that lives next to your code (or anywhere reachable), pass the path:
+
+```bash
+# relative path — resolved against the directory you run cargo cost-lint from
+cargo cost-lint --config ./configs/strict.budget.toml
+
+# absolute path — bypasses any workspace search
+cargo cost-lint --config /abs/path/to/budget.toml
+```
+
+Unknown lint names or invalid levels fail validation identically whether the config comes from this flag or any other path.
+
 
 ## Contributing
 
