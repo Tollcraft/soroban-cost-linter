@@ -1,16 +1,20 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 
+mod config;
+use config::Config;
+
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Text,
     Json,
+    Sarif,
 }
 
 #[derive(Serialize, Debug)]
@@ -30,6 +34,76 @@ struct LintFinding {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     help: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SarifReport {
+    #[serde(rename = "$schema")]
+    schema: String,
+    version: String,
+    runs: Vec<SarifRun>,
+}
+
+#[derive(Serialize)]
+struct SarifRun {
+    tool: SarifTool,
+    results: Vec<SarifResult>,
+}
+
+#[derive(Serialize)]
+struct SarifTool {
+    driver: SarifToolDriver,
+}
+
+#[derive(Serialize)]
+struct SarifToolDriver {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    informationUri: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SarifResult {
+    ruleId: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct SarifLocation {
+    physicalLocation: SarifPhysicalLocation,
+}
+
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    artifactLocation: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+#[derive(Serialize)]
+struct SarifRegion {
+    startLine: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    startColumn: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endLine: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endColumn: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -41,14 +115,9 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
-}
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
+    #[arg(long, help = "Automatically apply fixable lint suggestions")]
+    fix: bool,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -99,14 +168,7 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
-            }
-        }
+        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let mut cmd = Command::new("cargo");
@@ -141,6 +203,8 @@ fn main() {
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
+
+    let mut findings: Vec<LintFinding> = Vec::new();
 
     for line_str in reader.lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
@@ -211,37 +275,47 @@ fn main() {
                                     highest_exit_code = 1;
                                 }
 
-                                if cli.format == OutputFormat::Json {
-                                    let mut help_text = None;
-                                    if let Some(children) =
-                                        message.get("children").and_then(|c| c.as_array())
-                                    {
-                                        for child_item in children {
-                                            if child_item.get("level").and_then(|l| l.as_str())
-                                                == Some("help")
-                                            {
-                                                help_text = child_item
-                                                    .get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .map(|s| s.to_string());
-                                                break;
+                                let mut help_text = None;
+                                let mut suggestion = None;
+                                if let Some(children) =
+                                    message.get("children").and_then(|c| c.as_array())
+                                {
+                                    for child_item in children {
+                                        if child_item.get("level").and_then(|l| l.as_str())
+                                            == Some("help")
+                                        {
+                                            let child_msg = child_item
+                                                .get("message")
+                                                .and_then(|m| m.as_str())
+                                                .map(|s| s.to_string());
+                                            help_text = child_msg.clone();
+                                            if cli.fix {
+                                                suggestion =
+                                                    extract_suggestion(&child_msg, lint_name);
                                             }
+                                            break;
                                         }
                                     }
+                                }
 
-                                    let finding = LintFinding {
-                                        name: lint_name.to_string(),
-                                        level: level.to_string(),
-                                        file,
-                                        span: span_obj,
-                                        message: msg_text.to_string(),
-                                        help: help_text,
-                                    };
+                                let finding = LintFinding {
+                                    name: lint_name.to_string(),
+                                    level: level.to_string(),
+                                    file: file.clone(),
+                                    span: span_obj,
+                                    message: msg_text.to_string(),
+                                    help: help_text,
+                                    suggestion,
+                                };
 
-                                    if let Ok(json_str) = serde_json::to_string(&finding) {
+                                findings.push(finding);
+
+                                if cli.format == OutputFormat::Json {
+                                    let finding_json = findings.last().unwrap();
+                                    if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
                                     }
-                                } else {
+                                } else if cli.format != OutputFormat::Sarif {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
@@ -256,11 +330,139 @@ fn main() {
         }
     }
 
+    if cli.fix {
+        apply_fixes(&findings);
+    }
+
+    if cli.format == OutputFormat::Sarif {
+        let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+        let mut rules: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+
+        for finding in &findings {
+            if seen_rules.insert(finding.name.clone()) {
+                rules.push(serde_json::json!({
+                    "id": finding.name,
+                    "shortDescription": { "text": finding.message }
+                }));
+            }
+
+            let level = match finding.level.as_str() {
+                "error" | "deny" => "error",
+                _ => "warning",
+            };
+
+            let region = if finding.span.line_start > 0 {
+                Some(serde_json::json!({
+                    "startLine": finding.span.line_start,
+                    "startColumn": finding.span.column_start,
+                    "endLine": finding.span.line_end,
+                    "endColumn": finding.span.column_end,
+                }))
+            } else {
+                None
+            };
+
+            let physical_location = serde_json::json!({
+                "artifactLocation": { "uri": finding.file },
+                "region": region,
+            });
+
+            sarif_results.push(serde_json::json!({
+                "ruleId": finding.name,
+                "level": level,
+                "message": { "text": finding.message },
+                "locations": [
+                    { "physicalLocation": physical_location }
+                ],
+            }));
+        }
+
+        let sarif = SarifReport {
+            schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifToolDriver {
+                        name: "cargo-cost-lint".to_string(),
+                        version: package_version.to_string(),
+                        informationUri: Some(
+                            "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
+                        ),
+                    },
+                },
+                results: sarif_results,
+            }],
+        };
+
+        if let Ok(sarif_json) = serde_json::to_string_pretty(&sarif) {
+            println!("{}", sarif_json);
+        }
+    }
+
     let status = child.wait().expect("Failed to wait on cargo dylint");
     if !status.success() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
         exit(highest_exit_code);
+    }
+}
+
+fn extract_suggestion(help: &Option<String>, lint_name: &str) -> Option<String> {
+    let help_text = help.as_ref()?;
+    match lint_name {
+        "symbol_new_for_short_literal" => {
+            if let Some(start) = help_text.find("symbol_short!(") {
+                let end = help_text[start..].find(')')? + start + 1;
+                Some(help_text[start..end].to_string())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn apply_fixes(findings: &[LintFinding]) {
+    let mut file_edits: std::collections::HashMap<String, Vec<(usize, String, String)>> =
+        std::collections::HashMap::new();
+
+    for finding in findings {
+        if let Some(ref suggestion) = finding.suggestion {
+            let file = finding.file.clone();
+            if file.is_empty() {
+                continue;
+            }
+            let line_idx = finding.span.line_start;
+            file_edits.entry(file).or_default().push((
+                line_idx,
+                finding.message.clone(),
+                suggestion.clone(),
+            ));
+        }
+    }
+
+    for (file_path, edits) in &file_edits {
+        if let Ok(content) = fs::read_to_string(file_path) {
+            let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+            for (line_idx, _message, suggestion) in edits {
+                if *line_idx > 0 && *line_idx <= lines.len() {
+                    let line = &mut lines[*line_idx - 1];
+                    if let Some(start) = line.find("Symbol::new") {
+                        if let Some(end) = line[start..].find(')') {
+                            let replace_end = start + end + 1;
+                            line.replace_range(start..replace_end, suggestion);
+                        }
+                    }
+                }
+            }
+            let new_content = lines.join("\n");
+            if let Err(e) = fs::write(file_path, new_content) {
+                eprintln!("Failed to write {}: {}", file_path, e);
+            }
+        }
     }
 }
 
