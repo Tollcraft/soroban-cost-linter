@@ -167,6 +167,32 @@ fn enclosing_loop<'tcx>(
     matches!(enclosing.kind, hir::ExprKind::Loop(..)).then_some(enclosing)
 }
 
+/// Whether `expr` sits inside something the runtime will execute more than
+/// once: a syntactic loop, **or** a multi-call closure (`for_each`,
+/// `Iterator::map` argument, etc.).
+///
+/// `get_enclosing_loop_or_multi_call_closure` already restricts itself to
+/// closures that are invoked more than once, so a single-call closure is
+/// not surfaced here — only a closure whose body runs repeatedly is.
+///
+/// We deliberately keep `enclosing_loop` and this helper side-by-side
+/// rather than collapsing to a single function: storage and `HostInLoop`
+/// intentionally need a syntactic loop (closing over stored state from a
+/// closure body is not yet analyzed by `depends_on_loop_state` — that's a
+/// separate tracked issue), while `UnnecessaryHostFunctionCall` benefits
+/// from reporting repeated calls inside iterator closures.
+fn enclosing_loop_or_closure<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    let enclosing = get_enclosing_loop_or_multi_call_closure(cx, expr)?;
+    matches!(
+        enclosing.kind,
+        hir::ExprKind::Loop(..) | hir::ExprKind::Closure(..)
+    )
+    .then_some(enclosing)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintCategory {
     StorageOperations,
@@ -255,26 +281,44 @@ rustc_session::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]
 impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
+            // Only fire on terminal storage operations (`get` / `has` /
+            // `set`). The intermediate calls — `env.storage()`,
+            // `.instance()` / `.persistent()` / `.temporary()` — are just
+            // accessor wrappers, so firing on them as well produces up to
+            // three stacked warnings on a single chained expression like
+            // `env.storage().instance().set(&k, &v)`. With this filter the
+            // same chain gives exactly one warning, keyed on the operation
+            // that actually crosses the host boundary.
+            let method_name = path_segment.ident.name.as_str();
+            let is_terminal_storage_op = matches!(method_name, "get" | "has" | "set");
 
-            let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                let did = adt_def.did();
-                matches_any_path(cx, did, SOROBAN_STORAGE_TYPES)
-                    || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
-                        && path_segment.ident.name.as_str() == "storage")
-            } else {
-                false
-            };
+            let is_storage_access = is_terminal_storage_op
+                && if let rustc_middle::ty::Adt(adt_def, _) =
+                    cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+                {
+                    matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                } else {
+                    false
+                };
 
             if is_storage_access && enclosing_loop(cx, expr).is_some() {
+                // Reads (`get`, `has`) and writes (`set`) deserve different
+                // advice: writes can be buffered and flushed once after the
+                // loop, but a loop-variant read cannot be accumulated — the
+                // user typically needs to hoist a loop-invariant read or
+                // batch where possible.
+                let help = if matches!(method_name, "get" | "has") {
+                    "if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible"
+                } else {
+                    "move storage operations out of the loop or accumulate mutations in memory first"
+                };
                 span_lint_and_help(
                     cx,
                     SOROBAN_STORAGE_IN_LOOP,
                     expr.span,
                     "storage operation inside a loop",
                     None,
-                    "move storage operations out of the loop or accumulate mutations in memory first",
+                    help,
                 );
             }
         }
@@ -366,8 +410,14 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
+            // Accept both syntactic loops (`for` / `while` / `loop`) and
+            // multi-call closures (the body of `Iterator::for_each`, ...).
+            // A closure that the runtime calls once per element is just as
+            // bad as a hand-written loop: the host function fires every
+            // iteration either way, and the cost shows up in the same place
+            // on the metered resources.
             if is_host_function
-                && let Some(loop_expr) = enclosing_loop(cx, expr)
+                && let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
                 && !depends_on_loop_state(cx, loop_expr, expr)
             {
                 span_lint_and_help(
