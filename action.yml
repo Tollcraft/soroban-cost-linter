@@ -39,6 +39,13 @@ runs:
       shell: bash
       run: cargo build --release --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
 
+    - name: Register lint library with dylint
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > /tmp/dylint-register.log 2>&1 || true
+        echo "dylint registration done ($(wc -l < /tmp/dylint-register.log) lines logged)"
+
     - name: Build CLI
       shell: bash
       run: cargo build --release --manifest-path "${{ github.action_path }}/cargo-cost-lint/Cargo.toml"
