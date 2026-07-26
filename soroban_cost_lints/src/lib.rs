@@ -414,6 +414,52 @@ fn is_valid_short_symbol(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+// =======================================================================
+// linear_scan_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub LINEAR_SCAN_IN_LOOP,
+    Warn,
+    "linear scan on collection inside a loop — O(n²) cost"
+}
+pub struct LinearScanInLoop;
+rustc_session::impl_lint_pass!(LinearScanInLoop => [LINEAR_SCAN_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for LinearScanInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if !LINEAR_SCAN_METHODS.contains(&method_name) {
+                return;
+            }
+
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_collection = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                matches_any_path(cx, adt_def.did(), SOROBAN_COLLECTION_TYPES)
+            } else {
+                false
+            };
+
+            if is_collection
+                && let Some(loop_expr) = enclosing_loop(cx, expr)
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
+                span_lint_and_help(
+                    cx,
+                    LINEAR_SCAN_IN_LOOP,
+                    expr.span,
+                    "linear scan on collection inside a loop — O(n²) cost",
+                    None,
+                    "consider building a Map lookup outside the loop for O(1) access",
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");

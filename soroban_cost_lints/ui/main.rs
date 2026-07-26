@@ -111,9 +111,26 @@ pub mod soroban_sdk {
     impl Symbol {
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
     }
+
+    pub mod vec {
+        pub struct Vec<T>(std::marker::PhantomData<T>);
+        impl<T> Vec<T> {
+            pub fn contains(&self, _item: &T) -> bool { false }
+            pub fn position(&self, _f: impl FnMut(&T) -> bool) -> Option<usize> { None }
+            pub fn find(&self, _f: impl FnMut(&T) -> bool) -> Option<&T> { None }
+        }
+    }
+
+    pub mod map {
+        pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
+        impl<K, V> Map<K, V> {
+            pub fn contains_key(&self, _k: &K) -> bool { false }
+            pub fn get(&self, _k: &K) -> Option<&V> { None }
+        }
+    }
 }
 
-use soroban_sdk::{Env, Symbol};
+use soroban_sdk::{Env, Symbol, vec::Vec, map::Map};
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -281,6 +298,33 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// linear_scan_in_loop — Fixtures
+// =======================================================================
+
+fn bad_linear_scan_in_for_loop(env: Env, items: Vec<i32>, target: i32) {
+    for _i in 0..10 {
+        let _found = items.contains(&target); // Should Warn — constant scan of same collection
+    }
+}
+
+fn good_linear_scan_with_loop_variable(env: Env, items: Vec<i32>) {
+    for item in 0..10 {
+        let _found = items.contains(&item); // Good — argument changes per iteration
+    }
+}
+
+fn good_no_loop_linear_scan(env: Env, items: Vec<i32>, target: i32) {
+    let _found = items.contains(&target); // Good — no loop
+}
+
+#[allow(linear_scan_in_loop)]
+fn allowed_linear_scan_in_loop(env: Env, items: Vec<i32>, target: i32) {
+    for _i in 0..10 {
+        let _found = items.contains(&target); // Good (allowed)
+    }
 }
 
 fn main() {}
