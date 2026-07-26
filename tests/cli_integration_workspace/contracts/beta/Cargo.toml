@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 soroban-sdk = "26"
 
-[workspace]
+
