@@ -4,11 +4,15 @@
 
 ## Local Configuration (`budget.toml`)
 
-Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
+Create a `budget.toml` file to adjust lint severities across your workspace.
 
-The tool locates `budget.toml` by walking up from the current directory until it finds a `Cargo.toml` containing a `[workspace]` section, then looks for `budget.toml` in that directory. This means running `cargo cost-lint` from any member crate produces the same lint levels as running it from the workspace root.
+Supply it via the `--config <PATH>` flag:
 
-You can also pass an explicit path with `--config <PATH>`, which is used verbatim relative to the current directory.
+```bash
+cargo cost-lint --config budget.toml
+```
+
+If the path does not exist or is not a valid TOML file, it is silently ignored.
 
 {% code title="budget.toml" %}
 ```toml
@@ -23,11 +27,57 @@ unnecessary_host_function_call = "warn"
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
-### Validation
+### Lint levels
 
-`cargo cost-lint` strictly validates your `budget.toml`:
-- If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
-- If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
+Each value must be one of the three standard Rust lint levels:
+
+| Level   | Behaviour                                              |
+|---------|--------------------------------------------------------|
+| `allow` | Suppress the lint entirely                             |
+| `warn`  | Produce a warning (default for all lints)              |
+| `deny`  | Produce a hard error — fails the build                 |
+
+A level that is not one of these three currently produces **no error**; the entry is silently skipped. (This will become a hard validation in a future release — see [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177).)
+
+### Lint names
+
+Each key under `[lints]` must match a lint name **exactly** as shown in the compiler output. The known names are:
+
+| Lint name                           | Default level |
+|-------------------------------------|---------------|
+| `soroban_storage_in_loop`           | `warn`        |
+| `redundant_env_clone`               | `warn`        |
+| `unnecessary_host_function_call`    | `warn`        |
+| `symbol_new_for_short_literal`      | `warn`        |
+
+A key that does not match one of these names currently produces **no error**; the entry is silently skipped. (Exhaustive validation against this list is tracked in [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177).)
+
+### How it reaches the compiler
+
+`cargo cost-lint` applies budget.toml levels by building a `DYLINT_RUSTFLAGS` string that it passes to `cargo dylint`. Dylint forwards these flags to `rustc` as `-A`/`-W`/`-D` directives.
+
+If `DYLINT_RUSTFLAGS` is already set in your shell environment, the tool **appends** to it instead of replacing it:
+
+```
+User env:    DYLINT_RUSTFLAGS=-Wsome_other_lint
+Tool adds:                      -A<soroban_storage_in_loop>
+Result:      DYLINT_RUSTFLAGS=-Wsome_other_lint -A<soroban_storage_in_loop>
+```
+
+### Precedence
+
+Rustc resolves the effective lint level in this order (highest priority first):
+
+1. `--force-warn` / `--cap-lints` (never set by this tool)
+2. `#[allow]` / `#[warn]` / `#[deny]` attributes in source code
+3. Compiler flags from `DYLINT_RUSTFLAGS` (the mechanism used by budget.toml)
+4. The lint's built-in default
+
+A `deny` in `budget.toml` raises the level from `warn` (the default) to `deny`. An `#[allow]` attribute on a function body suppresses a `warn`-level lint for that function just as it normally would — but a `deny` in `budget.toml` will cause that same function to fail, because `#[allow]` cannot override `-D`. Conversely, `allow` in budget.toml suppresses the lint everywhere, even overriding `#[deny]` in source code.
+
+### Current limitations
+
+- **The `[lints]` section is parsed but its contents are currently discarded.** The documentation above describes the *intended* design. Until the validation and flag-building logic is wired up (tracked in [#177](https://github.com/Tollcraft/soroban-cost-linter/issues/177)), budget.toml has no effect on the lint output. The file exists now so that users can set up the right file structure ahead of time; `cargo cost-lint --config budget.toml` will succeed but produce the same results as without it.
 
 ## GitHub Actions
 

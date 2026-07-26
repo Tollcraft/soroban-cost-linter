@@ -201,16 +201,22 @@ See the [Handling False Positives](docs/false_positives.md) guide for a comprehe
 
 ### Configuration (`budget.toml`)
 
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
+You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`:
 
 ```toml
 [lints]
-# Set to "warn", "deny", or "allow"
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
-
 ```
+
+Pass it with `--config <PATH>`:
+
+```bash
+cargo cost-lint --config budget.toml
+```
+
+See the [Integration Guide](docs/integration.md#local-configuration-budgettoml) for the full reference — accepted levels, exact name matching, `DYLINT_RUSTFLAGS` interaction, and precedence rules.
 
 ## Contributing
 
