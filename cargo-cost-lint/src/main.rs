@@ -1,11 +1,14 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
+
+mod config;
+use config::Config;
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
@@ -46,14 +49,6 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
-}
-
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -104,14 +99,7 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
-            }
-        }
+        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let mut cmd = Command::new("cargo");
