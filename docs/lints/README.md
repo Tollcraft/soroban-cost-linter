@@ -13,6 +13,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
 | [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
 | [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
+| [`nested_storage_collections`](nested_storage_collections.md)         | `warn`           | Storage values that nest one `Map`/`Vec` inside another |
 
 ## CPU/Compute
 

@@ -83,10 +83,50 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 /// buffer, causing increasingly expensive host-side work per call.
 const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
 
+/// Soroban SDK collection types that are generic over an element or value
+/// type, and so can themselves be nested one inside another. `Bytes` is
+/// deliberately absent: it is a leaf byte buffer, not generic over a
+/// contained type.
+const SOROBAN_NESTABLE_COLLECTION_TYPES: &[&[&str]] =
+    &[&["soroban_sdk", "Map"], &["soroban_sdk", "Vec"]];
+
 fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str]]) -> bool {
     paths
         .iter()
         .any(|segments| match_soroban_def_path(cx, def_id, segments))
+}
+
+/// Whether `ty`, after peeling references, is a [`SOROBAN_NESTABLE_COLLECTION_TYPES`]
+/// (`Map` or `Vec`).
+fn is_soroban_collection<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
+        matches_any_path(cx, adt_def.did(), SOROBAN_NESTABLE_COLLECTION_TYPES)
+    } else {
+        false
+    }
+}
+
+/// Whether `ty` is a Soroban `Map` or `Vec` that itself has another `Map` or
+/// `Vec` among its generic type arguments, e.g. `Map<K, Map<K2, V2>>` or
+/// `Vec<Map<K, V>>`.
+///
+/// Both generic positions are checked (not just the "value" slot) because a
+/// collection nested in the key position is exactly as expensive to
+/// deserialize on every access as one nested in the value position.
+fn has_nested_soroban_collection<'tcx>(
+    cx: &LateContext<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    let rustc_middle::ty::Adt(adt_def, generic_args) = ty.peel_refs().kind() else {
+        return false;
+    };
+    if !matches_any_path(cx, adt_def.did(), SOROBAN_NESTABLE_COLLECTION_TYPES) {
+        return false;
+    }
+    generic_args
+        .iter()
+        .filter_map(|arg| arg.as_type())
+        .any(|inner_ty| is_soroban_collection(cx, inner_ty))
 }
 
 /// Collects the `HirId`s of every binding introduced inside the visited
@@ -244,6 +284,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: BYTES_APPEND_IN_LOOP,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: NESTED_STORAGE_COLLECTIONS,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -258,6 +302,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INEFFICIENT_BYTES_CONCAT,
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
+        NESTED_STORAGE_COLLECTIONS,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
@@ -268,6 +313,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(NestedStorageCollections));
 }
 
 rustc_session::declare_lint! {
@@ -755,6 +801,58 @@ impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
                     "Map::insert inside a loop is expensive",
                     None,
                     "accumulate mutations in memory first and write once after the loop",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// nested_storage_collections — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub NESTED_STORAGE_COLLECTIONS,
+    Warn,
+    "storing a nested Soroban collection as a single storage value"
+}
+pub struct NestedStorageCollections;
+rustc_session::impl_lint_pass!(NestedStorageCollections => [NESTED_STORAGE_COLLECTIONS]);
+
+impl<'tcx> LateLintPass<'tcx> for NestedStorageCollections {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "set"
+            && args.len() >= 2
+        {
+            let is_storage = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+            {
+                matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+            } else {
+                false
+            };
+
+            if !is_storage {
+                return;
+            }
+
+            // Check both the key and the value: a collection nested in
+            // either position forces the host to deserialize and
+            // re-serialize the whole nested structure on every access.
+            let key_ty = cx.typeck_results().expr_ty(&args[0]);
+            let value_ty = cx.typeck_results().expr_ty(&args[1]);
+
+            if has_nested_soroban_collection(cx, key_ty)
+                || has_nested_soroban_collection(cx, value_ty)
+            {
+                span_lint_and_help(
+                    cx,
+                    NESTED_STORAGE_COLLECTIONS,
+                    expr.span,
+                    "storing a nested Soroban collection (`Map`/`Vec` inside another `Map`/`Vec`) as a single storage value",
+                    None,
+                    "flatten the data structure using a compound key (e.g. a tuple like `(Symbol, u32)`) instead of nesting collections",
                 );
             }
         }

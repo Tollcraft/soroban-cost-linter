@@ -119,19 +119,28 @@ pub mod soroban_sdk {
         fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
     }
 
-    // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
-    pub struct Vec;
-    impl Vec {
-        pub fn push_back(&mut self, _v: i32) {}
+    // Generic over an element type so nested_storage_collections can inspect
+    // it through the type's generic arguments; `push_back` stays independent
+    // of `T` so the existing bytes_append_in_loop fixtures keep inferring it
+    // from the pushed value.
+    pub struct Vec<T>(std::marker::PhantomData<T>);
+    impl<T> Vec<T> {
+        pub fn new() -> Self { Vec(std::marker::PhantomData) }
+        pub fn push_back(&mut self, _v: T) {}
     }
 
-    // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
-    pub struct Map;
-    impl Map {
-        pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
-        pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+    // Generic over key/value types so nested_storage_collections can inspect
+    // them through the type's generic arguments. `insert`/`get` stay
+    // independently generic over `K2`/`V2` (rather than tied to `Self`'s `K`,
+    // `V`) so the existing map_insert_in_loop fixtures keep compiling as-is.
+    pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
+    impl<K, V> Map<K, V> {
+        pub fn new() -> Self { Map(std::marker::PhantomData) }
+        pub fn insert<K2, V2>(&mut self, _k: K2, _v: V2) {}
+        pub fn get<K2: ?Sized, V2>(&self, _k: &K2) -> Option<V2> { None }
     }
 
+    #[derive(Clone, Copy)]
     pub struct Symbol;
     impl Symbol {
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
@@ -395,14 +404,14 @@ fn allowed_inefficient_bytes_concat(env: Env) {
 // =======================================================================
 
 fn bad_map_insert_in_loop(env: Env) {
-    let mut map = Map;
+    let mut map = Map::<i32, i32>::new();
     for i in 0..10 {
         map.insert(&i, &1); // Should Warn
     }
 }
 
 fn good_map_insert_outside_loop(env: Env) {
-    let mut map = Map;
+    let mut map = Map::<i32, i32>::new();
     map.insert(&1, &1); // Good — outside the loop
     for i in 0..10 {
         let _: Option<i32> = map.get(&i);
@@ -411,7 +420,7 @@ fn good_map_insert_outside_loop(env: Env) {
 
 #[allow(map_insert_in_loop)]
 fn allowed_map_insert_in_loop(env: Env) {
-    let mut map = Map;
+    let mut map = Map::<i32, i32>::new();
     for i in 0..10 {
         map.insert(&i, &1); // Good (allowed)
     }
@@ -429,7 +438,7 @@ fn bad_bytes_append_in_for_loop() {
 }
 
 fn bad_vec_push_back_in_while_loop() {
-    let mut v = Vec;
+    let mut v = Vec::new();
     let mut i = 0;
     while i < 10 {
         v.push_back(i); // Should Warn
@@ -440,6 +449,59 @@ fn bad_vec_push_back_in_while_loop() {
 fn good_single_append_outside_loop() {
     let mut bytes = Bytes(vec![]);
     bytes.append(&Bytes(vec![])); // Good - single append outside loop
+}
+
+// =======================================================================
+// nested_storage_collections — Fixtures
+// =======================================================================
+
+fn bad_map_nested_in_map(env: Env, key: Symbol) {
+    let value: Map<Symbol, Map<u32, i128>> = Map::new();
+    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&key, &value); // Should Warn — Map nested inside Map
+}
+
+fn bad_vec_nested_in_map(env: Env, key: Symbol) {
+    let value: Map<Symbol, Vec<i128>> = Map::new();
+    let _: Option<i32> = env.storage().persistent().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().persistent().set(&key, &value); // Should Warn — Vec nested inside Map
+}
+
+fn bad_map_nested_in_vec(env: Env, key: Symbol) {
+    let value: Vec<Map<u32, i128>> = Vec::new();
+    let _: Option<i32> = env.storage().temporary().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().temporary().set(&key, &value); // Should Warn — Map nested inside Vec
+}
+
+fn bad_nested_collection_in_key(env: Env) {
+    let key: Map<u32, Vec<i128>> = Map::new();
+    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&key, &1); // Should Warn — nested collection used as the key
+}
+
+fn good_flat_map(env: Env, key: Symbol) {
+    let value: Map<u32, i128> = Map::new(); // one level deep — a plain scalar value
+    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&key, &value); // Good
+}
+
+fn good_flat_vec(env: Env, key: Symbol) {
+    let value: Vec<i128> = Vec::new(); // one level deep — a Vec of scalars
+    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&key, &value); // Good
+}
+
+fn good_compound_key_instead_of_nesting(env: Env, key: Symbol, id: u32) {
+    let value: i128 = 0;
+    let _: Option<i32> = env.storage().instance().get(&(key, id)); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&(key, id), &value); // Good — flattened with a compound key
+}
+
+#[allow(nested_storage_collections)]
+fn allowed_map_nested_in_map(env: Env, key: Symbol) {
+    let value: Map<Symbol, Map<u32, i128>> = Map::new();
+    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
+    env.storage().instance().set(&key, &value); // Good (allowed)
 }
 
 fn main() {}

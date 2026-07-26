@@ -13,6 +13,7 @@ and this project adheres to Semantic Versioning.
 - New lint `storage_write_without_read` detecting storage `.set()` calls where the same key is never subsequently read, flagging wasteful storage writes that drive up Soroban fees.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
+- New lint `nested_storage_collections` detecting `env.storage()....set()` calls whose key or value type nests one Soroban collection inside another (e.g. `Map<Symbol, Map<u32, i128>>`), suggesting a flattened compound key instead.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 
 ### Fixed
