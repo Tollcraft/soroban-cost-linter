@@ -95,6 +95,35 @@ LL |         env.storage().instance().set(&i, &1);
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[warn(soroban_storage_in_loop)]` on by default
+```
+
+#### Output format
+
+Use `--format` to choose the output format:
+
+| Format  | Description                                                  |
+| ------- | ------------------------------------------------------------ |
+| `text`  | Human-readable console output (default)                      |
+| `json`  | One JSON object per line, suitable for programmatic parsing  |
+| `sarif` | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+
+Example — generate SARIF output for GitHub Advanced Security:
+
+```bash
+cargo cost-lint --format sarif > results.sarif
+```
+
+The SARIF file can then be uploaded to GitHub or integrated into your CI pipeline to annotate PR diffs with line-specific warnings.
+
+```text
+warning: storage operation inside a loop
+  --> src/lib.rs:12:9
+   |
+LL |         env.storage().instance().set(&i, &1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: unnecessary host function call inside loop
   --> src/lib.rs:20:20

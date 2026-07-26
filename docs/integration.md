@@ -35,11 +35,58 @@ unnecessary_host_function_call = "warn"
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
-### Validation
+### Lint levels
 
-`cargo cost-lint` strictly validates your `budget.toml`:
-- If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
-- If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
+Each value must be one of the three standard Rust lint levels:
+
+| Level   | Behaviour                                              |
+|---------|--------------------------------------------------------|
+| `allow` | Suppress the lint entirely                             |
+| `warn`  | Produce a warning (default for all lints)              |
+| `deny`  | Produce a hard error — fails the build                 |
+
+A level that is not one of `allow`, `warn`, or `deny` causes the tool to print an error and exit immediately.
+
+### Lint names
+
+Each key under `[lints]` must match a lint name **exactly** as shown in the compiler output. The known names are:
+
+| Lint name                           | Default level |
+|-------------------------------------|---------------|
+| `soroban_storage_in_loop`           | `warn`        |
+| `redundant_env_clone`               | `warn`        |
+| `unnecessary_host_function_call`    | `warn`        |
+| `symbol_new_for_short_literal`      | `warn`        |
+| `bytes_append_in_loop`              | `warn`        |
+| `storage_write_without_read`        | `warn`        |
+| `inefficient_bytes_concat`          | `warn`        |
+| `map_insert_in_loop`                | `warn`        |
+| `host_in_loop`                      | `warn`        |
+
+An unknown lint name causes the tool to print an error listing valid lints and exit immediately.
+
+### How it reaches the compiler
+
+`cargo cost-lint` applies budget.toml levels by building a `DYLINT_RUSTFLAGS` string that it passes to `cargo dylint`. Dylint forwards these flags to `rustc` as `-A`/`-W`/`-D` directives.
+
+If `DYLINT_RUSTFLAGS` is already set in your shell environment, the tool **appends** to it instead of replacing it:
+
+```
+User env:    DYLINT_RUSTFLAGS=-Wsome_other_lint
+Tool adds:                      -A<soroban_storage_in_loop>
+Result:      DYLINT_RUSTFLAGS=-Wsome_other_lint -A<soroban_storage_in_loop>
+```
+
+### Precedence
+
+Rustc resolves the effective lint level in this order (highest priority first):
+
+1. `--force-warn` / `--cap-lints` (never set by this tool)
+2. `#[allow]` / `#[warn]` / `#[deny]` attributes in source code
+3. Compiler flags from `DYLINT_RUSTFLAGS` (the mechanism used by budget.toml)
+4. The lint's built-in default
+
+A `deny` in `budget.toml` raises the level from `warn` (the default) to `deny`. An `#[allow]` attribute on a function body suppresses a `warn`-level lint for that function just as it normally would — but a `deny` in `budget.toml` will cause that same function to fail, because `#[allow]` cannot override `-D`. Conversely, `allow` in budget.toml suppresses the lint everywhere, even overriding `#[deny]` in source code.
 
 ## Editor / IDE Integration
 
