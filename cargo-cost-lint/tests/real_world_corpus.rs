@@ -128,10 +128,7 @@ fn collect_and_report(contract_dir: &Path) -> (String, Vec<Finding>) {
         .status()
         .expect("Failed to build contract");
 
-    assert!(
-        build_status.success(),
-        "Failed to build contract {name}"
-    );
+    assert!(build_status.success(), "Failed to build contract {name}");
 
     let findings = run_lints_on_contract(contract_dir);
 
@@ -182,16 +179,16 @@ fn real_world_corpus_triage() {
         let (name, findings) = collect_and_report(&entry.path());
         eprintln!("\n=== {}: {} findings ===", name, findings.len());
         for f in &findings {
-            eprintln!(
-                "  {}:{} — {} — {}",
-                f.file, f.line, f.lint_name, f.message
-            );
+        eprintln!("  {}:{} — {} — {}", f.file, f.line, f.lint_name, f.message);
         }
         all_findings.insert(name.clone(), findings);
         grand_total += all_findings.get(&name).map_or(0, |v| v.len());
     }
 
-    eprintln!("\n=== Grand total: {grand_total} findings across {} contracts ===", entries.len());
+    eprintln!(
+        "\n=== Grand total: {grand_total} findings across {} contracts ===",
+        entries.len()
+    );
 
     let baseline = load_baseline();
 
@@ -229,9 +226,7 @@ fn real_world_corpus_triage() {
             let baseline_entry = baseline.contracts.get(name);
             let current_fps = triage_findings(findings).1.len();
 
-            let baseline_fps = baseline_entry
-                .map(|e| e.false_positives.len())
-                .unwrap_or(0);
+            let baseline_fps = baseline_entry.map(|e| e.false_positives.len()).unwrap_or(0);
 
             if current_fps > baseline_fps {
                 let increase = current_fps - baseline_fps;
@@ -241,9 +236,7 @@ fn real_world_corpus_triage() {
                     "FAIL: {name} now has {current_fps} FPs (baseline: {baseline_fps}, +{increase})"
                 );
             } else {
-                eprintln!(
-                    "OK:   {name} has {current_fps} FPs (baseline: {baseline_fps})"
-                );
+                eprintln!("OK:   {name} has {current_fps} FPs (baseline: {baseline_fps})");
             }
         }
 
