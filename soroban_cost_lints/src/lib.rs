@@ -19,8 +19,8 @@ use clippy_utils::usage::mutated_variables;
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
+use rustc_hir::HirIdSet;
 use rustc_hir::intravisit::{self, Visitor};
-use rustc_hir::{HirId, HirIdSet};
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_span::def_id::DefId;
 
@@ -108,7 +108,7 @@ impl<'tcx> Visitor<'tcx> for BindingCollector {
 /// Collects the `HirId`s of every local read in the visited subtree.
 #[derive(Default)]
 struct LocalReadCollector {
-    reads: Vec<HirId>,
+    reads: HirIdSet,
 }
 
 impl<'tcx> Visitor<'tcx> for LocalReadCollector {
@@ -116,7 +116,7 @@ impl<'tcx> Visitor<'tcx> for LocalReadCollector {
         if let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = expr.kind
             && let hir::def::Res::Local(hir_id) = path.res
         {
-            self.reads.push(hir_id);
+            self.reads.insert(hir_id);
         }
         intravisit::walk_expr(self, expr);
     }
@@ -541,7 +541,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
     ) {
         struct ReadVisitor<'a, 'tcx> {
             cx: &'a LateContext<'tcx>,
-            reads: Vec<(String, String)>,
+            reads: std::collections::HashMap<String, std::collections::HashSet<String>>,
         }
 
         impl<'a, 'tcx> Visitor<'tcx> for ReadVisitor<'a, 'tcx> {
@@ -564,7 +564,10 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                         let receiver_snippet =
                             snippet_opt(self.cx, receiver.span).unwrap_or_default();
                         let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
-                        self.reads.push((receiver_snippet, key_snippet));
+                        self.reads
+                            .entry(receiver_snippet)
+                            .or_default()
+                            .insert(key_snippet);
                     }
                 }
                 intravisit::walk_expr(self, expr);
@@ -599,7 +602,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        let reads = Vec::new();
+        let reads = std::collections::HashMap::new();
         let writes = Vec::new();
         let mut read_visitor = ReadVisitor { cx, reads };
         read_visitor.visit_body(body);
@@ -610,8 +613,8 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         for (w_receiver, w_key, w_span) in &write_visitor.writes {
             let has_read = read_visitor
                 .reads
-                .iter()
-                .any(|(r_receiver, r_key)| r_receiver == w_receiver && r_key == w_key);
+                .get(w_receiver)
+                .is_some_and(|keys| keys.contains(w_key));
             if !has_read {
                 span_lint_and_help(
                     cx,
