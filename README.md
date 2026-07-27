@@ -42,6 +42,23 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ## Getting Started
 
+### Recommended: Dev Container
+
+The fastest way to get a working environment is the pre-built container image, which ships with
+the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
+
+```bash
+docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/Tollcraft/soroban-cost-linter:latest bash
+# Inside the container:
+cargo test --workspace
+```
+
+VS Code / GitHub Codespaces users can open the repo and choose **"Reopen in Container"** — the
+`.devcontainer/devcontainer.json` handles everything automatically.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manual local setup path.
+
 ### Prerequisites
 
 Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.

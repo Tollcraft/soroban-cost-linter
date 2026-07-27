@@ -8,7 +8,35 @@ First off, thank you for considering contributing to `soroban-cost-linter`!
 
 This tool leverages Dylint to hook into the Rust compiler's AST and High-Level Intermediate Representation (HIR). Familiarity with `rustc` internals (like `rustc_hir`, `rustc_middle`) and `clippy` source code is highly beneficial.
 
-### 2. Setting up Locally
+### 2. Getting Started
+
+#### Recommended: Dev Container
+
+The project includes a pre-configured dev container image with the exact nightly toolchain,
+compiler components (`rustc-dev`, `llvm-tools-preview`), and Dylint binaries already installed.
+
+**VS Code / GitHub Codespaces:** open this repo and choose "Reopen in Container" when prompted.
+The `.devcontainer/devcontainer.json` will build and launch the container automatically.
+
+**Standalone Docker:**
+
+```bash
+docker build -t soroban-cost-linter .
+docker run --rm -it -v "$(pwd)":/workspace soroban-cost-linter bash
+# Inside the container:
+cargo test --workspace
+```
+
+A prebuilt image is also published to the GitHub Container Registry on every push to `main`
+that touches the Dockerfile or the toolchain pin:
+
+```bash
+docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+```
+
+#### Manual Local Setup
+
+If you prefer to set up the toolchain on your machine directly:
 
 1. Install Dylint:
 
@@ -91,7 +119,7 @@ Follow the patterns already used in the codebase: `soroban_cost_lints` uses edit
 
 ### 5. Upgrading the Nightly Toolchain
 
-The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files and the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`.
+The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files, the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`, and the container image.
 
 **Procedure to upgrade:**
 
@@ -108,6 +136,10 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
    ```
 
 If any file is out of sync, the drift guard will print an error naming the file, the mismatched value, and the expected one.
+
+{% hint style="info" %}
+The `Dockerfile` reads `rust-toolchain` at build time, so updating the channel there is sufficient — the container image will be rebuilt and published automatically by CI when `rust-toolchain` changes.
+{% endhint %}
 
 ### 6. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.

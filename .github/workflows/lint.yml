@@ -66,3 +66,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Lint matrix passed"
+
+  # ── Container image ──────────────────────────────────────────────
+  container-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container image
+        run: docker build -t soroban-cost-linter:ci .
+      - name: Run UI test suite inside container
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            soroban-cost-linter:ci \
+            bash -c "git config --global --add safe.directory /workspace && cargo test --workspace"
