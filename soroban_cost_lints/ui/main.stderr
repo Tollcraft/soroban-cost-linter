@@ -107,7 +107,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    = help: call this function outside the loop and reuse the result
 
 warning: event emission inside a loop
-  --> $DIR/main.rs:290:9
+  --> $DIR/main.rs:302:9
    |
 LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -116,7 +116,7 @@ LL |         env.events().publish((i,), i); // Good — publishes the value of t
    = note: `#[warn(event_in_loop)]` on by default
 
 warning: event emission inside a loop
-  --> $DIR/main.rs:290:9
+  --> $DIR/main.rs:302:9
    |
 LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
    |         ^^^^^^^^^^^^
