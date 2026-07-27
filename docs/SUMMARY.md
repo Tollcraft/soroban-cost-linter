@@ -14,6 +14,7 @@
 
 ## Lints
 
+* [Lint Catalog](lint_catalog.md)
 * [Lint Reference](lints/README.md)
   * [soroban\_storage\_in\_loop](lints/soroban_storage_in_loop.md)
   * [loop\_invariant\_storage\_access](lints/loop_invariant_storage_access.md)
