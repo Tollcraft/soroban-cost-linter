@@ -1,7 +1,8 @@
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+use serde::Deserialize;
 
 use super::error::{LinterError, LinterResult};
 
@@ -31,10 +32,12 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs::File;
     use std::io::Write;
+
     use tempfile::tempdir;
+
+    use super::*;
 
     fn write_file(path: &Path, contents: &str) {
         let mut f = File::create(path).unwrap();

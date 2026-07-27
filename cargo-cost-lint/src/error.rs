@@ -1,6 +1,5 @@
 use std::fmt;
 use std::io;
-use std::process;
 
 /// Central error type for the `cargo-cost-lint` CLI tool.
 ///
@@ -14,9 +13,7 @@ pub enum LinterError {
     /// JSON (de)serialisation failed.
     Json(serde_json::Error),
     /// A child process (`cargo dylint`) exited with a non-zero status.
-    Subprocess {
-        code: Option<i32>,
-    },
+    Subprocess { code: Option<i32> },
     /// A required prerequisite is missing (e.g. `cargo-dylint` not installed).
     MissingPrerequisite(String),
     /// A generic, human-readable error message for unexpected situations.
@@ -32,9 +29,7 @@ impl fmt::Display for LinterError {
         match self {
             LinterError::Io(e) => write!(f, "I/O error: {}", e),
             LinterError::Json(e) => write!(f, "JSON error: {}", e),
-            LinterError::Subprocess { code } => {
-                write!(f, "subprocess exited with code {:?}", code)
-            }
+            LinterError::Subprocess { code } => write!(f, "subprocess exited with code {:?}", code),
             LinterError::MissingPrerequisite(msg) => write!(f, "{}", msg),
             LinterError::Other(msg) => write!(f, "{}", msg),
         }

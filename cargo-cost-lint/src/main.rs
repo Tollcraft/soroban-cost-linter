@@ -8,6 +8,10 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
+use clap::{Parser, ValueEnum};
+use ignore::WalkBuilder;
+use serde::Serialize;
+
 mod config;
 mod error;
 
@@ -660,9 +664,10 @@ fn apply_fixes(findings: &[LintFinding]) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs::File;
     use std::io::Write;
+
+    use super::*;
 
     fn write_file(path: &Path, contents: &str) {
         let mut f = File::create(path).unwrap();
