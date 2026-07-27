@@ -436,4 +436,3 @@ fn test_warn_lint_exit_code_zero() {
         output.status
     );
 }
-
