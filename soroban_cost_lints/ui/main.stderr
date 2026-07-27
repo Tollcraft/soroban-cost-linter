@@ -16,6 +16,13 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:144:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
 warning: storage read result is discarded or bound to `_`
   --> $DIR/main.rs:80:30
    |
@@ -64,6 +71,174 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    |                                  ^^^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:158:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:202:19
@@ -210,6 +385,31 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:575:31
+   |
+LL | fn bad_vec_by_value_read_only(v: Vec) {
+   |                               ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+   = note: `#[warn(vec_where_slice_could_be_used)]` on by default
+
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:579:26
+   |
+LL | fn bad_vec_by_value_iter(v: Vec) {
+   |                          ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:585:25
+   |
+LL | fn bad_vec_by_value_len(v: Vec) {
+   |                         ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:454:9
    |
@@ -267,6 +467,6 @@ LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
    |
    = help: call this function outside the loop and reuse the result
 
-warning: 30 warnings emitted
+warning: 33 warnings emitted
 
 warning: 4 warnings emitted

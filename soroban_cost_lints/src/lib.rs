@@ -435,6 +435,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: LOOP_INVARIANT_STORAGE_ACCESS,
         lint: UNBOUNDED_INPUT_LOOP,
         category: LintCategory::StorageOperations,
     },
@@ -474,6 +475,14 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: SIGNATURE_VERIFICATION_IN_LOOP,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+        category: LintCategory::SymbolOperations,
+    },
+    LintMetadata {
+        lint: VEC_WHERE_SLICE_COULD_BE_USED,
+        category: LintCategory::Memory,
+    },
 ];
 
 /// Dylint entry point: registers every lint and its late pass with the
@@ -486,6 +495,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        LOOP_INVARIANT_STORAGE_ACCESS,
         UNBOUNDED_INPUT_LOOP,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
@@ -497,8 +507,11 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
+        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+        VEC_WHERE_SLICE_COULD_BE_USED,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
@@ -510,6 +523,8 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
+    lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
 }
 
 rustc_session::declare_lint! {
@@ -596,6 +611,50 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     "storage operation inside a loop (reached through function call)",
                     None,
                     "move storage operations out of the loop or accumulate mutations in memory first",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// loop_invariant_storage_access — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub LOOP_INVARIANT_STORAGE_ACCESS,
+    Warn,
+    "storage operation inside a loop whose operands are provably loop-invariant"
+}
+pub struct LoopInvariantStorageAccess;
+rustc_session::impl_lint_pass!(LoopInvariantStorageAccess => [LOOP_INVARIANT_STORAGE_ACCESS]);
+
+impl<'tcx> LateLintPass<'tcx> for LoopInvariantStorageAccess {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                matches_any_path(cx, did, SOROBAN_STORAGE_TYPES)
+                    || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
+                        && path_segment.ident.name.as_str() == "storage")
+            } else {
+                false
+            };
+
+            if is_storage_access
+                && let Some(loop_expr) = enclosing_loop(cx, expr)
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
+                span_lint_and_help(
+                    cx,
+                    LOOP_INVARIANT_STORAGE_ACCESS,
+                    expr.span,
+                    "loop-invariant storage operation inside a loop",
+                    None,
+                    "hoist this storage operation out of the loop",
                 );
             }
         }
@@ -1373,6 +1432,127 @@ impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
                     "each call re-runs an expensive elliptic-curve check; consider a signature \
                      scheme that supports batch or aggregate verification, or move per-item \
                      auth to the callee via a bulk entrypoint",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// vec_where_slice_could_be_used — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+    Warn,
+    "storage key constructed inside a loop body where it could be hoisted"
+}
+pub struct StorageKeyConstructionInLoop;
+rustc_session::impl_lint_pass!(StorageKeyConstructionInLoop => [STORAGE_KEY_CONSTRUCTION_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for StorageKeyConstructionInLoop {
+    /// Flags `Symbol::new(&env, ...)` calls inside a loop body when the key
+    /// does not depend on the loop variable.
+    ///
+    /// `Symbol::new` allocates through the host on every call. When the key
+    /// is loop-invariant, constructing it once before the loop and reusing
+    /// the result avoids repeated host allocations.
+    ///
+    /// Key construction that depends on the loop variable is not flagged:
+    /// that is genuine per-iteration work and hoisting would change behaviour.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // Match `Symbol::new(&env, key)` calls — a two-argument call whose
+        // callee resolves to `soroban_sdk::Symbol::new`.
+        if let hir::ExprKind::Call(callee, args) = expr.kind
+            && args.len() == 2
+            && let hir::ExprKind::Path(ref qpath) = callee.kind
+            && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+            && match_soroban_def_path(cx, def_id, &["soroban_sdk", "Symbol", "new"])
+        {
+            // Only fire inside a syntactic loop body.
+            if let Some(loop_expr) = enclosing_loop(cx, expr) {
+                // Only fire when the key does NOT depend on the loop state.
+                // A key that reads the loop variable (e.g. `Symbol::new(&env,
+                // &format!("key_{}", i))`) is genuine per-iteration work.
+                if !depends_on_loop_state(cx, loop_expr, expr) {
+                    span_lint_and_help(
+                        cx,
+                        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+                        expr.span,
+                        "storage key constructed inside a loop body",
+                        None,
+                        "hoist the key construction outside the loop to avoid repeated host allocations",
+                    );
+                }
+            }
+        }
+    }
+}
+
+rustc_session::declare_lint! {
+    pub VEC_WHERE_SLICE_COULD_BE_USED,
+    Warn,
+    "soroban_sdk::Vec passed by value where a native Rust slice would suffice"
+}
+pub struct VecWhereSliceCouldBeUsed;
+rustc_session::impl_lint_pass!(VecWhereSliceCouldBeUsed => [VEC_WHERE_SLICE_COULD_BE_USED]);
+
+impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _: rustc_hir::intravisit::FnKind<'tcx>,
+        _: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _: rustc_span::Span,
+        _: rustc_hir::def_id::LocalDefId,
+    ) {
+        let mutated = mutated_variables(body.value, cx);
+
+        for param in body.params {
+            if let hir::PatKind::Binding(_, hir_id, _ident, _) = param.pat.kind {
+                // The parameter type as seen by the type checker.
+                let ty = cx.typeck_results().node_type(param.hir_id);
+                let peeled = ty.peel_refs();
+
+                // Only flag by-value parameters (not &Vec or &mut Vec).
+                if peeled != ty {
+                    continue;
+                }
+
+                let is_soroban_vec = if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+                    match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Vec"])
+                } else {
+                    false
+                };
+
+                if !is_soroban_vec {
+                    continue;
+                }
+
+                // If the Vec is mutated anywhere in the function body, it
+                // genuinely needs ownership — skip.
+                if let Some(ref mutated) = mutated
+                    && mutated.contains(&hir_id)
+                {
+                    continue;
+                }
+
+                // Known gap: `mutated_variables` tracks explicit mutations
+                // (e.g. `push_back`) but not moves (passing the Vec to
+                // another function by value, or returning it). A function
+                // that moves the Vec elsewhere genuinely consumes it and
+                // should not be flagged, but today it will be. This is
+                // acceptable for an initial implementation — the same
+                // trade-off exists in other lints in this repository.
+                span_lint_and_help(
+                    cx,
+                    VEC_WHERE_SLICE_COULD_BE_USED,
+                    param.span,
+                    "soroban_sdk::Vec parameter could be replaced with a native Rust slice",
+                    None,
+                    "consider using native Rust types (e.g. `&[T]`) instead of \
+                     `soroban_sdk::Vec` for read-only access to reduce host-side operations",
                 );
             }
         }

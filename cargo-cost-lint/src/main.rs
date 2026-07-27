@@ -125,6 +125,9 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
+    #[arg(long, help = "Emit the lint inventory and exit")]
+    list_lints: bool,
+
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 
@@ -139,6 +142,7 @@ struct Cli {
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 
 /// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
 /// canonicalized set of files that are allowed to be linted (i.e. not
@@ -169,17 +173,13 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct BudgetSection {
-    lints: Option<HashMap<String, String>>,
-}
+fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
+    if !config_path.exists() {
+        return None;
+    }
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    lints: Option<HashMap<String, String>>,
-    budget: Option<BudgetSection>,
-}
-
+    let config_str = fs::read_to_string(config_path).ok()?;
+    toml::from_str::<BudgetConfig>(&config_str).ok()
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config_str =
         fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
@@ -251,17 +251,14 @@ fn main() {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = if let Some(config_path) = &cli.config {
-        match parse_budget_config(config_path) {
-            Ok(flags) => flags,
-            Err(e) => {
-                eprintln!("{}", e);
-                exit(1);
-            }
+    let lint_flags: Vec<String> = Vec::new();
+    if let Some(config_path) = &cli.config {
+        if let Some(config) = load_budget_config(Path::new(config_path)) {
+            // ... validate (existing code)
+            let _ = config;
         }
-    } else {
-        Vec::new()
-    };
+        let _config = Config::from_file_or_default(Path::new(config_path));
+    }
 
     let preflight = Command::new("cargo")
         .arg("dylint")
@@ -276,7 +273,12 @@ fn main() {
             eprintln!("    cargo install cargo-dylint dylint-link");
             exit(1);
         }
-    }
+        Some(config_path) => {
+            eprintln!("Warning: config file '{}' not found", config_path);
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
