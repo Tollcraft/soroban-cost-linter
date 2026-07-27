@@ -142,11 +142,17 @@ pub mod soroban_sdk {
     }
 
     // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
+    // Extended with `get`, `len`, and `iter` so the vec_where_slice_could_be_used
+    // fixtures can exercise read-only patterns.
     pub struct Vec;
     impl Vec {
         pub fn new() -> Vec { Vec }
         pub fn with_capacity(_n: u32) -> Vec { Vec }
         pub fn push_back(&mut self, _v: i32) {}
+        pub fn get(&self, _i: u32) -> i32 { 0 }
+        pub fn len(&self) -> u32 { 0 }
+        // Returns a native std Vec to simulate iteration.
+        pub fn iter(&self) -> std::vec::IntoIter<i32> { vec![1, 2, 3].into_iter() }
     }
 
     // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
@@ -208,6 +214,71 @@ fn good_storage_through_call_outside_loop(env: Env) {
 fn allowed_storage_through_call_in_loop(env: Env) {
     for _ in 0..10 {
         persist(&env); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// loop_invariant_storage_access — Fixtures
+// =======================================================================
+
+// soroban_storage_in_loop suppressed so only loop_invariant_storage_access fires
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_write_in_loop(env: Env) {
+    for _i in 0..10 {
+        env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_read_in_loop(env: Env) {
+    for _i in 0..10 {
+        let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_has_in_loop(env: Env) {
+    loop {
+        if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+            break;
+        }
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_write_in_loop(env: Env) {
+    for i in 0..10 {
+        env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_read_in_loop(env: Env) {
+    for i in 0..10 {
+        let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_has_in_loop(env: Env) {
+    let mut n = 0;
+    while n < 10 {
+        if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+            n += 1;
+        } else {
+            break;
+        }
+    }
+}
+
+fn good_invariant_storage_outside_loop(env: Env) {
+    env.storage().instance().set(&"key", &42); // Good — not inside a loop
+}
+
+#[allow(loop_invariant_storage_access)]
+fn allowed_invariant_storage_in_loop(env: Env) {
+    for _i in 0..10 {
+        env.storage().instance().set(&"key", &42); // Good (allowed)
     }
 }
 
@@ -560,6 +631,44 @@ fn allowed_param_loop(env: Env, n: u32) {
     for i in 0..n {
         env.storage().instance().set(&i, &1); // Good (allowed)
     }
+}
+
+// =======================================================================
+// vec_where_slice_could_be_used — Fixtures
+// =======================================================================
+
+fn bad_vec_by_value_read_only(v: Vec) {
+    let _first = v.get(0); // Should Warn
+}
+
+fn bad_vec_by_value_iter(v: Vec) {
+    for _item in v.iter() { // Should Warn
+        // read-only iteration
+    }
+}
+
+fn bad_vec_by_value_len(v: Vec) {
+    let _n = v.len(); // Should Warn
+}
+
+fn good_vec_by_value_mutated(mut v: Vec) {
+    v.push_back(42); // Good — Vec is mutated
+}
+
+fn good_vec_by_reference(v: &Vec) {
+    let _first = v.get(0); // Good — &Vec already borrows
+}
+
+fn good_vec_by_mut_reference(v: &mut Vec) {
+    v.push_back(42); // Good — &mut Vec explicitly mutable
+}
+
+#[allow(vec_where_slice_could_be_used)]
+fn allowed_vec_by_value(v: Vec) {
+    let _first = v.get(0); // Good (allowed)
+}
+
+// =======================================================================
 // excessive_vec_capacity — Fixtures
 // =======================================================================
 // Positive (bad): calling Vec::with_capacity with a far larger capacity than
@@ -671,6 +780,29 @@ fn good_necessary_vec_allocation_populated() {
 #[allow(unnecessary_vec_allocation)]
 fn allowed_unnecessary_vec_allocation() {
     let _unused = Vec::new(); // Good (allowed)
+}
+
+// =======================================================================
+// storage_key_construction_in_loop — Fixtures
+// =======================================================================
+
+fn bad_storage_key_construction_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _key = Symbol::new(&env, "constant_key"); // Should Warn — same key every iteration
+    }
+}
+
+fn good_storage_key_depends_on_loop(env: Env) {
+    for i in 0..10 {
+        let _key = Symbol::new(&env, ["a", "b"][i as usize]); // Good — key depends on loop variable
+    }
+}
+
+#[allow(storage_key_construction_in_loop)]
+fn allowed_storage_key_construction_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _key = Symbol::new(&env, "constant_key"); // Good (allowed)
+    }
 }
 
 fn main() {}

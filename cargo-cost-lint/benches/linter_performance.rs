@@ -70,7 +70,10 @@ fn ensure_linter_built(target_dir: &Path) -> PathBuf {
     let status = command
         .status()
         .expect("failed to build cargo-cost-lint before benchmarking");
-    assert!(status.success(), "failed to build cargo-cost-lint before benchmarking");
+    assert!(
+        status.success(),
+        "failed to build cargo-cost-lint before benchmarking"
+    );
     assert!(
         linter.is_file(),
         "cargo-cost-lint was not produced at {:?}",
@@ -118,7 +121,8 @@ fn run_linter(linter: &Path, contract: &Path, target_dir: &Path) -> Duration {
         .current_dir(contract)
         .env(
             "DYLINT_LIBRARY_PATH",
-            env::var_os("DYLINT_LIBRARY_PATH").unwrap_or_else(|| target_dir.as_os_str().to_os_string()),
+            env::var_os("DYLINT_LIBRARY_PATH")
+                .unwrap_or_else(|| target_dir.as_os_str().to_os_string()),
         )
         .output()
         .unwrap_or_else(|error| panic!("failed to execute {:?}: {error}", linter));

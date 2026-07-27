@@ -5,18 +5,23 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::{Command, Stdio, exit};
 
 mod config;
 use config::Config;
 
+/// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
+    /// Human-readable text output (default).
     Text,
+    /// Newline-delimited JSON objects.
     Json,
+    /// SARIF 2.1.0 JSON report.
     Sarif,
 }
 
+/// Source-location span for a lint finding.
 #[derive(Serialize, Debug)]
 struct Span {
     line_start: usize,
@@ -25,6 +30,7 @@ struct Span {
     column_end: usize,
 }
 
+/// A single lint finding produced by `cargo dylint`.
 #[derive(Serialize, Debug)]
 struct LintFinding {
     name: String,
@@ -38,6 +44,7 @@ struct LintFinding {
     suggestion: Option<String>,
 }
 
+/// SARIF 2.1.0 report root.
 #[derive(Serialize)]
 struct SarifReport {
     #[serde(rename = "$schema")]
@@ -46,17 +53,20 @@ struct SarifReport {
     runs: Vec<SarifRun>,
 }
 
+/// A single SARIF run (one invocation of the linter).
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
     results: Vec<SarifResult>,
 }
 
+/// Tool metadata for SARIF output.
 #[derive(Serialize)]
 struct SarifTool {
     driver: SarifToolDriver,
 }
 
+/// Tool-driver metadata for SARIF output.
 #[allow(non_snake_case)]
 #[derive(Serialize)]
 struct SarifToolDriver {
@@ -69,6 +79,7 @@ struct SarifToolDriver {
     rules: Vec<serde_json::Value>,
 }
 
+/// A single SARIF result (one lint finding).
 #[derive(Serialize)]
 struct SarifResult {
     #[serde(rename = "ruleId")]
@@ -78,17 +89,20 @@ struct SarifResult {
     locations: Vec<SarifLocation>,
 }
 
+/// SARIF message text.
 #[derive(Serialize)]
 struct SarifMessage {
     text: String,
 }
 
+/// SARIF location referencing a physical file.
 #[derive(Serialize)]
 struct SarifLocation {
     #[serde(rename = "physicalLocation")]
     physical_location: SarifPhysicalLocation,
 }
 
+/// SARIF physical location in a file.
 #[derive(Serialize)]
 struct SarifPhysicalLocation {
     #[serde(rename = "artifactLocation")]
@@ -97,11 +111,13 @@ struct SarifPhysicalLocation {
     region: Option<SarifRegion>,
 }
 
+/// SARIF artifact location (file URI).
 #[derive(Serialize)]
 struct SarifArtifactLocation {
     uri: String,
 }
 
+/// SARIF region (line/column range within a file).
 #[derive(Serialize)]
 struct SarifRegion {
     #[serde(rename = "startLine")]
@@ -117,6 +133,11 @@ struct SarifRegion {
     end_column: Option<usize>,
 }
 
+/// CLI arguments for `cargo-cost-lint`.
+///
+/// This struct is parsed by `clap` from the command-line invocation.  It
+/// wraps `cargo dylint` with additional filtering, formatting, and
+/// fix-application logic.
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(version)]
@@ -124,6 +145,9 @@ struct SarifRegion {
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
+
+    #[arg(long, help = "Emit the lint inventory and exit")]
+    list_lints: bool,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
@@ -139,6 +163,7 @@ struct Cli {
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 
 /// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
 /// canonicalized set of files that are allowed to be linted (i.e. not
@@ -167,6 +192,15 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
         Ok(canon) => allowed.contains(&canon),
         Err(_) => true,
     }
+}
+
+fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
+    if !config_path.exists() {
+        return None;
+    }
+
+    let config_str = fs::read_to_string(config_path).ok()?;
+    toml::from_str::<BudgetConfig>(&config_str).ok()
 }
 
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
@@ -241,6 +275,10 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
+        if let Some(config) = load_budget_config(Path::new(config_path)) {
+            // ... validate (existing code)
+            let _ = config;
+        }
         let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
@@ -257,7 +295,12 @@ fn main() {
             eprintln!("    cargo install cargo-dylint dylint-link");
             exit(1);
         }
-    }
+        Some(config_path) => {
+            eprintln!("Warning: config file '{}' not found", config_path);
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
