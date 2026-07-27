@@ -335,46 +335,59 @@ rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+        let receiver = if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) =
+            expr.kind
             && path_segment.ident.name.as_str() == "clone"
         {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
+            receiver
+        } else if let hir::ExprKind::Call(callee, args) = expr.kind
+            && args.len() == 1
+            && let hir::ExprKind::Path(ref qpath) = callee.kind
+            && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+            && (match_soroban_def_path(cx, def_id, &["Clone", "clone"])
+                || match_soroban_def_path(cx, def_id, &["Env", "clone"]))
+        {
+            &args[0]
+        } else {
+            return;
+        };
 
-            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
-            } else {
-                false
-            };
+        let receiver_ty = cx.typeck_results().expr_ty(receiver);
+        let peeled_ty = receiver_ty.peel_refs();
 
-            if is_env {
-                // Clone on &Env produces an owned Env from a reference — genuinely needed.
-                let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
-                if ref_count > 0 {
-                    return;
-                }
+        let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
+        } else {
+            false
+        };
 
-                // If the receiver is a local binding that is still used after
-                // the clone, the original and the clone are both live — skip.
-                if let Some(local_id) = receiver.res_local_id() {
-                    if local_used_after_expr(cx, local_id, expr) {
-                        return;
-                    }
-                } else {
-                    // Cannot statically determine whether the receiver is used
-                    // after the clone — be conservative and skip.
-                    return;
-                }
-
-                span_lint_and_help(
-                    cx,
-                    REDUNDANT_ENV_CLONE,
-                    expr.span,
-                    "redundant clone on Env object",
-                    None,
-                    "pass Env by reference or value instead of cloning",
-                );
+        if is_env {
+            // Clone on &Env produces an owned Env from a reference — genuinely needed.
+            let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
+            if ref_count > 0 {
+                return;
             }
+
+            // If the receiver is a local binding that is still used after
+            // the clone, the original and the clone are both live — skip.
+            if let Some(local_id) = receiver.res_local_id() {
+                if local_used_after_expr(cx, local_id, expr) {
+                    return;
+                }
+            } else {
+                // Cannot statically determine whether the receiver is used
+                // after the clone — be conservative and skip.
+                return;
+            }
+
+            span_lint_and_help(
+                cx,
+                REDUNDANT_ENV_CLONE,
+                expr.span,
+                "redundant clone on Env object",
+                None,
+                "pass Env by reference or value instead of cloning",
+            );
         }
     }
 }

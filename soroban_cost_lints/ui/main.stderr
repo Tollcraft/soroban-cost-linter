@@ -65,6 +65,22 @@ LL |     let _cloned = env.clone(); // Should Warn
    = help: pass Env by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 
+warning: redundant clone on Env object
+  --> $DIR/main.rs:213:19
+   |
+LL |     let _cloned = Env::clone(&env); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: redundant clone on Env object
+  --> $DIR/main.rs:217:19
+   |
+LL |     let _cloned = Clone::clone(&env); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:240:20
    |
@@ -185,5 +201,5 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 23 warnings emitted
+warning: 25 warnings emitted
 
