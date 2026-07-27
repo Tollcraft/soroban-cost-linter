@@ -1,23 +1,50 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
+`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.## Local Configuration (`budget.toml`)
 
-## Local Configuration (`budget.toml`)
-
-Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities:
+Create a `budget.toml` file in the root of your cargo workspace to adjust lint severities.  This file is **shared** with [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert) — both tools read their own sections from the same file, so you only need one `budget.toml` per project.
 
 The tool locates `budget.toml` by walking up from the current directory until it finds a `Cargo.toml` containing a `[workspace]` section, then looks for `budget.toml` in that directory. This means running `cargo cost-lint` from any member crate produces the same lint levels as running it from the workspace root.
 
 You can also pass an explicit path with `--config <PATH>`, which is used verbatim relative to the current directory.
 
+### Full schema
+
 {% code title="budget.toml" %}
 ```toml
+# ── soroban-cost-linter section ───────────────────────────────────────
+# Every key is a lint name; the value must be "allow", "warn", or "deny".
+# Unknown lint names are rejected at parse time — a typo will not be
+# silently ignored.
+
 [lints]
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
+
+# ── soroban-budget-assert sections ────────────────────────────────────
+# These are consumed by the sibling runtime test harness.  They are
+# preserved verbatim so both tools can coexist in one file.
+
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+
+[source]
+account = "G..."
+
+[functions.my_contract]
+max_cpu_instructions = 100_000_000
 ```
 {% endcode %}
+
+### Section ownership
+
+| Section | Owner | Behaviour |
+|---------|-------|-----------|
+| `[lints]` | `soroban-cost-linter` | Strictly validated; unknown keys error |
+| `[network]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[source]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[functions.*]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
 
 {% hint style="info" %}
 See the [Lint Reference](lints/) for what each lint catches and its default severity.

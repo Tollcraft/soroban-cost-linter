@@ -43,12 +43,52 @@ struct Cli {
     format: OutputFormat,
 }
 
+/// Root schema for `budget.toml`, shared with `soroban-budget-assert`.
+///
+/// **Foreign sections:** `[network]`, `[source]`, and `[functions.*]` are owned
+/// by `soroban-budget-assert`.  They are intentionally left untyped here so
+/// that a file containing both tools' sections parses without error.
 #[derive(Deserialize, Debug)]
 struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
+    /// Lint-level overrides for `soroban-cost-linter`.
+    /// Unknown keys inside this table are rejected at deserialization time.
+    lints: Option<LintsConfig>,
+}
+
+/// The `[lints]` table inside `budget.toml`.
+///
+/// Every key is an optional lint-name → severity mapping.  `deny_unknown_fields`
+/// ensures that a typo in a lint name produces a clear serde error rather than
+/// being silently ignored.
+///
+/// **Keep in sync** with the lint registrations in
+/// `soroban_cost_lints/src/lib.rs` (the source of truth for valid lint names).
+/// When a new lint is added there, a corresponding `Option<String>` field
+/// must be added here.
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct LintsConfig {
+    soroban_storage_in_loop: Option<String>,
+    redundant_env_clone: Option<String>,
+    unnecessary_host_function_call: Option<String>,
+}
+
+const VALID_LEVELS: &[&str] = &["allow", "warn", "deny"];
+
+/// Validate that `level` is one of the recognised severity levels.
+/// Returns `Ok(())` for valid levels and `Err(String)` with a human-
+/// readable message for invalid ones.
+fn validate_lint_level(lint_name: &str, level: &str) -> Result<(), String> {
+    if !VALID_LEVELS.contains(&level) {
+        Err(format!(
+            "invalid level '{}' for lint '{}'. Valid levels are: {}",
+            level,
+            lint_name,
+            VALID_LEVELS.join(", ")
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -100,10 +140,32 @@ fn main() {
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
         if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
+            let config_str = fs::read_to_string(config_path).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", config_path, e);
+                exit(1);
+            });
+            let config = toml::from_str::<BudgetConfig>(&config_str).unwrap_or_else(|e| {
+                eprintln!("Error parsing {}: {}", config_path, e);
+                exit(1);
+            });
+            if let Some(ref lints) = config.lints {
+                if let Some(ref level) = lints.soroban_storage_in_loop {
+                    if let Err(e) = validate_lint_level("soroban_storage_in_loop", level) {
+                        eprintln!("Error: {}", e);
+                        exit(1);
+                    }
+                }
+                if let Some(ref level) = lints.redundant_env_clone {
+                    if let Err(e) = validate_lint_level("redundant_env_clone", level) {
+                        eprintln!("Error: {}", e);
+                        exit(1);
+                    }
+                }
+                if let Some(ref level) = lints.unnecessary_host_function_call {
+                    if let Err(e) = validate_lint_level("unnecessary_host_function_call", level) {
+                        eprintln!("Error: {}", e);
+                        exit(1);
+                    }
                 }
             }
         }
@@ -348,5 +410,100 @@ mod tests {
     fn is_reportable_keeps_empty_file_field() {
         let allowed: HashSet<PathBuf> = HashSet::new();
         assert!(is_reportable("", &allowed));
+    }
+
+    // ── budget.toml schema tests ─────────────────────────────────────────
+
+    #[test]
+    fn budget_config_parses_valid_lints() {
+        let toml_str = r#"
+[lints]
+soroban_storage_in_loop = "deny"
+redundant_env_clone = "warn"
+"#;
+        let config = toml::from_str::<BudgetConfig>(toml_str).unwrap();
+        let lints = config.lints.unwrap();
+        assert_eq!(
+            lints.soroban_storage_in_loop.as_deref(),
+            Some("deny")
+        );
+        assert_eq!(
+            lints.redundant_env_clone.as_deref(),
+            Some("warn")
+        );
+        assert_eq!(lints.unnecessary_host_function_call.as_deref(), None);
+    }
+
+    #[test]
+    fn budget_config_accepts_foreign_top_level_sections() {
+        // soroban-budget-assert owns [network], [source], and [functions.*].
+        // These must parse cleanly alongside our [lints] section.
+        let toml_str = r#"
+[lints]
+soroban_storage_in_loop = "deny"
+
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+
+[source]
+account = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+
+[functions.example]
+max_cpu_instructions = 100_000_000
+"#;
+        let config = toml::from_str::<BudgetConfig>(toml_str).unwrap();
+        assert!(config.lints.is_some());
+    }
+
+    #[test]
+    fn budget_config_rejects_unknown_lint_name() {
+        let toml_str = r#"
+[lints]
+soroban_storage_in_loopp = "deny"
+"#;
+        let err = toml::from_str::<BudgetConfig>(toml_str).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("soroban_storage_in_loopp"),
+            "error should name the offending key, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn budget_config_no_lints_section_parses() {
+        let toml_str = r#"
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+"#;
+        let config = toml::from_str::<BudgetConfig>(toml_str).unwrap();
+        assert!(config.lints.is_none());
+    }
+
+    #[test]
+    fn budget_config_empty_lints_section_parses() {
+        let toml_str = "[lints]\n";
+        let config = toml::from_str::<BudgetConfig>(toml_str).unwrap();
+        let lints = config.lints.unwrap();
+        assert_eq!(lints.soroban_storage_in_loop.as_deref(), None);
+        assert_eq!(lints.redundant_env_clone.as_deref(), None);
+        assert_eq!(lints.unnecessary_host_function_call.as_deref(), None);
+    }
+
+    #[test]
+    fn validate_lint_level_accepts_allow_warn_deny() {
+        assert!(validate_lint_level("test_lint", "allow").is_ok());
+        assert!(validate_lint_level("test_lint", "warn").is_ok());
+        assert!(validate_lint_level("test_lint", "deny").is_ok());
+    }
+
+    #[test]
+    fn validate_lint_level_rejects_invalid_level() {
+        let err = validate_lint_level("test_lint", "invalid").unwrap_err();
+        assert!(err.contains("invalid"), "error should name the bad level: {err}");
+        assert!(err.contains("test_lint"), "error should name the lint: {err}");
+        assert!(
+            err.contains("allow"),
+            "error should list valid levels: {err}"
+        );
     }
 }

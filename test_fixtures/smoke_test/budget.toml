@@ -1,2 +1,23 @@
-[budget]
-lints = { "soroban_storage_in_loop" = "deny" }
+# Shared configuration for soroban-cost-linter and soroban-budget-assert.
+#
+# ── [lints] section ────────────────────────────────────────────────────
+# Owned by soroban-cost-linter.  Unknown lint names are rejected at parse
+# time so a typo cannot silently fail to apply a severity override.
+#
+# Valid levels: allow, warn, deny
+
+[lints]
+soroban_storage_in_loop = "deny"
+
+# ── Foreign sections (consumed by soroban-budget-assert) ───────────────
+# These are intentionally left untyped here so that a single budget.toml
+# can serve both tools without parse errors on either side.
+
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+
+[source]
+account = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+
+[functions.example]
+max_cpu_instructions = 100_000_000
