@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::Serialize;
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -169,6 +169,17 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct BudgetSection {
+    lints: Option<HashMap<String, String>>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BudgetConfig {
+    lints: Option<HashMap<String, String>>,
+    budget: Option<BudgetSection>,
+}
+
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config_str =
         fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
@@ -176,7 +187,8 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
         .map_err(|e| format!("Error: Failed to parse {}: {}", path, e))?;
     let mut lint_flags = Vec::new();
 
-    if let Some(lints) = config.lints {
+    let lints = config.lints.or_else(|| config.budget.and_then(|b| b.lints));
+    if let Some(lints) = lints {
         for (lint, level) in lints {
             if !LINT_NAMES.contains(&lint.as_str()) {
                 return Err(format!(
@@ -239,10 +251,17 @@ fn main() {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
-        let _config = Config::from_file_or_default(Path::new(config_path));
-    }
+    let lint_flags: Vec<String> = if let Some(config_path) = &cli.config {
+        match parse_budget_config(config_path) {
+            Ok(flags) => flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    } else {
+        Vec::new()
+    };
 
     let preflight = Command::new("cargo")
         .arg("dylint")

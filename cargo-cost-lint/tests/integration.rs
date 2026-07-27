@@ -349,3 +349,91 @@ fn test_sarif_output() {
         );
     }
 }
+
+#[test]
+fn test_deny_lint_exit_code() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let mut fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fixture_dir.pop();
+    fixture_dir.push("test_fixtures");
+    fixture_dir.push("smoke_test");
+
+    assert!(
+        fixture_dir.exists(),
+        "Fixture directory not found: {:?}",
+        fixture_dir
+    );
+
+    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
+    target_dir.pop();
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    // Running with --config budget.toml (which has soroban_storage_in_loop = deny)
+    let output = Command::new(bin_path)
+        .arg("--config")
+        .arg("budget.toml")
+        .current_dir(&fixture_dir)
+        .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        !output.status.success(),
+        "cargo-cost-lint should exit with non-zero exit code when a deny lint is triggered, but got success exit code"
+    );
+}
+
+#[test]
+fn test_warn_lint_exit_code_zero() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let mut fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fixture_dir.pop();
+    fixture_dir.push("test_fixtures");
+    fixture_dir.push("smoke_test");
+
+    assert!(
+        fixture_dir.exists(),
+        "Fixture directory not found: {:?}",
+        fixture_dir
+    );
+
+    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
+    target_dir.pop();
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    // Running without deny lints configured should exit 0
+    let output = Command::new(bin_path)
+        .current_dir(&fixture_dir)
+        .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint should exit 0 when only warn lints occur, got: {}",
+        output.status
+    );
+}
+
