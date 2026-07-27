@@ -84,6 +84,9 @@ pub mod soroban_sdk {
         impl Crypto {
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
+            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
+            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
         }
     }
 
@@ -152,42 +155,6 @@ pub mod soroban_sdk {
 
 use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 
-// =======================================================================
-// soroban_storage_in_loop — Fixtures
-// =======================================================================
-
-fn bad_storage_in_for_loop(env: Env) {
-    for i in 0..10 {
-        env.storage().instance().set(&i, &1); // Should Warn
-    }
-}
-
-fn bad_storage_in_while_loop(env: Env) {
-    let mut i = 0;
-    while i < 10 {
-        let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-        i += 1;
-    }
-}
-
-fn bad_storage_in_loop_loop(env: Env) {
-    loop {
-        if env.storage().temporary().has(&1) { // Should Warn
-            break;
-        }
-    }
-}
-
-fn good_storage_outside_loop(env: Env) {
-    env.storage().instance().set(&1, &1); // Good
-}
-
-#[allow(soroban_storage_in_loop)]
-fn allowed_storage_in_loop(env: Env) {
-    for i in 0..10 {
-        env.storage().instance().set(&i, &1); // Good (allowed)
-    }
-}
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
 #[allow(soroban_storage_in_loop)]

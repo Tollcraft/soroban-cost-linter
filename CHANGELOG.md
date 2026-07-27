@@ -14,6 +14,7 @@ and this project adheres to Semantic Versioning.
 - New lint `storage_write_without_read` detecting storage `.set()` calls where the same key is never subsequently read, flagging wasteful storage writes that drive up Soroban fees.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
+- New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 
 ### Fixed
