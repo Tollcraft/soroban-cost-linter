@@ -1,6 +1,53 @@
 #![feature(rustc_private)]
 #![warn(unused_extern_crates)]
 
+//! Soroban cost-analysis lints.
+//!
+//! This crate is a [Dylint](https://github.com/trailofbits/dylint) library. It
+//! is compiled to a `cdylib` and loaded by `cargo dylint` (driven by the
+//! `cargo-cost-lint` wrapper), which runs each lint as a late-stage pass over a
+//! Soroban contract's [HIR](https://rustc-dev-guide.rust-lang.org/hir.html).
+//!
+//! # What the lints look for
+//!
+//! Soroban meters execution against a CPU and memory budget. The lints here
+//! flag *structural* anti-patterns whose cost does not depend on runtime input,
+//! so they can be caught statically:
+//!
+//! - [`SOROBAN_STORAGE_IN_LOOP`] — storage reads/writes performed inside a loop.
+//! - [`REDUNDANT_ENV_CLONE`] — cloning the `Env` handle when a reference would
+//!   do.
+//! - [`UNNECESSARY_HOST_FUNCTION_CALL`] — a metered host call inside a loop
+//!   whose result is invariant across iterations and could be hoisted out.
+//! - [`HOST_IN_LOOP`] — use of a `Host` object inside a loop.
+//! - [`SYMBOL_NEW_FOR_SHORT_LITERAL`] — `Symbol::new` on a literal short enough
+//!   for the compile-time `symbol_short!` macro.
+//!
+//! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
+//! the single source of truth the wrapper reads to describe available lints.
+//!
+//! # How a lint is structured
+//!
+//! Every lint follows the same three-part shape used throughout `rustc`/Clippy:
+//!
+//! 1. A [`declare_lint!`](rustc_session::declare_lint) invocation that defines
+//!    the lint's static descriptor, default level, and short description.
+//! 2. A zero-sized marker struct (e.g. [`SorobanStorageInLoop`]) that the pass
+//!    is dispatched on.
+//! 3. An `impl` of [`LateLintPass`] for that struct whose `check_expr` inspects
+//!    each expression and emits a diagnostic when the pattern matches.
+//!
+//! Type-based matching is done against `soroban_sdk` def-paths via
+//! [`match_soroban_def_path`] and the `SOROBAN_*` path tables, so the lints key
+//! off the SDK's public types rather than fragile name heuristics.
+//!
+//! # Adding a lint
+//!
+//! See `CONTRIBUTING.md`. In short: declare the lint, add a marker struct and
+//! `LateLintPass` impl, register both in [`register_lints`], and add a
+//! [`LintMetadata`] entry to [`LINT_METADATA`] with the appropriate
+//! [`LintCategory`].
+
 extern crate rustc_ast;
 extern crate rustc_errors;
 extern crate rustc_hir;
@@ -112,6 +159,8 @@ struct BindingCollector {
 }
 
 impl<'tcx> Visitor<'tcx> for BindingCollector {
+    /// Records the `HirId` of any binding pattern encountered, then recurses
+    /// into sub-patterns so nested bindings (e.g. `(a, b)`) are all captured.
     fn visit_pat(&mut self, pat: &'tcx hir::Pat<'tcx>) {
         if let hir::PatKind::Binding(_, hir_id, _, _) = pat.kind {
             self.bindings.insert(hir_id);
@@ -127,6 +176,9 @@ struct LocalReadCollector {
 }
 
 impl<'tcx> Visitor<'tcx> for LocalReadCollector {
+    /// Records the `HirId` of every resolved read of a local variable, i.e. a
+    /// path expression that resolves to a `Res::Local`, then recurses into the
+    /// rest of the expression tree.
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = expr.kind
             && let hir::def::Res::Local(hir_id) = path.res
@@ -182,20 +234,62 @@ fn enclosing_loop<'tcx>(
     matches!(enclosing.kind, hir::ExprKind::Loop(..)).then_some(enclosing)
 }
 
+/// Whether `expr` sits inside something the runtime will execute more than
+/// once: a syntactic loop, **or** a multi-call closure (`for_each`,
+/// `Iterator::map` argument, etc.).
+///
+/// `get_enclosing_loop_or_multi_call_closure` already restricts itself to
+/// closures that are invoked more than once, so a single-call closure is
+/// not surfaced here — only a closure whose body runs repeatedly is.
+///
+/// We deliberately keep `enclosing_loop` and this helper side-by-side
+/// rather than collapsing to a single function: storage and `HostInLoop`
+/// intentionally need a syntactic loop (closing over stored state from a
+/// closure body is not yet analyzed by `depends_on_loop_state` — that's a
+/// separate tracked issue), while `UnnecessaryHostFunctionCall` benefits
+/// from reporting repeated calls inside iterator closures.
+fn enclosing_loop_or_closure<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    let enclosing = get_enclosing_loop_or_multi_call_closure(cx, expr)?;
+    matches!(
+        enclosing.kind,
+        hir::ExprKind::Loop(..) | hir::ExprKind::Closure(..)
+    )
+    .then_some(enclosing)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintCategory {
+    /// Reads and writes to Soroban storage (instance, persistent, temporary).
     StorageOperations,
+    /// CPU-metered work, such as redundant host calls.
     Compute,
+    /// Memory allocation and copying, such as needless clones.
     Memory,
+    /// Creation and expiry of storage entries.
     EntryLifecycle,
+    /// Construction and handling of `Symbol` values.
     SymbolOperations,
 }
 
+/// A single entry in the lint registry: a lint paired with its [`LintCategory`].
+///
+/// See [`LINT_METADATA`] for the full table.
 pub struct LintMetadata {
+    /// The lint this entry describes.
     pub lint: &'static rustc_lint::Lint,
+    /// The cost dimension the lint is grouped under.
     pub category: LintCategory,
 }
 
+/// The registry of every lint shipped by this crate, each paired with its
+/// [`LintCategory`].
+///
+/// This is the single source of truth for lint metadata: the `cargo-cost-lint`
+/// wrapper reads it to enumerate and categorize available lints. Any lint added
+/// in [`register_lints`] should also gain an entry here.
 pub const LINT_METADATA: &[LintMetadata] = &[
     LintMetadata {
         lint: SOROBAN_STORAGE_IN_LOOP,
@@ -233,8 +327,18 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: BYTES_APPEND_IN_LOOP,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: SIGNATURE_VERIFICATION_IN_LOOP,
+        category: LintCategory::Compute,
+    },
 ];
 
+/// Dylint entry point: registers every lint and its late pass with the
+/// compiler's [`LintStore`].
+///
+/// `cargo dylint` calls this once per crate being checked. The set of lints
+/// registered here must stay in sync with [`LINT_METADATA`]. The session
+/// argument is unused; lint registration does not depend on session state.
 #[unsafe(no_mangle)]
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
@@ -247,6 +351,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INEFFICIENT_BYTES_CONCAT,
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
+        SIGNATURE_VERIFICATION_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
@@ -257,6 +362,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
 }
 
 rustc_session::declare_lint! {
@@ -264,29 +370,59 @@ rustc_session::declare_lint! {
     Warn,
     "storage operations inside a loop"
 }
+/// Late pass backing [`SOROBAN_STORAGE_IN_LOOP`].
 pub struct SorobanStorageInLoop;
 rustc_session::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
+    /// Flags a method call whose receiver is a Soroban storage accessor (or
+    /// `Env::storage`) when it sits inside a loop.
+    ///
+    /// Storage access is metered on every iteration, so performing it in a loop
+    /// multiplies the cost. The receiver type is matched against
+    /// [`SOROBAN_STORAGE_TYPES`]; the loop check uses [`enclosing_loop`]. No
+    /// suggestion is offered because the fix (hoisting or batching) is
+    /// context-specific, so only a help note is emitted.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            let is_storage_access = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
-                let did = adt_def.did();
-                matches_any_path(cx, did, SOROBAN_STORAGE_TYPES)
-                    || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
-                        && path_segment.ident.name.as_str() == "storage")
-            } else {
-                false
-            };
+            // Only fire on terminal storage operations (`get` / `has` /
+            // `set`). The intermediate calls — `env.storage()`,
+            // `.instance()` / `.persistent()` / `.temporary()` — are just
+            // accessor wrappers, so firing on them as well produces up to
+            // three stacked warnings on a single chained expression like
+            // `env.storage().instance().set(&k, &v)`. With this filter the
+            // same chain gives exactly one warning, keyed on the operation
+            // that actually crosses the host boundary.
+            let method_name = path_segment.ident.name.as_str();
+            let is_terminal_storage_op = matches!(method_name, "get" | "has" | "set");
+
+            let is_storage_access = is_terminal_storage_op
+                && if let rustc_middle::ty::Adt(adt_def, _) =
+                    cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+                {
+                    matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                } else {
+                    false
+                };
 
             if is_storage_access && enclosing_loop(cx, expr).is_some() {
+                // Reads (`get`, `has`) and writes (`set`) deserve different
+                // advice: writes can be buffered and flushed once after the
+                // loop, but a loop-variant read cannot be accumulated — the
+                // user typically needs to hoist a loop-invariant read or
+                // batch where possible.
+                let help = if matches!(method_name, "get" | "has") {
+                    "if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible"
+                } else {
+                    "move storage operations out of the loop or accumulate mutations in memory first"
+                };
                 span_lint_and_help(
                     cx,
                     SOROBAN_STORAGE_IN_LOOP,
                     expr.span,
                     "storage operation inside a loop",
                     None,
-                    "move storage operations out of the loop or accumulate mutations in memory first",
+                    help,
                 );
             }
         }
@@ -298,10 +434,17 @@ rustc_session::declare_lint! {
     Warn,
     "redundant clone on Env object"
 }
+/// Late pass backing [`REDUNDANT_ENV_CLONE`].
 pub struct RedundantEnvClone;
 rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
+    /// Flags a `.clone()` call whose receiver is a `soroban_sdk::Env`.
+    ///
+    /// `Env` is a cheap handle to the host and is almost always better passed
+    /// by reference or value than cloned; the clone adds needless work. Matches
+    /// the `clone` method name and confirms the receiver type resolves to
+    /// `soroban_sdk::Env` before emitting a help note.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
             && path_segment.ident.name.as_str() == "clone"
@@ -350,6 +493,7 @@ rustc_session::declare_lint! {
     Warn,
     "unnecessary host function call inside loop"
 }
+/// Late pass backing [`UNNECESSARY_HOST_FUNCTION_CALL`].
 pub struct UnnecessaryHostFunctionCall;
 rustc_session::impl_lint_pass!(UnnecessaryHostFunctionCall => [UNNECESSARY_HOST_FUNCTION_CALL]);
 
@@ -358,10 +502,20 @@ rustc_session::declare_lint! {
     Warn,
     "use of Host object inside a loop"
 }
+/// Late pass backing [`HOST_IN_LOOP`].
 pub struct HostInLoop;
 rustc_session::impl_lint_pass!(HostInLoop => [HOST_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
+    /// Flags a metered host call inside a loop whose result is invariant across
+    /// iterations, so it could be computed once and reused.
+    ///
+    /// The receiver must resolve to one of [`SOROBAN_HOST_TYPES`], or the call
+    /// must be one of the constant-result `Env` methods in
+    /// [`SOROBAN_ENV_HOST_METHODS`]. The call is only reported when it is inside
+    /// a loop ([`enclosing_loop`]) *and* does not read loop-varying state
+    /// ([`depends_on_loop_state`]); the latter guard keeps calls whose inputs
+    /// change each iteration from being flagged.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let is_host_function = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
@@ -373,8 +527,14 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
+            // Accept both syntactic loops (`for` / `while` / `loop`) and
+            // multi-call closures (the body of `Iterator::for_each`, ...).
+            // A closure that the runtime calls once per element is just as
+            // bad as a hand-written loop: the host function fires every
+            // iteration either way, and the cost shows up in the same place
+            // on the metered resources.
             if is_host_function
-                && let Some(loop_expr) = enclosing_loop(cx, expr)
+                && let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
                 && !depends_on_loop_state(cx, loop_expr, expr)
             {
                 span_lint_and_help(
@@ -391,6 +551,12 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
 }
 
 impl<'tcx> LateLintPass<'tcx> for HostInLoop {
+    /// Flags any method call whose receiver is a `host::Host` object inside a
+    /// loop.
+    ///
+    /// Unlike [`UnnecessaryHostFunctionCall`], this pass does not attempt a
+    /// loop-invariance analysis: any `Host` use in a loop is surfaced with a
+    /// help note suggesting the call be moved out where possible.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
             let is_host = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
@@ -422,10 +588,20 @@ rustc_session::declare_lint! {
     Warn,
     "Symbol::new used with a short literal that could use symbol_short! macro"
 }
+/// Late pass backing [`SYMBOL_NEW_FOR_SHORT_LITERAL`].
 pub struct SymbolNewForShortLiteral;
 rustc_session::impl_lint_pass!(SymbolNewForShortLiteral => [SYMBOL_NEW_FOR_SHORT_LITERAL]);
 
 impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
+    /// Flags `Symbol::new(&env, "literal")` when the literal is short enough to
+    /// build at compile time with the `symbol_short!` macro.
+    ///
+    /// `Symbol::new` constructs the symbol at runtime, which is metered;
+    /// `symbol_short!` produces it as a compile-time constant instead. The pass
+    /// recognizes a two-argument call to `soroban_sdk::Symbol::new` whose second
+    /// argument is a string literal accepted by [`is_valid_short_symbol`]. When
+    /// the argument snippet is available it emits a machine-applicable
+    /// suggestion; otherwise it falls back to a help note.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         // Check for Symbol::new(&env, "literal") calls
         if let hir::ExprKind::Call(callee, args) = expr.kind
@@ -706,6 +882,60 @@ impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
                     "Map::insert inside a loop is expensive",
                     None,
                     "accumulate mutations in memory first and write once after the loop",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// signature_verification_in_loop — Lint
+// =======================================================================
+
+/// Signature-verification and public-key-recovery methods on the `Crypto`
+/// accessor. Each of these performs a full elliptic-curve check — one of the
+/// most CPU-expensive host functions available — so unlike a cheap, constant
+/// host call this cost cannot be hoisted out of the loop: every iteration
+/// verifies a different signature. Repeating it per iteration is a
+/// structural sign that signatures are being checked one at a time instead
+/// of via a scheme that supports batch or aggregate verification.
+const SIGNATURE_VERIFICATION_METHODS: &[&str] =
+    &["ed25519_verify", "secp256k1_recover", "secp256r1_verify"];
+
+rustc_session::declare_lint! {
+    pub SIGNATURE_VERIFICATION_IN_LOOP,
+    Warn,
+    "signature verification performed inside a loop"
+}
+pub struct SignatureVerificationInLoop;
+rustc_session::impl_lint_pass!(SignatureVerificationInLoop => [SIGNATURE_VERIFICATION_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && SIGNATURE_VERIFICATION_METHODS.contains(&path_segment.ident.name.as_str())
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_crypto = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "crypto", "Crypto"])
+                    || match_soroban_def_path(cx, did, &["soroban_sdk", "crypto", "CryptoHazmat"])
+            } else {
+                false
+            };
+
+            if is_crypto && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    SIGNATURE_VERIFICATION_IN_LOOP,
+                    expr.span,
+                    "signature verification inside a loop",
+                    None,
+                    "each call re-runs an expensive elliptic-curve check; consider a signature \
+                     scheme that supports batch or aggregate verification, or move per-item \
+                     auth to the callee via a bulk entrypoint",
                 );
             }
         }

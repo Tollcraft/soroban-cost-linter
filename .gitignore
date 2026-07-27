@@ -1,1 +1,4 @@
 /target
+tests/corpus/contracts/*/target
+*.rcgu.o
+/module.rs

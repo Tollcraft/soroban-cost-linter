@@ -1,16 +1,20 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 
+mod config;
+use config::Config;
+
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Text,
     Json,
+    Sarif,
 }
 
 #[derive(Serialize, Debug)]
@@ -34,6 +38,82 @@ struct LintFinding {
     suggestion: Option<String>,
 }
 
+#[derive(Serialize)]
+struct SarifReport {
+    #[serde(rename = "$schema")]
+    schema: String,
+    version: String,
+    runs: Vec<SarifRun>,
+}
+
+#[derive(Serialize)]
+struct SarifRun {
+    tool: SarifTool,
+    results: Vec<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct SarifTool {
+    driver: SarifToolDriver,
+}
+
+#[derive(Serialize)]
+struct SarifToolDriver {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SarifResult {
+    #[serde(rename = "ruleId")]
+    rule_id: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct SarifLocation {
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
+}
+
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+#[derive(Serialize)]
+struct SarifRegion {
+    #[serde(rename = "startLine")]
+    start_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
@@ -46,14 +126,6 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
-}
-
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -104,14 +176,7 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
-            }
-        }
+        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let mut cmd = Command::new("cargo");
@@ -156,51 +221,53 @@ fn main() {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                             if LINT_NAMES.contains(&lint_name) {
-                                let level = message
+                                let level = diagnostic
                                     .get("level")
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let msg_text = message
+                                let diagnostic_message = diagnostic
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let mut file = String::new();
-                                let mut span_obj = Span {
+                                let mut primary_span = Span {
                                     line_start: 0,
                                     line_end: 0,
                                     column_start: 0,
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) =
+                                    diagnostic.get("spans").and_then(|s| s.as_array())
                                 {
-                                    for s in spans {
-                                        if s.get("is_primary")
+                                    for span in spans {
+                                        if span
+                                            .get("is_primary")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false)
                                         {
-                                            file = s
+                                            file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
-                                            span_obj.line_start = s
+                                            primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
+                                            primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_start = s
+                                            primary_span.column_start = span
                                                 .get("column_start")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_end = s
+                                            primary_span.column_end = span
                                                 .get("column_end")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
@@ -258,11 +325,11 @@ fn main() {
                                     if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
                                     }
-                                } else {
+                                } else if cli.format != OutputFormat::Sarif {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
+                                        .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
                             }
@@ -275,6 +342,76 @@ fn main() {
 
     if cli.fix {
         apply_fixes(&findings);
+    }
+
+    if cli.format == OutputFormat::Sarif {
+        let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+        let mut rules: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
+
+        for finding in &findings {
+            if seen_rules.insert(finding.name.clone()) {
+                rules.push(serde_json::json!({
+                    "id": finding.name,
+                    "shortDescription": { "text": finding.message }
+                }));
+            }
+
+            let level = match finding.level.as_str() {
+                "error" | "deny" => "error",
+                _ => "warning",
+            };
+
+            let region = if finding.span.line_start > 0 {
+                Some(SarifRegion {
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
+                })
+            } else {
+                None
+            };
+
+            sarif_results.push(SarifResult {
+                rule_id: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
+            });
+        }
+
+        let sarif = SarifReport {
+            schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifToolDriver {
+                        name: "cargo-cost-lint".to_string(),
+                        version: package_version.to_string(),
+                        information_uri: Some(
+                            "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
+                        ),
+                        rules,
+                    },
+                },
+                results: sarif_results,
+            }],
+        };
+
+        if let Ok(sarif_json) = serde_json::to_string_pretty(&sarif) {
+            println!("{}", sarif_json);
+        }
     }
 
     let status = child.wait().expect("Failed to wait on cargo dylint");
