@@ -25,11 +25,14 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints shipped in `v0.1.1`; the unreleased tree adds three more:
 
-*   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
-*   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable.
+*   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead. *(shipped in `v0.1.1`)*
+*   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object. *(shipped in `v0.1.1`)*
+*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies redundant calls to host functions (like fetching the ledger sequence) that should be called once and bound to a local variable. *(shipped in `v0.1.1`)*
+*   **[`host_in_loop`](docs/lints/README.md):** Flags `Host` object usages inside loop bodies.
+*   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Suggests the compile-time `symbol_short!` macro when `Symbol::new(&env, "literal")` is called with a short literal (≤ 9 chars, alphanumeric + underscore).
+*   **[`blind_storage_write`](docs/lints/blind_storage_write.md):** Catches storage `.set()` calls that have no preceding read (`.get()`, `.try_get()`, `.has()`, `.remove()`, or `.update()`) on the same key anywhere in the function — preventing silent overwrites and accidental key collisions.
 
 ## How it Fits into Tollcraft
 

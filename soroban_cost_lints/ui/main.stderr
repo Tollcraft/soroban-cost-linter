@@ -1,5 +1,5 @@
 warning: storage operation inside a loop
-  --> $DIR/main.rs:78:9
+  --> $DIR/main.rs:87:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:78:9
+  --> $DIR/main.rs:87:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:78:9
+  --> $DIR/main.rs:87:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
@@ -24,23 +24,24 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:85:30
+  --> $DIR/main.rs:94:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:85:30
+  --> $DIR/main.rs:94:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:85:30
+  --> $DIR/main.rs:94:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^
@@ -48,31 +49,32 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:92:12
+  --> $DIR/main.rs:101:12
    |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
+LL |             if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:92:12
+  --> $DIR/main.rs:101:12
    |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
+LL |             if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:92:12
+  --> $DIR/main.rs:101:12
    |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
+LL |             if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:114:19
+  --> $DIR/main.rs:123:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
    |                   ^^^^^^^^^^^
@@ -81,7 +83,7 @@ LL |     let _cloned = env.clone(); // Should Warn
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:132:20
+  --> $DIR/main.rs:141:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -90,7 +92,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:155:16
+  --> $DIR/main.rs:164:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -98,16 +100,48 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:159:16
+  --> $DIR/main.rs:168:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:167:16
+  --> $DIR/main.rs:176:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: 14 warnings emitted
+warning: blind storage write (no preceding read on this key)
+  --> $DIR/main.rs:206:5
+   |
+LL |     env.storage().instance().set(&"alpha", &1u32); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: read the existing value first with `.get()`, `.has()`, or `.remove()` so the contract does not silently overwrite or collide with existing entries
+   = note: `#[warn(blind_storage_write)]` on by default
 
+warning: blind storage write (no preceding read on this key)
+  --> $DIR/main.rs:211:5
+   |
+LL |     env.storage().persistent().set(&k, &2u32); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: read the existing value first with `.get()`, `.has()`, or `.remove()` so the contract does not silently overwrite or collide with existing entries
+
+warning: blind storage write (no preceding read on this key)
+  --> $DIR/main.rs:216:5
+   |
+LL |     env.storage().temporary().set(&k, &3u32); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: read the existing value first with `.get()`, `.has()`, or `.remove()` so the contract does not silently overwrite or collide with existing entries
+
+warning: blind storage write (no preceding read on this key)
+  --> $DIR/main.rs:249:5
+   |
+LL |     env.storage().persistent().set(&"shared", &1u32); // Should Warn - read was on a different bucket
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: read the existing value first with `.get()`, `.has()`, or `.remove()` so the contract does not silently overwrite or collide with existing entries
+
+warning: 18 warnings emitted

@@ -15,6 +15,7 @@ use clippy_utils::source::snippet_opt;
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
+use rustc_hir::intravisit::{Visitor, walk_expr};
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_span::def_id::DefId;
 
@@ -61,6 +62,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
+    LintMetadata {
+        lint: BLIND_STORAGE_WRITE,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -71,12 +76,14 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
+        BLIND_STORAGE_WRITE,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
+    lint_store.register_late_pass(|_| Box::new(BlindStorageWrite));
 }
 
 rustc_session::declare_lint! {
@@ -293,6 +300,124 @@ fn is_valid_short_symbol(s: &str) -> bool {
         return false;
     }
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+// =======================================================================
+// blind_storage_write — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub BLIND_STORAGE_WRITE,
+    Warn,
+    "storage write without a preceding read on the same key"
+}
+pub struct BlindStorageWrite;
+rustc_session::impl_lint_pass!(BlindStorageWrite => [BLIND_STORAGE_WRITE]);
+
+/// Identifies which Soroban storage bucket a method call is targeting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BlindStorageBucket {
+    Instance,
+    Persistent,
+    Temporary,
+}
+
+impl<'tcx> LateLintPass<'tcx> for BlindStorageWrite {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _fn_kind: hir::intravisit::FnKind<'tcx>,
+        _fn_decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _fn_def_id: hir::def_id::LocalDefId,
+    ) {
+        let mut visitor = BlindStorageVisitor {
+            cx,
+            seen_reads: std::collections::HashSet::new(),
+        };
+        visitor.visit_body(body);
+    }
+}
+
+/// Walks a function body linearly, recording the (storage-bucket, key) pairs
+/// that have been read, and emitting a `blind_storage_write` warning whenever
+/// a storage `.set()` call targets a key that has never been read anywhere in
+/// the same function.
+///
+/// A HIR-level pre-order walk gives us the source-order semantics we want: a
+/// read that appears textually before the write "authorises" that write. We
+/// intentionally do not perform control-flow sensitive analysis — over the
+/// whole function is the conservative, low-false-positive choice for a
+/// cost-shape lint.
+struct BlindStorageVisitor<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    seen_reads: std::collections::HashSet<(BlindStorageBucket, String)>,
+}
+
+impl<'a, 'tcx> BlindStorageVisitor<'a, 'tcx> {
+    /// Returns the storage bucket targeted by the receiver of `expr`, if
+    /// `expr` is a method call on `Instance`, `Persistent`, or `Temporary`.
+    fn detect_storage_bucket(&self, expr: &hir::Expr<'tcx>) -> Option<BlindStorageBucket> {
+        if let hir::ExprKind::MethodCall(_, receiver, _, _) = expr.kind {
+            let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                if match_soroban_def_path(self.cx, did, &["soroban_sdk", "storage", "Instance"]) {
+                    return Some(BlindStorageBucket::Instance);
+                }
+                if match_soroban_def_path(self.cx, did, &["soroban_sdk", "storage", "Persistent"]) {
+                    return Some(BlindStorageBucket::Persistent);
+                }
+                if match_soroban_def_path(self.cx, did, &["soroban_sdk", "storage", "Temporary"]) {
+                    return Some(BlindStorageBucket::Temporary);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for BlindStorageVisitor<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
+            && let Some(bucket) = self.detect_storage_bucket(expr)
+            && let Some(key_arg) = args.first()
+        {
+            let method = path_segment.ident.name.as_str();
+
+            match method {
+                "set" => {
+                    // Only flag blind writes when we have a usable textual key
+                    // (so the comparison against earlier reads is meaningful).
+                    // Complex key expressions are intentionally skipped.
+                    if let Some(key_text) = snippet_opt(self.cx, key_arg.span)
+                        && !self.seen_reads.contains(&(bucket, key_text.clone()))
+                    {
+                        span_lint_and_help(
+                            self.cx,
+                            BLIND_STORAGE_WRITE,
+                            expr.span,
+                            "blind storage write (no preceding read on this key)",
+                            None,
+                            "read the existing value first with `.get()`, `.has()`, or `.remove()` so the contract does not silently overwrite or collide with existing entries",
+                        );
+                    }
+                }
+                "get" | "try_get" | "has" | "remove" | "update" => {
+                    // Any non-write interaction with the same key counts as a
+                    // "read" that authorises a later write on the same key.
+                    if let Some(key_text) = snippet_opt(self.cx, key_arg.span) {
+                        self.seen_reads.insert((bucket, key_text));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        walk_expr(self, expr);
+    }
 }
 
 #[test]

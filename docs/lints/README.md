@@ -7,6 +7,7 @@ This section provides detailed documentation for all lints supported by `soroban
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| [`blind_storage_write`](blind_storage_write.md)                       | `warn`           | Storage writes that have no preceding read on the same key |
 
 ## CPU/Compute
 

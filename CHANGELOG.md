@@ -10,6 +10,7 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `blind_storage_write` detecting storage `.set()` calls on `Instance`, `Persistent`, or `Temporary` that have no preceding read (`.get()`, `.try_get()`, `.has()`, `.remove()`, or `.update()`) on the same key anywhere in the function body. This catches silent overwrites and accidental key collisions before they reach the network.
 
 ## [0.1.1]
 

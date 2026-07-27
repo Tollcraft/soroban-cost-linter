@@ -26,22 +26,31 @@ pub mod soroban_sdk {
         pub struct Instance;
         impl Instance {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<Option<V>> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
+            pub fn update<K, V>(&self, _k: &K, _f: fn(Option<V>) -> Option<V>) {}
         }
 
         pub struct Persistent;
         impl Persistent {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<Option<V>> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
+            pub fn update<K, V>(&self, _k: &K, _f: fn(Option<V>) -> Option<V>) {}
         }
 
         pub struct Temporary;
         impl Temporary {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<Option<V>> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
+            pub fn update<K, V>(&self, _k: &K, _f: fn(Option<V>) -> Option<V>) {}
         }
     }
 
@@ -187,6 +196,62 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// blind_storage_write — Fixtures
+// =======================================================================
+
+fn bad_blind_write_instance(env: Env) {
+    env.storage().instance().set(&"alpha", &1u32); // Should Warn
+}
+
+fn bad_blind_write_persistent(env: Env) {
+    let k = "beta";
+    env.storage().persistent().set(&k, &2u32); // Should Warn
+}
+
+fn bad_blind_write_temporary(env: Env) {
+    let k = "gamma";
+    env.storage().temporary().set(&k, &3u32); // Should Warn
+}
+
+fn good_write_after_get(env: Env) {
+    let _existing: Option<u32> = env.storage().instance().get(&"alpha"); // read first
+    env.storage().instance().set(&"alpha", &1u32); // Good - same key was read
+}
+
+fn good_write_after_has(env: Env) {
+    if env.storage().persistent().has(&"beta") {
+        env.storage().persistent().set(&"beta", &2u32); // Good - has() before set
+    }
+}
+
+fn good_write_after_try_get(env: Env) {
+    let _existing: Option<Option<u32>> = env.storage().temporary().try_get(&"gamma");
+    env.storage().temporary().set(&"gamma", &3u32); // Good - try_get before set
+}
+
+fn good_write_after_remove(env: Env) {
+    let _removed: Option<u32> = env.storage().instance().get(&"alpha");
+    env.storage().instance().remove(&"alpha");
+    env.storage().instance().set(&"alpha", &1u32); // Good - read before set
+}
+
+fn good_write_after_update(env: Env) {
+    fn bump(_existing: Option<u32>) -> Option<u32> { Some(2) }
+    env.storage().persistent().update(&"beta", bump); // read inside update
+    env.storage().persistent().set(&"beta", &2u32); // Good - update before set
+}
+
+fn bad_blind_write_different_buckets(env: Env) {
+    let _ = env.storage().instance().get(&"shared"); // read on instance only
+    env.storage().persistent().set(&"shared", &1u32); // Should Warn - read was on a different bucket
+}
+
+#[allow(blind_storage_write)]
+fn allowed_blind_write(env: Env) {
+    env.storage().instance().set(&"alpha", &1u32); // Good (allowed)
 }
 
 fn main() {}
