@@ -1,0 +1,19 @@
+warning: redundant conversion to the same type
+  --> $DIR/redundant_val_conversion.rs:33:18
+   |
+LL |     let _: u32 = num.into_val(&env); // Should warn
+   |                  ^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this conversion since the value is already the target type
+   = note: `#[warn(redundant_val_conversion)]` on by default
+
+warning: redundant round-trip conversion
+  --> $DIR/redundant_val_conversion.rs:37:30
+   |
+LL |     let _: Result<u32, ()> = u32::try_from_val(&env, &num.into_val(&env)); // Should warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove these conversions and use the original value directly
+
+warning: 2 warnings emitted
+

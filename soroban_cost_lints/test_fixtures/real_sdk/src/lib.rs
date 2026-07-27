@@ -56,27 +56,12 @@ fn good_host_outside_loop(env: Env) {
     */
 }
 
-// ---- blind_storage_write fixtures ----
-
-fn bad_blind_write_instance(env: Env) {
-    env.storage().instance().set(&1u32, &1i32);
-}
-
-fn bad_blind_write_persistent(env: Env) {
-    env.storage().persistent().set(&2u32, &2i32);
-}
-
-fn bad_blind_write_temporary(env: Env) {
-    env.storage().temporary().set(&3u32, &3i32);
-}
-
-fn good_write_after_get(env: Env) {
-    let _ = env.storage().instance().get::<u32, i32>(&1u32);
-    env.storage().instance().set(&1u32, &1i32);
-}
-
-fn good_write_after_has(env: Env) {
-    if env.storage().persistent().has(&2u32) {
-        env.storage().persistent().set(&2u32, &2i32);
-    }
-}
+// fn good_host_outside_loop(env: Env) {
+//     /*
+//     let host = env.host().clone();
+//     let _ = host.budget_cloned();
+//     for _ in 0..10 {
+//         // do not use host inside loop
+//     }
+//     */
+// }
