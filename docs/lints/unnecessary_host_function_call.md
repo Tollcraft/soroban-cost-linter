@@ -73,6 +73,28 @@ Two gaps remain, and both make the lint report a call it could have skipped:
 - Mutation through a raw pointer or through interior mutability (`Cell`,
   `RefCell`) is not tracked.
 
+## Cost impact
+
+A host function call pays `DispatchHostFunction` overhead (crossing from Wasm into the host environment) plus the work the function performs. When the result is constant across loop iterations, every call after the first is pure waste.
+
+Measured with `Env::default()` in the [`cost_benchmarks`](https://github.com/Tollcraft/soroban-cost-linter/tree/main/cost_benchmarks) crate (`cargo test -- --nocapture`):
+
+| Pattern | Iterations | CPU instructions (delta) | Memory bytes (delta) |
+| --- | --- | --- | --- |
+| `env.ledger().sequence()` in loop (bad) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+| Hoisted: call once, reuse result (good) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+
+{% hint style="warning" %}
+The saving scales **linearly with iteration count**. A loop of 10,000 iterations wastes ~100× what a loop of 100 does. Larger loops see proportionally larger absolute savings.
+{% endhint %}
+
+### How to reproduce
+
+```bash
+cd cost_benchmarks
+cargo test bench_host_fn_inside_vs_outside_loop -- --nocapture
+```
+
 ## Deliberately not covered
 
 - `env.invoke_contract()`, `env.try_invoke_contract()` and

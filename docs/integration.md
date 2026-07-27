@@ -1,6 +1,6 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
+`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.## Local Configuration (`budget.toml`)
 
 ## Local Configuration (`budget.toml`)
 
@@ -22,14 +22,43 @@ cargo cost-lint --config /etc/soroban-cost-linter/budget.toml
 
 `budget.toml` may live anywhere on disk; this flag is the single supported way to point the tool at it. The path you pass goes through the same `BudgetConfig` parser regardless of location, so unknown lint names or invalid levels fail validation identically.
 
+### Full schema
+
 {% code title="budget.toml" %}
 ```toml
+# ── soroban-cost-linter section ───────────────────────────────────────
+# Every key is a lint name; the value must be "allow", "warn", or "deny".
+# Unknown lint names are rejected at parse time — a typo will not be
+# silently ignored.
+
 [lints]
 soroban_storage_in_loop = "deny"
 redundant_env_clone = "warn"
 unnecessary_host_function_call = "warn"
+
+# ── soroban-budget-assert sections ────────────────────────────────────
+# These are consumed by the sibling runtime test harness.  They are
+# preserved verbatim so both tools can coexist in one file.
+
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+
+[source]
+account = "G..."
+
+[functions.my_contract]
+max_cpu_instructions = 100_000_000
 ```
 {% endcode %}
+
+### Section ownership
+
+| Section | Owner | Behaviour |
+|---------|-------|-----------|
+| `[lints]` | `soroban-cost-linter` | Strictly validated; unknown keys error |
+| `[network]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[source]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[functions.*]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
 
 {% hint style="info" %}
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
