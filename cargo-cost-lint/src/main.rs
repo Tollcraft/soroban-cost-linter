@@ -61,7 +61,8 @@ struct SarifTool {
 struct SarifToolDriver {
     name: String,
     version: String,
-    #[serde(rename = "informationUri", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "informationUri")]
     information_uri: Option<String>,
 }
 
@@ -102,11 +103,14 @@ struct SarifArtifactLocation {
 struct SarifRegion {
     #[serde(rename = "startLine")]
     start_line: usize,
-    #[serde(rename = "startColumn", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "startColumn")]
     start_column: Option<usize>,
-    #[serde(rename = "endLine", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endLine")]
     end_line: Option<usize>,
-    #[serde(rename = "endColumn", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endColumn")]
     end_column: Option<usize>,
 }
 

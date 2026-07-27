@@ -14,7 +14,8 @@ pub fn loop_with_buffer(env: Env) {
 
 // Good: iterator that accumulates then writes once
 pub fn map_then_store(env: Env) {
-    let keys: Vec<i32> = vec![1, 2, 3];
+    const ACCUM: Symbol = symbol_short!("accum");
+    let keys: Vec<i32> = vec![&env, 1, 2, 3];
     let sum: i32 = keys.iter().map(|k| k * 2).sum();
-    env.storage().persistent().set(&MIXED, &sum);
+    env.storage().persistent().set(&ACCUM, &sum);
 }
