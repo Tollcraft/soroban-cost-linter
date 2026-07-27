@@ -1,4 +1,5 @@
 mod module_13;
+mod module_15;
 
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
@@ -95,6 +96,7 @@ fn main() {
     };
 
     let allowed = allowed_files(Path::new("."));
+    let lint_name_set = module_15::build_lint_name_set(LINT_NAMES);
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
@@ -143,7 +145,7 @@ fn main() {
                 if let Some(message) = msg.get("message") {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
-                            if LINT_NAMES.contains(&lint_name) {
+                            if lint_name_set.contains(lint_name) {
                                 let level = message
                                     .get("level")
                                     .and_then(|l| l.as_str())
