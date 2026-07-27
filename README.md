@@ -34,6 +34,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
 *   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
+*   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
 
 ## How it Fits into Tollcraft
 
@@ -88,6 +89,15 @@ cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/
 
 ## Usage
 
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
+| `--format <text\|json>` | Output format (default: `text`) |
+| `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--version` | Print the crate version and exit |
+
 ### Running the linter
 
 From the root of your Soroban contract workspace:
@@ -96,10 +106,34 @@ From the root of your Soroban contract workspace:
 cargo cost-lint
 ```
 
+### Listing available lints
+
+To see which lints are registered and their default levels:
+
+```bash
+cargo cost-lint --list-lints
+```
+
+Output is tab-separated for easy parsing:
+
+```text
+soroban_storage_in_loop	warn	storage operations inside a loop
+redundant_env_clone	warn	redundant clone on Env object
+unnecessary_host_function_call	warn	unnecessary host function call inside loop
+host_in_loop	warn	use of Host object inside a loop
+symbol_new_for_short_literal	warn	Symbol::new used with a short literal that could use symbol_short! macro
+```
+
+### Checking the installed version
+
+```bash
+cargo cost-lint --version
+```
+
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
 ```text
-warning: storage operation inside a loop
+error: storage operation inside a loop
   --> src/lib.rs:12:9
    |
 LL |         env.storage().instance().set(&i, &1);
@@ -153,6 +187,12 @@ LL |     let _cloned = env.clone();
    |
    = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
+
+lint summary:
+  redundant_env_clone: 1
+  soroban_storage_in_loop: 3
+  unnecessary_host_function_call: 2
+total: 6
 ```
 
 ### Example: storage in a loop
@@ -169,12 +209,13 @@ for item in items {
 The linter flags this as:
 
 ```text
-warning: storage operation inside a loop
- --> src/lib.rs:4:9
-  |
+error: storage operation inside a loop
+  --> src/lib.rs:4:9
+   |
 LL |         env.storage().instance().set(&item, &1);
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: move storage operations out of the loop or accumulate mutations in memory first
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 ```
 
 **Fix** &mdash; accumulate in memory, then write once:
@@ -292,6 +333,16 @@ inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
 contract_call_in_loop = "warn"
 
+Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
 ```
 
 #### Pointing `cargo cost-lint` at a config — the `--config` flag

@@ -1,0 +1,36 @@
+name: Security Audit (cargo-deny)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
+      - "deny.toml"
+      - ".github/workflows/security.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
+      - "deny.toml"
+      - ".github/workflows/security.yml"
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  cargo-deny:
+    name: cargo-deny check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # cargo-deny-action v2 fetches its own Rust toolchain internally,
+      # so we don't need a separate rust-toolchain install step.
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          # Scan all workspace members with all features enabled.
+          arguments: "--all-features"
+          log-level: warn

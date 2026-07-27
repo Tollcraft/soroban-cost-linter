@@ -6,6 +6,15 @@ This section provides detailed documentation for all lints supported by `soroban
 See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.
 {% endhint %}
 
+## Confidence / Impact Classification
+
+Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mitigation-strategy):
+
+| Classification | Default Level | Meaning |
+|---|---|---|
+| **High Confidence, High Impact** | `deny` | Pattern is unambiguous and always expensive. Fails CI by default. |
+| **Medium Impact / Context-Dependent** | `warn` | Pattern may be acceptable in small or bounded contexts. Does not block CI by default. |
+
 ## Storage Operations
 
 | Lint                                                                  | Default Severity | Catches                                    |
@@ -28,12 +37,15 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md)                 | `warn`           | `Vec::with_capacity`/`.reserve`/`.reserve_exact` with a large, hard-coded literal |
+| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn`           | `soroban_sdk::Vec` by value where a native slice would suffice |
 
 ## Symbol Operations
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
+| [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn`           | Loop-invariant `Symbol::new` key construction inside loops |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
