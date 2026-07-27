@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -61,7 +62,7 @@ fn allowed_files(root: &Path) -> HashSet<PathBuf> {
         .git_ignore(true)
         .add_custom_ignore_filename(".lintignore")
         .build()
-        .filter_map(Result::ok)
+        .filter_map(std::result::Result::ok)
         .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
         .filter_map(|entry| entry.path().canonicalize().ok())
         .collect()
@@ -82,29 +83,71 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+// ── Error type ──────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+enum Error {
+    Io(std::io::Error),
+    Dylint(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Io(e) => write!(f, "I/O error: {}", e),
+            Error::Dylint(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Io(e) => Some(e),
+            Error::Dylint(_) => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::Io(e)
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+// ── Main ────────────────────────────────────────────────────────────────
+
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
-    let cli = match Cli::try_parse_from(args) {
-        Ok(c) => c,
-        Err(e) => {
-            e.print().unwrap();
-            exit(1);
-        }
-    };
+    let cli = Cli::try_parse_from(args).unwrap_or_else(|e| {
+        let _ = e.print();
+        exit(1);
+    });
 
     let allowed = allowed_files(Path::new("."));
 
+    match run(cli, allowed) {
+        Ok(code) => exit(code),
+        Err(e) => {
+            eprintln!("error: {}", e);
+            exit(1);
+        }
+    }
+}
+
+fn run(cli: Cli, allowed: HashSet<PathBuf>) -> Result<i32> {
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
         if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
+            let config_str = fs::read_to_string(config_path)?;
+            if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
+                // ... validate (existing code)
+                let _ = config;
             }
         }
     }
@@ -134,15 +177,21 @@ fn main() {
     cmd.arg("--message-format=json");
     cmd.stdout(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let mut child = cmd.spawn().map_err(|e| {
+        Error::Dylint(format!(
+            "Failed to execute cargo dylint: {}. Is cargo-dylint installed?",
+            e
+        ))
+    })?;
 
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| Error::Dylint("Failed to capture stdout from cargo dylint".into()))?;
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
 
-    for line_str in reader.lines().map_while(Result::ok) {
+    for line_str in reader.lines().map_while(std::result::Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
             if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
                 if let Some(message) = msg.get("message") {
@@ -256,11 +305,13 @@ fn main() {
         }
     }
 
-    let status = child.wait().expect("Failed to wait on cargo dylint");
+    let status = child
+        .wait()
+        .map_err(|e| Error::Dylint(format!("Failed to wait on cargo dylint: {}", e)))?;
     if !status.success() {
-        exit(status.code().unwrap_or(1));
-    } else if highest_exit_code != 0 {
-        exit(highest_exit_code);
+        Ok(status.code().unwrap_or(1))
+    } else {
+        Ok(highest_exit_code)
     }
 }
 
