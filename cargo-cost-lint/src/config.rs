@@ -3,11 +3,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-/// Runtime configuration loaded from a `budget.toml` file.
-///
-/// Each lint name can be mapped to a level (`allow`, `warn`, `deny`) to
-/// override its default severity. When the file is absent or malformed the
-/// default (all lints at their declared level) is used.
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Config {
     #[allow(dead_code)]
@@ -15,10 +10,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Loads a [`Config`] from `path`, returning defaults on failure.
-    ///
-    /// Missing files, unparseable TOML, and empty files all produce the
-    /// default configuration where every lint keeps its declared level.
     pub fn from_file_or_default(path: &Path) -> Self {
         if !path.exists() {
             return Config::default();
