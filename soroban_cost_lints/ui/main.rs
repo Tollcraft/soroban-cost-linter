@@ -805,4 +805,103 @@ fn allowed_storage_key_construction_in_loop(env: Env) {
     }
 }
 
+// =======================================================================
+// Edge-case / boundary-condition fixtures — off-by-one, zero-length,
+// single-iteration, and boundary-value inputs.
+// =======================================================================
+
+// --- storage in a zero-iteration loop (syntactically still a loop) ---
+fn bad_storage_loop_zero_iterations(env: Env) {
+    for _ in 0..0 {
+        env.storage().instance().set(&0, &1); // Should Warn
+    }
+}
+
+// --- storage in a single-iteration loop ---
+fn bad_storage_loop_single_iteration(env: Env) {
+    for _ in 0..1 {
+        env.storage().instance().set(&0, &1); // Should Warn
+    }
+}
+
+// --- symbol_new with a single character (boundary: 1 char is still short) ---
+fn bad_symbol_new_single_char(env: Env) {
+    let _sym = Symbol::new(&env, "a"); // Should Warn - 1 char, valid short symbol
+}
+
+// --- symbol_new with exactly 10 chars (boundary: just over the 9-char limit) ---
+fn good_symbol_new_exactly_10_chars(env: Env) {
+    let _sym = Symbol::new(&env, "abcdefghij"); // Good - 10 chars > 9
+}
+
+// --- map_insert in a single-iteration loop ---
+fn bad_map_insert_single_iteration(env: Env) {
+    let mut map = Map;
+    for _ in 0..1 {
+        map.insert(&1, &1); // Should Warn
+    }
+}
+
+// --- bytes_append in a single-iteration loop ---
+fn bad_bytes_append_single_iteration() {
+    let mut bytes = Bytes(vec![]);
+    for _ in 0..1 {
+        bytes.append(&Bytes(vec![])); // Should Warn
+    }
+}
+
+// --- host method call in a zero-iteration loop ---
+fn bad_host_in_zero_iteration_loop(env: Env) {
+    for _ in 0..0 {
+        env.host().budget_cloned(); // Should Warn — structurally in a loop
+    }
+}
+
+// --- host method call in a single-iteration loop ---
+fn bad_host_in_single_iteration_loop(env: Env) {
+    for _ in 0..1 {
+        env.host().budget_cloned(); // Should Warn
+    }
+}
+
+// --- signature verification in a single-iteration loop ---
+fn bad_sig_verify_single_iteration(env: Env) {
+    let pk = [0u8; 32];
+    let msg = [1u8; 32];
+    let sig = [2u8; 64];
+    for _ in 0..1 {
+        env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
+    }
+}
+
+// --- inefficient bytes concat in a single-iteration loop ---
+fn bad_bytes_concat_single_iteration() {
+    let mut result = Bytes::from("");
+    for _ in 0..1 {
+        result = result + Bytes::from("x"); // Should Warn
+    }
+}
+
+// --- loop-invariant storage access in a single-iteration loop ---
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_single_iteration(env: Env) {
+    for _i in 0..1 {
+        env.storage().instance().set(&"key", &42); // Should Warn
+    }
+}
+
+// --- storage_key_construction in a zero-iteration loop ---
+fn bad_storage_key_construction_zero_iterations(env: Env) {
+    for _ in 0..0 {
+        let _key = Symbol::new(&env, "key"); // Should Warn
+    }
+}
+
+// --- storage_key_construction in a single-iteration loop ---
+fn bad_storage_key_construction_single_iteration(env: Env) {
+    for _ in 0..1 {
+        let _key = Symbol::new(&env, "key"); // Should Warn
+    }
+}
+
 fn main() {}
