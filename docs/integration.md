@@ -1,27 +1,6 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace, CI/CD pipelines, and editor.
-
-## Prerequisites
-
-- Rust nightly toolchain (pinned in `rust-toolchain`)
-- [Dylint](https://github.com/trailofbits/dylint) `^6.0.1`
-- `cargo-cost-lint` installed
-
-```bash
-# Install Dylint
-cargo install cargo-dylint dylint-link --version "^6.0.1"
-
-# Install the linter
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-```
-
-## Quick Start
-
-```bash
-# Run the linter on your Soroban project
-cargo cost-lint
-```
+`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.## Local Configuration (`budget.toml`)
 
 ## Local Configuration (`budget.toml`)
 
@@ -43,21 +22,43 @@ cargo cost-lint --config /etc/soroban-cost-linter/budget.toml
 
 `budget.toml` may live anywhere on disk; this flag is the single supported way to point the tool at it. The path you pass goes through the same `BudgetConfig` parser regardless of location, so unknown lint names or invalid levels fail validation identically.
 
+### Full schema
+
 {% code title="budget.toml" %}
 ```toml
+# ── soroban-cost-linter section ───────────────────────────────────────
+# Every key is a lint name; the value must be "allow", "warn", or "deny".
+# Unknown lint names are rejected at parse time — a typo will not be
+# silently ignored.
+
 [lints]
-soroban_storage_in_loop = "deny"       # default: deny (high confidence)
-redundant_env_clone = "warn"           # default: warn
-unnecessary_host_function_call = "warn" # default: warn
-bytes_append_in_loop = "warn"          # default: warn
-symbol_new_for_short_literal = "warn"  # default: warn
-host_in_loop = "warn"                  # default: warn
+soroban_storage_in_loop = "deny"
+redundant_env_clone = "warn"
+unnecessary_host_function_call = "warn"
+
+# ── soroban-budget-assert sections ────────────────────────────────────
+# These are consumed by the sibling runtime test harness.  They are
+# preserved verbatim so both tools can coexist in one file.
+
+[network]
+rpc_url = "https://soroban-testnet.stellar.org"
+
+[source]
+account = "G..."
+
+[functions.my_contract]
+max_cpu_instructions = 100_000_000
 ```
 {% endcode %}
 
-{% hint style="warning" %}
-**Breaking change:** `soroban_storage_in_loop` was upgraded from `warn` to `deny` in v0.2.0. If this breaks your CI, set `soroban_storage_in_loop = "warn"` in `budget.toml` to restore the previous behaviour.
-{% endhint %}
+### Section ownership
+
+| Section | Owner | Behaviour |
+|---------|-------|-----------|
+| `[lints]` | `soroban-cost-linter` | Strictly validated; unknown keys error |
+| `[network]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[source]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
+| `[functions.*]` | `soroban-budget-assert` | Ignored by linter (foreign section) |
 
 {% hint style="info" %}
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
