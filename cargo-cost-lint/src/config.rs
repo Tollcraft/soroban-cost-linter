@@ -15,10 +15,7 @@ impl Config {
             return Config::default();
         }
         match fs::read_to_string(path) {
-            Ok(content) => match toml::from_str::<Config>(&content) {
-                Ok(config) => config,
-                Err(_) => Config::default(),
-            },
+            Ok(content) => toml::from_str::<Config>(&content).unwrap_or_default(),
             Err(_) => Config::default(),
         }
     }
@@ -56,7 +53,10 @@ soroban_storage_in_loop = "deny"
         );
         let config = Config::from_file_or_default(&path);
         let lints = config.lints.expect("lints should be present");
-        assert_eq!(lints.get("soroban_storage_in_loop").map(|s| s.as_str()), Some("deny"));
+        assert_eq!(
+            lints.get("soroban_storage_in_loop").map(|s| s.as_str()),
+            Some("deny")
+        );
     }
 
     #[test]

@@ -62,8 +62,56 @@ struct SarifToolDriver {
     name: String,
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    informationUri: Option<String>,
-    rules: Vec<serde_json::Value>,
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SarifResult {
+    #[serde(rename = "ruleId")]
+    rule_id: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct SarifLocation {
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
+}
+
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+#[derive(Serialize)]
+struct SarifRegion {
+    #[serde(rename = "startLine")]
+    start_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -173,51 +221,53 @@ fn main() {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                             if LINT_NAMES.contains(&lint_name) {
-                                let level = message
+                                let level = diagnostic
                                     .get("level")
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let msg_text = message
+                                let diagnostic_message = diagnostic
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let mut file = String::new();
-                                let mut span_obj = Span {
+                                let mut primary_span = Span {
                                     line_start: 0,
                                     line_end: 0,
                                     column_start: 0,
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) =
+                                    diagnostic.get("spans").and_then(|s| s.as_array())
                                 {
-                                    for s in spans {
-                                        if s.get("is_primary")
+                                    for span in spans {
+                                        if span
+                                            .get("is_primary")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false)
                                         {
-                                            file = s
+                                            file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
-                                            span_obj.line_start = s
+                                            primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
+                                            primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_start = s
+                                            primary_span.column_start = span
                                                 .get("column_start")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_end = s
+                                            primary_span.column_end = span
                                                 .get("column_end")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
@@ -279,7 +329,7 @@ fn main() {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
+                                        .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
                             }
@@ -297,9 +347,8 @@ fn main() {
     if cli.format == OutputFormat::Sarif {
         let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
         let mut rules: Vec<serde_json::Value> = Vec::new();
-        let mut seen_rules: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
 
         for finding in &findings {
             if seen_rules.insert(finding.name.clone()) {
@@ -315,29 +364,31 @@ fn main() {
             };
 
             let region = if finding.span.line_start > 0 {
-                Some(serde_json::json!({
-                    "startLine": finding.span.line_start,
-                    "startColumn": finding.span.column_start,
-                    "endLine": finding.span.line_end,
-                    "endColumn": finding.span.column_end,
-                }))
+                Some(SarifRegion {
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
+                })
             } else {
                 None
             };
 
-            let physical_location = serde_json::json!({
-                "artifactLocation": { "uri": finding.file },
-                "region": region,
+            sarif_results.push(SarifResult {
+                rule_id: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
             });
-
-            sarif_results.push(serde_json::json!({
-                "ruleId": finding.name,
-                "level": level,
-                "message": { "text": finding.message },
-                "locations": [
-                    { "physicalLocation": physical_location }
-                ],
-            }));
         }
 
         let sarif = SarifReport {
@@ -348,7 +399,7 @@ fn main() {
                     driver: SarifToolDriver {
                         name: "cargo-cost-lint".to_string(),
                         version: package_version.to_string(),
-                        informationUri: Some(
+                        information_uri: Some(
                             "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
                         ),
                         rules,
