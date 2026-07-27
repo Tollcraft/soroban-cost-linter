@@ -24,7 +24,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Seven lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Eight lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -33,6 +33,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
+*   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
 
 ## How it Fits into Tollcraft
 
@@ -47,30 +48,43 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
+Since `soroban-cost-linter` hooks directly into Rust's AST, its lint library links against `rustc_private` and therefore **must be built with the same nightly toolchain** that the project pins. The exact channel is declared in the [`rust-toolchain`](rust-toolchain) file at the repository root.
 
-```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1"
-```
+1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
+
+   ```bash
+   rustup toolchain install <channel-from-rust-toolchain>
+   ```
+
+2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `^6.0.1` to run dynamic library lints:
+
+   ```bash
+   cargo install cargo-dylint dylint-link --version "^6.0.1"
+   ```
 
 ### Installation
 
-Add the linter to your Soroban workspace:
+Add the linter to your Soroban workspace. **Ensure you are using the pinned nightly toolchain** (see [Prerequisites](#prerequisites)) when building:
 
 ```bash
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-
+cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 ```
+
+> **Why is the nightly required?** The lint library links against `rustc_private`, which is only available on nightly compilers. A different nightly version may produce linker errors due to ABI mismatches.
 
 ## Quick Start
 
-```bash
-# Install the tool
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+1. Complete the [Prerequisites](#prerequisites) (nightly toolchain + Dylint).
+2. Install the linter using the pinned nightly:
 
-# Run it on your Soroban project
-cargo cost-lint
-```
+   ```bash
+   cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+   ```
+3. Run it on your Soroban project:
+
+   ```bash
+   cargo cost-lint
+   ```
 
 ## Usage
 

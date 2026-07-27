@@ -49,7 +49,7 @@ struct SarifReport {
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
-    results: Vec<SarifResult>,
+    results: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -62,12 +62,14 @@ struct SarifToolDriver {
     name: String,
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    informationUri: Option<String>,
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
 }
 
 #[derive(Serialize)]
 struct SarifResult {
-    ruleId: String,
+    #[serde(rename = "ruleId")]
+    rule_id: String,
     level: String,
     message: SarifMessage,
     locations: Vec<SarifLocation>,
@@ -80,12 +82,14 @@ struct SarifMessage {
 
 #[derive(Serialize)]
 struct SarifLocation {
-    physicalLocation: SarifPhysicalLocation,
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Serialize)]
 struct SarifPhysicalLocation {
-    artifactLocation: SarifArtifactLocation,
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
     region: Option<SarifRegion>,
 }
@@ -97,13 +101,17 @@ struct SarifArtifactLocation {
 
 #[derive(Serialize)]
 struct SarifRegion {
-    startLine: usize,
+    #[serde(rename = "startLine")]
+    start_line: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    startColumn: Option<usize>,
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    endLine: Option<usize>,
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    endColumn: Option<usize>,
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -213,51 +221,53 @@ fn main() {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                             if LINT_NAMES.contains(&lint_name) {
-                                let level = message
+                                let level = diagnostic
                                     .get("level")
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let msg_text = message
+                                let diagnostic_message = diagnostic
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let mut file = String::new();
-                                let mut span_obj = Span {
+                                let mut primary_span = Span {
                                     line_start: 0,
                                     line_end: 0,
                                     column_start: 0,
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) =
+                                    diagnostic.get("spans").and_then(|s| s.as_array())
                                 {
-                                    for s in spans {
-                                        if s.get("is_primary")
+                                    for span in spans {
+                                        if span
+                                            .get("is_primary")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false)
                                         {
-                                            file = s
+                                            file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
-                                            span_obj.line_start = s
+                                            primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
+                                            primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_start = s
+                                            primary_span.column_start = span
                                                 .get("column_start")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_end = s
+                                            primary_span.column_end = span
                                                 .get("column_end")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
@@ -319,7 +329,7 @@ fn main() {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
+                                        .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
                             }
@@ -355,25 +365,29 @@ fn main() {
 
             let region = if finding.span.line_start > 0 {
                 Some(SarifRegion {
-                    startLine: finding.span.line_start,
-                    startColumn: Some(finding.span.column_start),
-                    endLine: Some(finding.span.line_end),
-                    endColumn: Some(finding.span.column_end),
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
                 })
             } else {
                 None
             };
 
-            let physical_location = SarifPhysicalLocation {
-                artifactLocation: SarifArtifactLocation { uri: finding.file.clone() },
-                region,
-            };
-
             sarif_results.push(SarifResult {
-                ruleId: finding.name.clone(),
+                rule_id: finding.name.clone(),
                 level: level.to_string(),
-                message: SarifMessage { text: finding.message.clone() },
-                locations: vec![SarifLocation { physicalLocation: physical_location }],
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
             });
         }
 
@@ -385,9 +399,10 @@ fn main() {
                     driver: SarifToolDriver {
                         name: "cargo-cost-lint".to_string(),
                         version: package_version.to_string(),
-                        informationUri: Some(
+                        information_uri: Some(
                             "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
                         ),
+                        rules,
                     },
                 },
                 results: sarif_results,
