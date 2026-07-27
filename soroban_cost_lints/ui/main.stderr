@@ -18,7 +18,8 @@ LL | fn bad_symbol_new_9_chars(env: Env) {
 LL | fn bad_symbol_new_9_chars(env: Env) {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_9_chars` redefined here
    |
-   = note: `bad_symbol_new_9_chars` must be defined only once in the value namespace of this module
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 
 error[E0428]: the name `bad_symbol_new_short_with_underscore` is defined multiple times
   --> $DIR/main.rs:457:1
