@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use super::error::{LinterError, LinterResult};
+
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Config {
     #[allow(dead_code)]
@@ -10,14 +12,20 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_file_or_default(path: &Path) -> Self {
+    /// Reads and parses the budget.toml at `path`.
+    ///
+    /// Returns the default (empty) config when the file is absent, but
+    /// propagates parse errors so malformed files are surfaced to the user
+    /// rather than silently ignored.
+    pub fn from_file_or_default(path: &Path) -> LinterResult<Self> {
         if !path.exists() {
-            return Config::default();
+            return Ok(Config::default());
         }
-        match fs::read_to_string(path) {
-            Ok(content) => toml::from_str::<Config>(&content).unwrap_or_default(),
-            Err(_) => Config::default(),
-        }
+        let content = fs::read_to_string(path)?;
+        let config = toml::from_str::<Config>(&content).map_err(|e| {
+            LinterError::Other(format!("failed to parse {}: {}", path.display(), e))
+        })?;
+        Ok(config)
     }
 }
 
@@ -37,7 +45,7 @@ mod tests {
     fn from_file_or_default_returns_default_for_missing_file() {
         let dir = tempdir().unwrap();
         let missing = dir.path().join("nonexistent.toml");
-        let config = Config::from_file_or_default(&missing);
+        let config = Config::from_file_or_default(&missing).unwrap();
         assert!(config.lints.is_none());
     }
 
@@ -51,7 +59,7 @@ mod tests {
 soroban_storage_in_loop = "deny"
 "#,
         );
-        let config = Config::from_file_or_default(&path);
+        let config = Config::from_file_or_default(&path).unwrap();
         let lints = config.lints.expect("lints should be present");
         assert_eq!(
             lints.get("soroban_storage_in_loop").map(|s| s.as_str()),
@@ -64,8 +72,8 @@ soroban_storage_in_loop = "deny"
         let dir = tempdir().unwrap();
         let path = dir.path().join("budget.toml");
         write_file(&path, "this is not valid toml [[[");
-        let config = Config::from_file_or_default(&path);
-        assert!(config.lints.is_none());
+        let result = Config::from_file_or_default(&path);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -73,7 +81,7 @@ soroban_storage_in_loop = "deny"
         let dir = tempdir().unwrap();
         let path = dir.path().join("budget.toml");
         write_file(&path, "");
-        let config = Config::from_file_or_default(&path);
+        let config = Config::from_file_or_default(&path).unwrap();
         assert!(config.lints.is_none());
     }
 

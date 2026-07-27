@@ -12,15 +12,15 @@ struct LintMeta {
 
 /// Parse lint names from the `register_lints` call, returning lowercase names
 /// in the order they appear.
-fn parse_register_lints(content: &str) -> Vec<String> {
+fn parse_register_lints(content: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let start_marker = "lint_store.register_lints(&[";
     let start = content
         .find(start_marker)
-        .expect("Could not find register_lints in lib.rs");
+        .ok_or("Could not find register_lints in lib.rs")?;
     let content_after = &content[start..];
     let end = content_after
         .find("]);")
-        .expect("Could not find end of register_lints");
+        .ok_or("Could not find end of register_lints")?;
 
     let list_str = &content_after[start_marker.len()..end];
 
@@ -31,7 +31,7 @@ fn parse_register_lints(content: &str) -> Vec<String> {
             names.push(trimmed.to_lowercase());
         }
     }
-    names
+    Ok(names)
 }
 
 /// Parse `declare_lint! { ... }` blocks to extract each lint's name, default
@@ -101,16 +101,16 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
     results
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
 
     let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs")
-        .expect("Failed to read soroban_cost_lints/src/lib.rs");
+        .map_err(|e| format!("Failed to read soroban_cost_lints/src/lib.rs: {}", e))?;
 
-    let names = parse_register_lints(&content);
+    let names = parse_register_lints(&content)?;
     let declared = parse_declare_lints(&content);
 
-    // Build a name→metadata lookup from the declare_lint! blocks.
+    // Build a name\u2192metadata lookup from the declare_lint! blocks.
     let metadata_by_name: std::collections::HashMap<&str, &LintMeta> =
         declared.iter().map(|m| (m.name.as_str(), m)).collect();
 
@@ -142,23 +142,6 @@ fn main() {
         }
     }
 
-    let mut declarations = Vec::new();
-    let mut search_from = 0usize;
-    while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
-        let absolute_start = search_from + start;
-        let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').expect("Could not parse declare_lint block");
-        let block = &after[..end];
-        let parts: Vec<&str> = block.split(',').map(str::trim).collect();
-        if parts.len() >= 3 {
-            let lint_name = parts[0].trim_start_matches("pub ").trim();
-            let default_level = parts[1].to_ascii_lowercase();
-            let description = parts[2].trim().trim_matches('"').to_string();
-            declarations.push((lint_name.to_string(), default_level, description));
-        }
-        search_from = absolute_start + 1;
-    }
-
     let mut category_map = HashMap::new();
     let metadata_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
     if let Some(start) = content.find(metadata_marker) {
@@ -188,35 +171,9 @@ fn main() {
         }
     }
 
-    let out_dir = env::var_os("OUT_DIR").unwrap();
+    let out_dir = env::var_os("OUT_DIR").ok_or("OUT_DIR environment variable not set")?;
     let names_path = Path::new(&out_dir).join("lint_names.rs");
     let metadata_path = Path::new(&out_dir).join("lint_metadata.rs");
-
-    let mut names_out = String::new();
-    names_out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
-    for name in &names {
-        names_out.push_str(&format!("    \"{}\",\n", name));
-    }
-    names_out.push_str("];\n");
-    fs::write(&names_path, names_out).expect("Failed to write lint_names.rs");
-
-    let mut metadata_out = String::new();
-    metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");
-    metadata_out.push_str("    pub name: &'static str,\n");
-    metadata_out.push_str("    pub default_level: &'static str,\n");
-    metadata_out.push_str("    pub description: &'static str,\n");
-    metadata_out.push_str("    pub category: &'static str,\n");
-    metadata_out.push_str("    pub documentation_url: &'static str,\n");
-    metadata_out.push_str("}\n\n");
-    metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventory {\n");
-    metadata_out.push_str("    pub version: &'static str,\n");
-    metadata_out.push_str("    pub schema: &'static str,\n");
-    metadata_out.push_str("    pub lints: &'static [LintInventoryEntry],\n");
-    metadata_out.push_str("}\n\n");
-    metadata_out.push_str("pub const LINT_INVENTORY: LintInventory = LintInventory {\n");
-    metadata_out.push_str("    version: \"1.0\",\n");
-    metadata_out.push_str("    schema: \"https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/README.md#lint-inventory-schema\",\n");
-    metadata_out.push_str("    lints: &[\n");
 
     let mut out = String::new();
 
@@ -244,7 +201,41 @@ fn main() {
     }
     out.push_str("];\n");
 
+    fs::write(&names_path, out)
+        .map_err(|e| format!("Failed to write lint_names.rs: {}", e))?;
+
+    let mut metadata_out = String::new();
+    metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");
+    metadata_out.push_str("    pub name: &'static str,\n");
+    metadata_out.push_str("    pub default_level: &'static str,\n");
+    metadata_out.push_str("    pub description: &'static str,\n");
+    metadata_out.push_str("    pub category: &'static str,\n");
+    metadata_out.push_str("    pub documentation_url: &'static str,\n");
+    metadata_out.push_str("}\n\n");
+    metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventory {\n");
+    metadata_out.push_str("    pub version: &'static str,\n");
+    metadata_out.push_str("    pub schema: &'static str,\n");
+    metadata_out.push_str("    pub lints: &'static [LintInventoryEntry],\n");
+    metadata_out.push_str("}\n\n");
+    metadata_out.push_str("pub const LINT_INVENTORY: LintInventory = LintInventory {\n");
+    metadata_out.push_str("    version: \"1.0\",\n");
+    metadata_out.push_str("    schema: \"https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/README.md#lint-inventory-schema\",\n");
+    metadata_out.push_str("    lints: &[\n");
+    for lint in &ordered {
+        let cat = category_map
+            .get(&lint.name)
+            .map(|c| c.as_str())
+            .unwrap_or("Unknown");
+        metadata_out.push_str(&format!(
+            "        LintInventoryEntry {{ name: \"{}\", default_level: \"{}\", description: \"{}\", category: \"{}\", documentation_url: \"\" }},\n",
+            lint.name, lint.level, lint.description, cat
+        ));
+    }
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");
-    fs::write(&metadata_path, metadata_out).expect("Failed to write lint_metadata.rs");
+
+    fs::write(&metadata_path, metadata_out)
+        .map_err(|e| format!("Failed to write lint_metadata.rs: {}", e))?;
+
+    Ok(())
 }

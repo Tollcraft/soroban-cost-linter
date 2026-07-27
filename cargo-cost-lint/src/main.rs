@@ -1,6 +1,7 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -8,7 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
 mod config;
+mod error;
+
 use config::Config;
+use error::{LinterError, LinterResult};
 
 /// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
@@ -146,9 +150,6 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
-    list_lints: bool,
-
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 
@@ -192,6 +193,13 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
         Ok(canon) => allowed.contains(&canon),
         Err(_) => true,
     }
+}
+
+/// Budget config deserialized from budget.toml — used by the
+/// `parse_budget_config` test helper and `load_budget_config`.
+#[derive(Deserialize, Debug)]
+struct BudgetConfig {
+    lints: Option<HashMap<String, String>>,
 }
 
 fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
@@ -243,6 +251,15 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 }
 
 fn main() {
+    if let Err(e) = run() {
+        eprintln!("Error: {}", e);
+        exit(1);
+    }
+}
+
+/// Core logic extracted into a fallible function so that all error sites can
+/// use the `?` operator rather than a mix of `unwrap`, `expect`, and `exit`.
+fn run() -> LinterResult<()> {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
@@ -253,14 +270,14 @@ fn main() {
     // and exit 0 before falling through to the cargo-dylint machinery.
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("cargo-cost-lint {}", env!("CARGO_PKG_VERSION"));
-        return;
+        return Ok(());
     }
 
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
         Err(e) => {
-            e.print().unwrap();
-            exit(1);
+            e.print()?;
+            return Err(LinterError::Other("argument parsing failed".into()));
         }
     };
 
@@ -268,18 +285,14 @@ fn main() {
         for info in LINT_INFO {
             println!("{}\t{}\t{}", info.name, info.level, info.description);
         }
-        return;
+        return Ok(());
     }
 
     let allowed = allowed_files(Path::new("."));
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if let Some(config) = load_budget_config(Path::new(config_path)) {
-            // ... validate (existing code)
-            let _ = config;
-        }
-        let _config = Config::from_file_or_default(Path::new(config_path));
+        let _config = Config::from_file_or_default(Path::new(config_path))?;
     }
 
     let preflight = Command::new("cargo")
@@ -295,12 +308,7 @@ fn main() {
             eprintln!("    cargo install cargo-dylint dylint-link");
             exit(1);
         }
-        Some(config_path) => {
-            eprintln!("Warning: config file '{}' not found", config_path);
-            Vec::new()
-        }
-        None => Vec::new(),
-    };
+    }
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
@@ -327,11 +335,17 @@ fn main() {
     cmd.arg("--message-format=json");
     cmd.stdout(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let mut child = cmd.spawn().map_err(|e| {
+        LinterError::MissingPrerequisite(format!(
+            "Failed to execute cargo dylint: {}. Is cargo-dylint installed?",
+            e
+        ))
+    })?;
 
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| LinterError::Other("Failed to capture stdout".into()))?;
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
     let mut lint_counts: HashMap<String, usize> = HashMap::new();
@@ -458,6 +472,7 @@ fn main() {
                                 findings.push(finding);
 
                                 if cli.format == OutputFormat::Json {
+                                    // Safe: we just pushed an element above.
                                     let finding_json = findings.last().unwrap();
                                     if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
@@ -557,7 +572,7 @@ fn main() {
         }
     }
 
-    let status = child.wait().expect("Failed to wait on cargo dylint");
+    let status = child.wait()?;
 
     // Print per-lint summary to stderr when there are findings
     if !lint_counts.is_empty() {
@@ -572,10 +587,14 @@ fn main() {
     }
 
     if !status.success() {
-        exit(status.code().unwrap_or(1));
+        return Err(LinterError::Subprocess {
+            code: status.code(),
+        });
     } else if highest_exit_code != 0 {
         exit(highest_exit_code);
     }
+
+    Ok(())
 }
 
 fn extract_suggestion(help: &Option<String>, lint_name: &str) -> Option<String> {
@@ -613,22 +632,27 @@ fn apply_fixes(findings: &[LintFinding]) {
     }
 
     for (file_path, edits) in &file_edits {
-        if let Ok(content) = fs::read_to_string(file_path) {
-            let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-            for (line_idx, _message, suggestion) in edits {
-                if *line_idx > 0 && *line_idx <= lines.len() {
-                    let line = &mut lines[*line_idx - 1];
-                    if let Some(start) = line.find("Symbol::new") {
-                        if let Some(end) = line[start..].find(')') {
-                            let replace_end = start + end + 1;
-                            line.replace_range(start..replace_end, suggestion);
+        match fs::read_to_string(file_path) {
+            Ok(content) => {
+                let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+                for (line_idx, _message, suggestion) in edits {
+                    if *line_idx > 0 && *line_idx <= lines.len() {
+                        let line = &mut lines[*line_idx - 1];
+                        if let Some(start) = line.find("Symbol::new") {
+                            if let Some(end) = line[start..].find(')') {
+                                let replace_end = start + end + 1;
+                                line.replace_range(start..replace_end, suggestion);
+                            }
                         }
                     }
                 }
+                let new_content = lines.join("\n");
+                if let Err(e) = fs::write(file_path, new_content) {
+                    eprintln!("Failed to write {}: {}", file_path, e);
+                }
             }
-            let new_content = lines.join("\n");
-            if let Err(e) = fs::write(file_path, new_content) {
-                eprintln!("Failed to write {}: {}", file_path, e);
+            Err(e) => {
+                eprintln!("Failed to read {}: {}", file_path, e);
             }
         }
     }
@@ -740,7 +764,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("budget.toml");
         let mut file = fs::File::create(&path).unwrap();
-        writeln!(file, "this is not valid toml = {{{").unwrap();
+        writeln!(file, "this is not valid toml = {{{{").unwrap();
         drop(file);
 
         let result = parse_budget_config(&path.to_string_lossy());
