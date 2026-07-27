@@ -14,6 +14,7 @@ and this project adheres to Semantic Versioning.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
+- New lint `instance_storage_for_unbounded_data` detecting `env.storage().instance().set(...)` calls where the written value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten as a single blob on every contract invocation regardless of which call touches it.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 
 ### Fixed

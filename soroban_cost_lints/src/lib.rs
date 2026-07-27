@@ -484,6 +484,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 /// Dylint entry point: registers every lint and its late pass with the
@@ -510,6 +514,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         SIGNATURE_VERIFICATION_IN_LOOP,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -526,6 +531,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+    lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
 }
 
 rustc_session::declare_lint! {
@@ -1684,6 +1690,93 @@ impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
                     None,
                     "consider using native Rust types (e.g. `&[T]`) instead of \
                      `soroban_sdk::Vec` for read-only access to reduce host-side operations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// instance_storage_for_unbounded_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+    Warn,
+    "unbounded collection written to instance storage"
+}
+/// Late pass backing [`INSTANCE_STORAGE_FOR_UNBOUNDED_DATA`].
+pub struct InstanceStorageForUnboundedData;
+rustc_session::impl_lint_pass!(InstanceStorageForUnboundedData => [INSTANCE_STORAGE_FOR_UNBOUNDED_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for InstanceStorageForUnboundedData {
+    /// Flags `env.storage().instance().set(&key, &value)` where `value`'s own
+    /// type is directly one of the Soroban SDK's unbounded container types
+    /// ([`SOROBAN_CONTAINER_TYPES`]: `Vec`, `Map`, `Bytes`).
+    ///
+    /// Instance storage is loaded and rewritten as a single blob on every
+    /// contract invocation, so a growing collection stored there is paid for
+    /// by every call, not just the calls that touch it.
+    ///
+    /// # Where the bounded/unbounded line is drawn
+    ///
+    /// Only the terminal `set` op is matched (same rationale as
+    /// [`SorobanStorageInLoop`]: matching the intermediate accessor calls too
+    /// would produce multiple stacked warnings on one chained expression).
+    /// The receiver must resolve to `soroban_sdk::storage::Instance`
+    /// specifically — `Persistent`/`Temporary` are per-entry stores where an
+    /// unbounded value is the expected, correct shape, so they are out of
+    /// scope for this lint.
+    ///
+    /// The written value's type must resolve *directly* via ADT to `Vec`,
+    /// `Map`, or `Bytes` — this intentionally excludes scalars, `Address`,
+    /// fixed-size arrays, and plain "configuration" structs (even ones that
+    /// happen to embed a `Vec`/`Map`/`Bytes` field), since determining
+    /// whether a nested field is unbounded requires whole-program reasoning
+    /// this lint deliberately does not attempt. A value that is itself an SDK
+    /// collection type is unambiguously unbounded; nested cases are left
+    /// unflagged to keep false positives at zero.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
+            if path_segment.ident.name.as_str() != "set" || args.len() < 2 {
+                return;
+            }
+
+            let is_instance_storage = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+            {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Instance"])
+            } else {
+                false
+            };
+
+            if !is_instance_storage {
+                return;
+            }
+
+            let value_expr = &args[1];
+            let is_unbounded_container = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(value_expr).peel_refs().kind()
+            {
+                matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
+            } else {
+                false
+            };
+
+            if is_unbounded_container {
+                span_lint_and_help(
+                    cx,
+                    INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+                    expr.span,
+                    "unbounded collection written to instance storage",
+                    None,
+                    "instance storage is read and rewritten as a single blob on every \
+                     invocation of the contract, not just calls that touch this field, so a \
+                     growing Vec/Map/Bytes here means every future call pays for the whole \
+                     collection's current size and the fee climbs unnoticed across the \
+                     contract's life without showing up in any single-call test; persistent \
+                     storage, keyed per entry, is the structurally correct shape for unbounded \
+                     data",
                 );
             }
         }

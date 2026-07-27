@@ -13,6 +13,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
 | [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
 | [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
+| [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn`  | `Vec`/`Map`/`Bytes` values written to instance storage |
 
 ## CPU/Compute
 
