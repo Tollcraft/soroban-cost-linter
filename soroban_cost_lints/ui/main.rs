@@ -84,6 +84,9 @@ pub mod soroban_sdk {
         impl Crypto {
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
+            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
+            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
         }
     }
 

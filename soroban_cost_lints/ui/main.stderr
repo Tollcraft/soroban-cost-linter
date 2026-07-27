@@ -201,5 +201,62 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 25 warnings emitted
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:454:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:454:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+   = note: `#[warn(signature_verification_in_loop)]` on by default
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:461:19
+   |
+LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:461:19
+   |
+LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:468:9
+   |
+LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:468:9
+   |
+LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:480:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: 30 warnings emitted
 
