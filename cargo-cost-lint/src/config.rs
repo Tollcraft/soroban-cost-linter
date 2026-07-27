@@ -8,7 +8,6 @@ use super::error::{LinterError, LinterResult};
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct Config {
-    #[allow(dead_code)]
     lints: Option<HashMap<String, String>>,
 }
 
@@ -27,6 +26,44 @@ impl Config {
             LinterError::Other(format!("failed to parse {}: {}", path.display(), e))
         })?;
         Ok(config)
+    }
+
+    /// Converts the lint severity settings into rustc-compatible flags for
+    /// `DYLINT_RUSTFLAGS`.
+    ///
+    /// Each severity maps to a flag prefix:
+    ///   "allow"  → `-A`     (allow the lint at module level)
+    ///   "warn"   → `-W`     (upgrade to warning)
+    ///   "deny"   → `-D`     (upgrade to error)
+    ///   "forbid" → `-F`     (forbid at module level)
+    ///
+    /// Unknown severity values are skipped with a warning to stderr.
+    pub fn to_lint_flags(&self) -> Vec<String> {
+        let Some(lints) = &self.lints else {
+            return Vec::new();
+        };
+
+        let mut flags = Vec::new();
+        for (lint_name, severity) in lints {
+            let prefix = match severity.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                "forbid" => "-F",
+                other => {
+                    eprintln!(
+                        "warning: unknown severity '{}' for lint '{}' in budget.toml \
+                         (expected allow, warn, deny, or forbid) — skipping",
+                        other, lint_name
+                    );
+                    continue;
+                }
+            };
+            // Normalize to lowercase: rustc lint names are case-sensitive and
+            // the officially declared names are always lowercase.
+            flags.push(format!("{} {}", prefix, lint_name.to_lowercase()));
+        }
+        flags
     }
 }
 
@@ -92,5 +129,42 @@ soroban_storage_in_loop = "deny"
     fn default_config_has_no_lints() {
         let config = Config::default();
         assert!(config.lints.is_none());
+    }
+
+    #[test]
+    fn to_lint_flags_empty_when_no_lints() {
+        let config = Config::default();
+        assert!(config.to_lint_flags().is_empty());
+    }
+
+    #[test]
+    fn to_lint_flags_maps_severity_to_rustc_flag() {
+        let mut lints = HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
+        lints.insert("unnecessary_host_function_call".to_string(), "allow".to_string());
+        lints.insert("host_in_loop".to_string(), "forbid".to_string());
+        let config = Config {
+            lints: Some(lints),
+        };
+        let flags = config.to_lint_flags();
+        assert_eq!(flags.len(), 4);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+        assert!(flags.contains(&"-A unnecessary_host_function_call".to_string()));
+        assert!(flags.contains(&"-F host_in_loop".to_string()));
+    }
+
+    #[test]
+    fn to_lint_flags_skips_unknown_severity() {
+        let mut lints = HashMap::new();
+        lints.insert("some_lint".to_string(), "bogus".to_string());
+        lints.insert("valid_lint".to_string(), "deny".to_string());
+        let config = Config {
+            lints: Some(lints),
+        };
+        let flags = config.to_lint_flags();
+        assert_eq!(flags.len(), 1);
+        assert!(flags.contains(&"-D valid_lint".to_string()));
     }
 }

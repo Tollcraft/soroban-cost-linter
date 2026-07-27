@@ -294,10 +294,12 @@ fn run() -> LinterResult<()> {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
-        let _config = Config::from_file_or_default(Path::new(config_path))?;
-    }
+    let lint_flags = if let Some(config_path) = &cli.config {
+        let config = Config::from_file_or_default(Path::new(config_path))?;
+        config.to_lint_flags()
+    } else {
+        Vec::new()
+    };
 
     let preflight = Command::new("cargo")
         .arg("dylint")
