@@ -91,23 +91,9 @@ Follow the patterns already used in the codebase: `soroban_cost_lints` uses edit
 
 ### 5. Upgrading the Nightly Toolchain
 
-The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files and the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`.
+The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across multiple files. Upgrading is a multi-step, order-dependent process. The complete procedure—including identification of the matching `clippy_utils` revision, common breakages, and how to verify success—is documented in the [Nightly Upgrade Runbook](./docs/NIGHTLY_UPGRADE_RUNBOOK.md).
 
-**Procedure to upgrade:**
-
-1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-05-01`).
-2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `rustup` branch on that date, and update the `rev` field in `soroban_cost_lints/Cargo.toml`.
-3. Update `.github/workflows/lint.yml`, `templates/github-action.yml`, and `docs/integration.md` with the new nightly date.
-4. Run the drift guard to confirm everything agrees:
-   ```bash
-   bash .github/scripts/validate-toolchain-pins.sh
-   ```
-5. Run the full test suite:
-   ```bash
-   cargo test --workspace
-   ```
-
-If any file is out of sync, the drift guard will print an error naming the file, the mismatched value, and the expected one.
+**TL;DR:** The critical relationship is between the nightly channel in `rust-toolchain` and the `clippy_utils` git revision in `soroban_cost_lints/Cargo.toml`. See the runbook for guidance on finding the matching revision from the `rust-lang/rust-clippy` repository's `rustup` branch.
 
 ### 6. Releasing a New Lint
 

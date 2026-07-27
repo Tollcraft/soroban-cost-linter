@@ -3,6 +3,92 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+fn test_list_lints() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints");
+
+    assert!(
+        output.status.success(),
+        "--list-lints should exit 0, got: {}",
+        output.status
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout is not valid UTF-8");
+
+    // Every lint registered in the lint crate must appear in the output.
+    //
+    // NOTE: This list must be kept in sync with the `register_lints` call in
+    // `soroban_cost_lints/src/lib.rs`. When adding or removing a lint there,
+    // update this array as well.
+    let expected_lints = &[
+        "soroban_storage_in_loop",
+        "redundant_env_clone",
+        "unnecessary_host_function_call",
+        "host_in_loop",
+        "symbol_new_for_short_literal",
+        "storage_write_without_read",
+        "inefficient_bytes_concat",
+        "map_insert_in_loop",
+        "bytes_append_in_loop",
+    ];
+
+    for expected in expected_lints {
+        assert!(
+            stdout.contains(expected),
+            "--list-lints output missing lint '{}'.\nOutput:\n{}",
+            expected,
+            stdout
+        );
+    }
+
+    // Every line should be tab-separated with three fields: name, level, description.
+    for line in stdout.lines() {
+        let fields: Vec<&str> = line.split('\t').collect();
+        assert_eq!(
+            fields.len(),
+            3,
+            "Each line should have 3 tab-separated fields (name, level, description). Got: '{}'",
+            line
+        );
+        assert!(!fields[0].is_empty(), "lint name must not be empty");
+        assert!(!fields[1].is_empty(), "lint level must not be empty");
+        assert!(!fields[2].is_empty(), "lint description must not be empty");
+    }
+
+    // The number of lines should match the number of lints registered.
+    assert_eq!(
+        stdout.lines().count(),
+        expected_lints.len(),
+        "--list-lints output should have exactly {} lines, one per registered lint.\nOutput:\n{}",
+        expected_lints.len(),
+        stdout
+    );
+}
+
+#[test]
+fn test_version() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--version")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --version");
+
+    assert!(output.status.success(), "--version should exit 0");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout is not valid UTF-8");
+    assert!(
+        stdout.starts_with("cargo-cost-lint "),
+        "--version output should start with 'cargo-cost-lint '. Got: '{}'",
+        stdout.trim()
+    );
+}
+
+#[test]
 fn test_json_output() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 
@@ -134,8 +220,7 @@ fn test_cli_workspace_lints_all_contracts() {
         stderr_str
     );
 
-    let mut found_contracts: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut found_contracts: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in lines {
         let json: serde_json::Value =
@@ -147,10 +232,10 @@ fn test_cli_workspace_lints_all_contracts() {
 
         let file = json["file"].as_str().unwrap_or("");
         if file.contains("alpha") {
-            found_contracts.insert("alpha");
+            found_contracts.insert("alpha".to_string());
         }
         if file.contains("beta") {
-            found_contracts.insert("beta");
+            found_contracts.insert("beta".to_string());
         }
     }
 
@@ -209,7 +294,10 @@ fn test_sarif_output() {
         Some("https://json.schemastore.org/sarif-2.1.0")
     );
     assert_eq!(sarif.get("version").and_then(|v| v.as_str()), Some("2.1.0"));
-    let runs = sarif.get("runs").and_then(|r| r.as_array()).expect("Missing runs");
+    let runs = sarif
+        .get("runs")
+        .and_then(|r| r.as_array())
+        .expect("Missing runs");
     assert!(!runs.is_empty(), "SARIF runs should not be empty");
 
     let first_run = &runs[0];
@@ -238,10 +326,7 @@ fn test_sarif_output() {
             result.get("ruleId").is_some(),
             "SARIF result missing ruleId"
         );
-        assert!(
-            result.get("level").is_some(),
-            "SARIF result missing level"
-        );
+        assert!(result.get("level").is_some(), "SARIF result missing level");
         assert!(
             result.get("message").is_some(),
             "SARIF result missing message"
