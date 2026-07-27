@@ -1,137 +1,11 @@
-use clap::{Parser, ValueEnum};
-use ignore::WalkBuilder;
-use serde::Serialize;
-use std::collections::HashSet;
-use std::fs;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio, exit};
+// Removed duplicate OutputFormat, Span, LintFinding, and SARIF structs. Use definitions from output_formatters module.
+mod output_formatters;
+use crate::output_formatters::{OutputFormat, LintFinding, Span, emit_sarif, handle_finding};
 
 mod config;
 use config::Config;
 
-/// Output format for lint results.
-#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum OutputFormat {
-    /// Human-readable text output (default).
-    Text,
-    /// Newline-delimited JSON objects.
-    Json,
-    /// SARIF 2.1.0 JSON report.
-    Sarif,
-}
-
-/// Source-location span for a lint finding.
-#[derive(Serialize, Debug)]
-struct Span {
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
-}
-
-/// A single lint finding produced by `cargo dylint`.
-#[derive(Serialize, Debug)]
-struct LintFinding {
-    name: String,
-    level: String,
-    file: String,
-    span: Span,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    help: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    suggestion: Option<String>,
-}
-
-/// SARIF 2.1.0 report root.
-#[derive(Serialize)]
-struct SarifReport {
-    #[serde(rename = "$schema")]
-    schema: String,
-    version: String,
-    runs: Vec<SarifRun>,
-}
-
-/// A single SARIF run (one invocation of the linter).
-#[derive(Serialize)]
-struct SarifRun {
-    tool: SarifTool,
-    results: Vec<serde_json::Value>,
-}
-
-/// Tool metadata for SARIF output.
-#[derive(Serialize)]
-struct SarifTool {
-    driver: SarifToolDriver,
-}
-
-/// Tool-driver metadata for SARIF output.
-#[allow(non_snake_case)]
-#[derive(Serialize)]
-struct SarifToolDriver {
-    name: String,
-    version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "informationUri")]
-    information_uri: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    rules: Vec<serde_json::Value>,
-}
-
-/// A single SARIF result (one lint finding).
-#[derive(Serialize)]
-struct SarifResult {
-    #[serde(rename = "ruleId")]
-    rule_id: String,
-    level: String,
-    message: SarifMessage,
-    locations: Vec<SarifLocation>,
-}
-
-/// SARIF message text.
-#[derive(Serialize)]
-struct SarifMessage {
-    text: String,
-}
-
-/// SARIF location referencing a physical file.
-#[derive(Serialize)]
-struct SarifLocation {
-    #[serde(rename = "physicalLocation")]
-    physical_location: SarifPhysicalLocation,
-}
-
-/// SARIF physical location in a file.
-#[derive(Serialize)]
-struct SarifPhysicalLocation {
-    #[serde(rename = "artifactLocation")]
-    artifact_location: SarifArtifactLocation,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    region: Option<SarifRegion>,
-}
-
-/// SARIF artifact location (file URI).
-#[derive(Serialize)]
-struct SarifArtifactLocation {
-    uri: String,
-}
-
-/// SARIF region (line/column range within a file).
-#[derive(Serialize)]
-struct SarifRegion {
-    #[serde(rename = "startLine")]
-    start_line: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "startColumn")]
-    start_column: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "endLine")]
-    end_line: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "endColumn")]
-    end_column: Option<usize>,
-}
+// The original struct definitions have been removed; they are now provided by output_formatters module.
 
 /// CLI arguments for `cargo-cost-lint`.
 ///
@@ -336,6 +210,10 @@ fn main() {
     let mut highest_exit_code = 0;
     let mut lint_counts: HashMap<String, usize> = HashMap::new();
 
+    // Initialize output handling
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+
     let mut findings: Vec<LintFinding> = Vec::new();
 
     for line_str in reader.lines().map_while(Result::ok) {
@@ -354,6 +232,7 @@ fn main() {
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
+
                                 let mut file = String::new();
                                 let mut primary_span = Span {
                                     line_start: 0,
@@ -361,15 +240,9 @@ fn main() {
                                     column_start: 0,
                                     column_end: 0,
                                 };
-
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
-                                {
+                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
                                     for span in spans {
-                                        if span
-                                            .get("is_primary")
-                                            .and_then(|p| p.as_bool())
-                                            .unwrap_or(false)
-                                        {
+                                        if span.get("is_primary").and_then(|p| p.as_bool()).unwrap_or(false) {
                                             file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
@@ -378,32 +251,12 @@ fn main() {
                                             primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
+                                                .unwrap_or(0) as usize;
                                             primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
+                                                .unwrap_or(0) as usize;
                                             primary_span.column_start = span
-                                                .get("column_start")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            primary_span.column_end = span
-                                                .get("column_end")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                        span_obj.column_start = s
-                                            .get("column_start")
-                                            .and_then(|c| c.as_u64())
-                                            .unwrap_or(0)
-                                            as usize;
-                                        span_obj.column_end = s
-                                            .get("column_end")
-                                            .and_then(|c| c.as_u64())
-                                            .unwrap_or(0)
                                             as usize;
                                         break;
                                     }
@@ -463,18 +316,8 @@ fn main() {
                                         println!("{}", json_str);
                                     }
                                 } else if cli.format != OutputFormat::Sarif {
-                                    let rendered = message
-                                        .get("rendered")
-                                        .and_then(|r| r.as_str())
-                                        .unwrap_or(diagnostic_message);
-                                    print!("{}", rendered);
+                                    output_formatters::handle_finding(&cli, findings.last().unwrap(), &mut findings, &mut handle).unwrap();
                                 }
-                            } else if cli.format != OutputFormat::Json {
-                                let rendered = message
-                                    .get("rendered")
-                                    .and_then(|r| r.as_str())
-                                    .unwrap_or(msg_text);
-                                print!("{}", rendered);
                             }
                         }
                     }
@@ -487,75 +330,7 @@ fn main() {
         apply_fixes(&findings);
     }
 
-    if cli.format == OutputFormat::Sarif {
-        let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
-        let mut rules: Vec<serde_json::Value> = Vec::new();
-        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut sarif_results: Vec<SarifResult> = Vec::new();
 
-        for finding in &findings {
-            if seen_rules.insert(finding.name.clone()) {
-                rules.push(serde_json::json!({
-                    "id": finding.name,
-                    "shortDescription": { "text": finding.message }
-                }));
-            }
-
-            let level = match finding.level.as_str() {
-                "error" | "deny" => "error",
-                _ => "warning",
-            };
-
-            let region = if finding.span.line_start > 0 {
-                Some(SarifRegion {
-                    start_line: finding.span.line_start,
-                    start_column: Some(finding.span.column_start),
-                    end_line: Some(finding.span.line_end),
-                    end_column: Some(finding.span.column_end),
-                })
-            } else {
-                None
-            };
-
-            sarif_results.push(SarifResult {
-                rule_id: finding.name.clone(),
-                level: level.to_string(),
-                message: SarifMessage {
-                    text: finding.message.clone(),
-                },
-                locations: vec![SarifLocation {
-                    physical_location: SarifPhysicalLocation {
-                        artifact_location: SarifArtifactLocation {
-                            uri: finding.file.clone(),
-                        },
-                        region,
-                    },
-                }],
-            });
-        }
-
-        let sarif = SarifReport {
-            schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
-            version: "2.1.0".to_string(),
-            runs: vec![SarifRun {
-                tool: SarifTool {
-                    driver: SarifToolDriver {
-                        name: "cargo-cost-lint".to_string(),
-                        version: package_version.to_string(),
-                        information_uri: Some(
-                            "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
-                        ),
-                        rules,
-                    },
-                },
-                results: sarif_results,
-            }],
-        };
-
-        if let Ok(sarif_json) = serde_json::to_string_pretty(&sarif) {
-            println!("{}", sarif_json);
-        }
-    }
 
     let status = child.wait().expect("Failed to wait on cargo dylint");
 
