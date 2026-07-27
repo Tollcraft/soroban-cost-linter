@@ -65,6 +65,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md)                 | `warn`           | `Vec::with_capacity`/`.reserve`/`.reserve_exact` with a large, hard-coded literal |
 
 ## Symbol Operations
 

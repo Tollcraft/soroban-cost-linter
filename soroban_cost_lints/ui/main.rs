@@ -42,7 +42,16 @@ pub mod soroban_sdk {
 
     pub struct Address;
 
-    pub mod storage {
+    pub struct String;
+    impl Clone for String {
+        fn clone(&self) -> Self { String }
+    }
+    impl String {
+        pub fn from_str(_env: &Env, _s: &str) -> String { String }
+        pub fn to_bytes(&self) -> Bytes { Bytes(vec![]) }
+    }
+
+    pub mod storage{
         pub struct Storage;
         impl Storage {
             pub fn instance(&self) -> Instance { Instance }
@@ -153,7 +162,10 @@ pub mod soroban_sdk {
     }
 }
 
-use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
+use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
+
+
+use soroban_sdk::Env;
 
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
@@ -161,6 +173,41 @@ use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
     for (key, val) in pairs {
         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
+    }
+}
+
+// =======================================================================
+// soroban_storage_in_loop — Inter-procedural Fixtures
+// =======================================================================
+
+fn persist(env: &Env) {
+    env.storage().instance().set(&"key", &42);
+}
+
+fn noop(_env: &Env) {
+    // nothing
+}
+
+fn bad_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Should Warn — callee performs storage
+    }
+}
+
+fn good_noop_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        noop(&env); // Good — callee does nothing costly
+    }
+}
+
+fn good_storage_through_call_outside_loop(env: Env) {
+    persist(&env); // Good — not inside a loop
+}
+
+#[allow(soroban_storage_in_loop)]
+fn allowed_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Good (allowed)
     }
 }
 
@@ -198,28 +245,48 @@ fn allowed_clone_env(env: Env) {
     let _cloned = env.clone(); // Good (allowed)
 }
 
+
+
 // =======================================================================
-// unnecessary_host_function_call — Fixtures
+// symbol_new_for_short_literal — Fixtures
 // =======================================================================
 
-fn bad_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Should Warn
-    }
+fn bad_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
 }
 
-fn good_host_call_outside_loop(env: Env) {
-    let seq = env.ledger().sequence(); // Good — called once before the loop
-    for _ in 0..10 {
-        let _seq = seq;
-    }
+fn bad_symbol_new_9_chars(env: Env) {
+    let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
 }
 
-#[allow(unnecessary_host_function_call)]
-fn allowed_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Good (allowed)
-    }
+fn bad_symbol_new_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+}
+
+fn bad_symbol_new_short_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
+}
+
+fn good_symbol_new_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
+}
+
+fn good_symbol_new_invalid_chars(env: Env) {
+    let _sym = Symbol::new(&env, "hello-world"); // Good - contains invalid char '-'
+}
+
+fn good_symbol_new_non_literal(env: Env) {
+    let s = "hello";
+    let _sym = Symbol::new(&env, s); // Good - not a literal
+}
+
+fn good_symbol_new_empty(env: Env) {
+    let _sym = Symbol::new(&env, ""); // Good - empty string
+}
+
+#[allow(symbol_new_for_short_literal)]
+fn allowed_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Good (allowed)
 }
 
 fn bad_crypto_call_in_loop(env: Env) {
@@ -278,6 +345,29 @@ fn good_deployer_call_outside_loop(env: Env) {
 }
 
 // =======================================================================
+// unnecessary_string_to_bytes — Fixtures
+// =======================================================================
+
+fn bad_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Should Warn
+}
+
+fn bad_string_to_bytes_inline(env: Env) {
+    let _b = String::from_str(&env, "hello").to_bytes(); // Should Warn
+}
+
+fn good_string_without_to_bytes(env: Env) {
+    let _s = String::from_str(&env, "hello"); // Good
+}
+
+#[allow(unnecessary_string_to_bytes)]
+fn allowed_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Good (allowed)
+}
+
+// =======================================================================
 // symbol_new_for_short_literal — Fixtures
 // =======================================================================
 
@@ -289,8 +379,8 @@ fn bad_symbol_new_9_chars(env: Env) {
     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
 }
 
-fn bad_symbol_new_with_underscore(env: Env) {
-    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+fn good_symbol_new_with_underscore_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
 }
 
 fn bad_symbol_new_short_with_underscore(env: Env) {
@@ -422,6 +512,54 @@ fn good_single_append_outside_loop() {
 }
 
 // =======================================================================
+// unbounded_input_loop — Fixtures
+// =======================================================================
+
+fn bad_param_loop_with_write(env: Env, n: u32) {
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Should Warn
+    }
+}
+
+fn bad_param_through_binding(env: Env, limit: u32) {
+    let bound = limit;
+    for i in 0..bound {
+        env.storage().instance().set(&i, &1); // Should Warn
+    }
+}
+
+fn bad_while_param_with_write(env: Env, n: u32) {
+    let mut i = 0;
+    while i < n {
+        env.storage().instance().set(&i, &1); // Should Warn
+        i += 1;
+    }
+}
+
+fn good_constant_bound_loop(env: Env, _n: u32) {
+    for i in 0..100 {
+        env.storage().instance().set(&i, &1); // Good — constant bound
+    }
+}
+
+fn good_param_loop_no_storage(env: Env, n: u32) {
+    for i in 0..n {
+        let _x = i * 2; // Good — no storage operation
+    }
+}
+
+fn good_no_param_binding(env: Env) {
+    let n = 42;
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+    }
+}
+
+#[allow(unbounded_input_loop)]
+fn allowed_param_loop(env: Env, n: u32) {
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Good (allowed)
+    }
 // excessive_vec_capacity — Fixtures
 // =======================================================================
 // Positive (bad): calling Vec::with_capacity with a far larger capacity than

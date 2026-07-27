@@ -88,12 +88,45 @@ cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/
 
 ## Usage
 
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
+| `--format <text\|json>` | Output format (default: `text`) |
+| `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--version` | Print the crate version and exit |
+
 ### Running the linter
 
 From the root of your Soroban contract workspace:
 
 ```bash
 cargo cost-lint
+```
+
+### Listing available lints
+
+To see which lints are registered and their default levels:
+
+```bash
+cargo cost-lint --list-lints
+```
+
+Output is tab-separated for easy parsing:
+
+```text
+soroban_storage_in_loop	warn	storage operations inside a loop
+redundant_env_clone	warn	redundant clone on Env object
+unnecessary_host_function_call	warn	unnecessary host function call inside loop
+host_in_loop	warn	use of Host object inside a loop
+symbol_new_for_short_literal	warn	Symbol::new used with a short literal that could use symbol_short! macro
+```
+
+### Checking the installed version
+
+```bash
+cargo cost-lint --version
 ```
 
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
@@ -153,6 +186,12 @@ LL |     let _cloned = env.clone();
    |
    = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
+
+lint summary:
+  redundant_env_clone: 1
+  soroban_storage_in_loop: 3
+  unnecessary_host_function_call: 2
+total: 6
 ```
 
 ### Example: storage in a loop
