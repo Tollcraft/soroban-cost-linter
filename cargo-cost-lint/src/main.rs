@@ -180,6 +180,8 @@ fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
 
     let config_str = fs::read_to_string(config_path).ok()?;
     toml::from_str::<BudgetConfig>(&config_str).ok()
+}
+
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config_str =
         fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
