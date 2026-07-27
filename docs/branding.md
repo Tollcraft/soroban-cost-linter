@@ -40,11 +40,9 @@ These keep new pages consistent without any hosted configuration:
 
 ## Enabling Git Sync (cutover)
 
-1. Create a GitBook space and connect **Git Sync** to `Tollcraft/soroban-cost-linter`, branch `main`.
-2. GitBook reads `.gitbook.yaml` at the repo root (`root: ./docs/`) and builds navigation from `docs/SUMMARY.md`.
-3. Apply the customization settings above.
-4. Update any published docs links (repo About field, README) to the new GitBook URL.
+Git Sync is enabled and connected to the repository. The official hosted documentation is live on GitBook:
 
-{% hint style="warning" %}
-The previous mdBook deployment to GitHub Pages was removed in the GitBook migration — until Git Sync is enabled, no hosted docs are live.
-{% endhint %}
+* **Official Documentation:** [https://tollcraft.gitbook.io/docs](https://tollcraft.gitbook.io/docs)
+
+GitBook automatically syncs with the `main` branch, reading `.gitbook.yaml` at the repo root (`root: ./docs/`) and building navigation from `docs/SUMMARY.md`.
+

@@ -28,12 +28,15 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md)                 | `warn`           | `Vec::with_capacity`/`.reserve`/`.reserve_exact` with a large, hard-coded literal |
+| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn`           | `soroban_sdk::Vec` by value where a native slice would suffice |
 
 ## Symbol Operations
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
+| [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn`           | Loop-invariant `Symbol::new` key construction inside loops |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
