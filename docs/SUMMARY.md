@@ -22,6 +22,7 @@
   * [symbol\_new\_for\_short\_literal](lints/symbol_new_for_short_literal.md)
   * [bytes\_append\_in\_loop](lints/bytes_append_in_loop.md)
   * [vec\_where\_slice\_could\_be\_used](lints/vec_where_slice_could_be_used.md)
+  * [formatted\_panic\_payload](lints/formatted_panic_payload.md)
 
 ## Branding
 

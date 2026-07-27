@@ -22,6 +22,9 @@
 //! - [`HOST_IN_LOOP`] — use of a `Host` object inside a loop.
 //! - [`SYMBOL_NEW_FOR_SHORT_LITERAL`] — `Symbol::new` on a literal short enough
 //!   for the compile-time `symbol_short!` macro.
+//! - [`FORMATTED_PANIC_PAYLOAD`] — `format!`, a formatted `panic!`, or
+//!   `.expect(&format!(..))`, all of which pull `core::fmt` into the
+//!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -49,6 +52,7 @@
 //! [`LintCategory`].
 
 extern crate rustc_ast;
+extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
@@ -58,17 +62,19 @@ extern crate rustc_span;
 
 use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use clippy_utils::macros::{FormatArgsStorage, is_panic, root_macro_call_first_node};
 use clippy_utils::res::MaybeResPath;
 use clippy_utils::source::snippet_opt;
 use clippy_utils::ty::peel_and_count_ty_refs;
 use clippy_utils::usage::local_used_after_expr;
 use clippy_utils::usage::mutated_variables;
+use clippy_utils::{get_parent_expr, is_in_test};
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
 use rustc_hir::{FnDecl, HirId, HirIdSet};
-use rustc_lint::{LateContext, LateLintPass, LintStore};
+use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 use std::cell::RefCell;
@@ -437,6 +443,9 @@ pub const LINT_METADATA: &[LintMetadata] = &[
     },
     LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: UNBOUNDED_INPUT_LOOP,
         category: LintCategory::StorageOperations,
     },
@@ -484,6 +493,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: FORMATTED_PANIC_PAYLOAD,
+        category: LintCategory::Compute,
+    },
 ];
 
 /// Dylint entry point: registers every lint and its late pass with the
@@ -510,6 +523,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         SIGNATURE_VERIFICATION_IN_LOOP,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        FORMATTED_PANIC_PAYLOAD,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -526,6 +540,24 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+
+    // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
+    // tell a zero-argument `panic!("literal")` apart from a formatted
+    // `panic!("{} ...", x)` — the HIR only exposes the already-desugared,
+    // opaque `Arguments::new_v1(...)` call by the time a late pass runs, and
+    // pattern-matching that expanded shape is exactly the false-positive
+    // trap this lint is meant to avoid (see issue #108). `FormatArgsCollector`
+    // is an early pass that records the original AST nodes into a shared
+    // `FormatArgsStorage`, which the late pass then queries.
+    let format_args_storage = FormatArgsStorage::default();
+    lint_store.register_early_pass({
+        let format_args_storage = format_args_storage.clone();
+        move || Box::new(FormatArgsCollector::new(format_args_storage.clone()))
+    });
+    lint_store.register_late_pass({
+        let format_args_storage = format_args_storage.clone();
+        move |_| Box::new(FormattedPanicPayload::new(format_args_storage.clone()))
+    });
 }
 
 rustc_session::declare_lint! {
@@ -1684,6 +1716,206 @@ impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
                     None,
                     "consider using native Rust types (e.g. `&[T]`) instead of \
                      `soroban_sdk::Vec` for read-only access to reduce host-side operations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// formatted_panic_payload — Lint
+// =======================================================================
+
+/// Populates a shared [`FormatArgsStorage`] with the AST-level `format_args!`
+/// nodes produced during macro expansion.
+///
+/// By the time a `LateLintPass` sees a `panic!(...)` or `format!(...)` call,
+/// the HIR has already desugared it into an opaque
+/// `core::panicking::panic_fmt(Arguments::new_v1(...))`-shaped call.
+/// Pattern-matching that expanded shape to recover the original argument
+/// count is exactly the false-positive trap issue #108 warns about, so
+/// instead this early pass (mirroring clippy's own
+/// `clippy_lints::utils::format_args_collector::FormatArgsCollector`, the
+/// exact mechanism named in the issue) records the pre-expansion AST
+/// [`FormatArgs`](rustc_ast::FormatArgs) node for every `format_args!`
+/// expansion, keyed by span. [`FormattedPanicPayload`] later looks these up
+/// through [`FormatArgsStorage::get`] to ask a much simpler, reliable
+/// question: "how many arguments did the original macro invocation have?"
+struct FormatArgsCollector {
+    format_args: rustc_data_structures::fx::FxHashMap<rustc_span::Span, rustc_ast::FormatArgs>,
+    storage: FormatArgsStorage,
+}
+
+impl FormatArgsCollector {
+    fn new(storage: FormatArgsStorage) -> Self {
+        Self {
+            format_args: rustc_data_structures::fx::FxHashMap::default(),
+            storage,
+        }
+    }
+}
+
+rustc_session::impl_lint_pass!(FormatArgsCollector => []);
+
+impl EarlyLintPass for FormatArgsCollector {
+    fn check_expr(&mut self, _cx: &EarlyContext<'_>, expr: &rustc_ast::Expr) {
+        if let rustc_ast::ExprKind::FormatArgs(args) = &expr.kind {
+            self.format_args
+                .insert(expr.span.with_parent(None), (**args).clone());
+        }
+    }
+
+    fn check_crate_post(&mut self, _cx: &EarlyContext<'_>, _krate: &rustc_ast::Crate) {
+        self.storage.set(std::mem::take(&mut self.format_args));
+    }
+}
+
+rustc_session::declare_lint! {
+    pub FORMATTED_PANIC_PAYLOAD,
+    Warn,
+    "format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract"
+}
+
+/// Late pass backing [`FORMATTED_PANIC_PAYLOAD`]. Holds the [`FormatArgsStorage`]
+/// populated by [`FormatArgsCollector`] so it can distinguish a zero-argument
+/// `panic!("literal")` (cheap: no `core::fmt` machinery) from a formatted
+/// `panic!("{} ...", x)` (pulls in `core::fmt`, both inflating the compiled
+/// WASM and running formatting instructions on the failure path).
+pub struct FormattedPanicPayload {
+    format_args: FormatArgsStorage,
+}
+
+impl FormattedPanicPayload {
+    fn new(format_args: FormatArgsStorage) -> Self {
+        Self { format_args }
+    }
+}
+
+rustc_session::impl_lint_pass!(FormattedPanicPayload => [FORMATTED_PANIC_PAYLOAD]);
+
+const FORMATTED_PANIC_PAYLOAD_HELP: &str = "formatted messages pull core::fmt into the contract (binary size on every deploy) and run \
+     formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with \
+     a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost";
+
+const FORMATTED_PANIC_PAYLOAD_MSG: &str =
+    "formatted panic payload pulls in string-formatting machinery";
+
+/// Strips any number of leading `&`s, returning the innermost referent.
+///
+/// Used to see through `.expect(&format!(...))`: the argument HIR node is the
+/// hand-written `&format!(...)` (`AddrOf`), not the `format!(...)` call
+/// itself, and only the latter's span actually originates from a macro
+/// expansion.
+fn peel_ref_expr<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
+    }
+    expr
+}
+
+/// Whether `expr` — a `format!(...)` call — is, modulo any number of `&`
+/// wrappers, the message argument of an enclosing `.expect(...)` call.
+///
+/// Both the standalone-`format!` check and the `.expect(&format!(...))`
+/// check in [`FormattedPanicPayload::check_expr`] would otherwise fire on
+/// the same source expression (the HIR visitor calls `check_expr` on every
+/// node, including the nested `format!(...)` call), producing two warnings
+/// for one problem. When this returns `true`, the standalone-`format!`
+/// branch stays silent and lets the `.expect(...)` branch report a single
+/// warning pinned at the more actionable outer call.
+fn is_expect_format_message<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    let mut current = expr;
+    while let Some(parent) = get_parent_expr(cx, current) {
+        match parent.kind {
+            hir::ExprKind::AddrOf(_, _, _) => current = parent,
+            hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) => {
+                return path_segment.ident.name.as_str() == "expect"
+                    && matches!(args, [message_arg] if message_arg.hir_id == current.hir_id);
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
+    /// Flags three call shapes, all of which pull `core::fmt` formatting
+    /// machinery into the compiled contract:
+    ///
+    /// 1. Any `format!(...)` invocation.
+    /// 2. `panic!(...)` when the original macro call had at least one
+    ///    formatting argument (`panic!("plain literal")` — zero arguments —
+    ///    is cheap and is not flagged).
+    /// 3. `.expect(&format!(...))` — an `.expect()` call whose message
+    ///    argument's expansion root is a `format!` call.
+    ///
+    /// Each shape is identified by checking the expression's macro
+    /// *expansion site* via `clippy_utils::macros` (`root_macro_call_first_node`,
+    /// `is_panic`, and the `format_macro` diagnostic item), never by pattern-matching
+    /// the desugared HIR shape those macros expand to — see the module-level
+    /// docs on [`FormatArgsCollector`] for why that distinction matters here.
+    ///
+    /// Skipped entirely under `#[cfg(test)]` (on the enclosing function or an
+    /// enclosing `mod { .. }`), via `clippy_utils::is_in_test`. Distinguishing
+    /// contract code from test code more precisely (e.g. by proving an
+    /// expression is only reachable from a `#[contractimpl]` entrypoint)
+    /// would need a call-graph reachability analysis; that was considered and
+    /// rejected as too invasive/fragile for a first version — see the PR
+    /// description for the full rationale.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let Some(macro_call) = root_macro_call_first_node(cx, expr) {
+            if cx
+                .tcx
+                .is_diagnostic_item(rustc_span::sym::format_macro, macro_call.def_id)
+            {
+                if !is_expect_format_message(cx, expr) && !is_in_test(cx.tcx, expr.hir_id) {
+                    span_lint_and_help(
+                        cx,
+                        FORMATTED_PANIC_PAYLOAD,
+                        macro_call.span,
+                        FORMATTED_PANIC_PAYLOAD_MSG,
+                        None,
+                        FORMATTED_PANIC_PAYLOAD_HELP,
+                    );
+                }
+                return;
+            }
+
+            if is_panic(cx, macro_call.def_id)
+                && let Some(format_args) = self.format_args.get(cx, expr, macro_call.expn)
+                && !format_args.arguments.all_args().is_empty()
+                && !is_in_test(cx.tcx, expr.hir_id)
+            {
+                span_lint_and_help(
+                    cx,
+                    FORMATTED_PANIC_PAYLOAD,
+                    macro_call.span,
+                    FORMATTED_PANIC_PAYLOAD_MSG,
+                    None,
+                    FORMATTED_PANIC_PAYLOAD_HELP,
+                );
+            }
+            return;
+        }
+
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "expect"
+            && let [message_arg] = args
+        {
+            let inner = peel_ref_expr(message_arg);
+            if let Some(macro_call) = root_macro_call_first_node(cx, inner)
+                && cx
+                    .tcx
+                    .is_diagnostic_item(rustc_span::sym::format_macro, macro_call.def_id)
+                && !is_in_test(cx.tcx, expr.hir_id)
+            {
+                span_lint_and_help(
+                    cx,
+                    FORMATTED_PANIC_PAYLOAD,
+                    expr.span,
+                    FORMATTED_PANIC_PAYLOAD_MSG,
+                    None,
+                    FORMATTED_PANIC_PAYLOAD_HELP,
                 );
             }
         }

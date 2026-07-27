@@ -15,6 +15,7 @@ and this project adheres to Semantic Versioning.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
+- New lint `formatted_panic_payload` detecting `format!(...)`, `panic!(...)` with formatting arguments, and `.expect(&format!(...))`, all of which pull `core::fmt` string-formatting machinery into a `#![no_std]` contract; the diagnostic points at `panic_with_error!` with a `#[contracterror]` enum as the cheap alternative. Skips `#[cfg(test)]` code.
 
 ### Fixed
 
