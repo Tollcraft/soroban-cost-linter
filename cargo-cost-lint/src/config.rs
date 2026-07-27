@@ -142,11 +142,12 @@ soroban_storage_in_loop = "deny"
         let mut lints = HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
         lints.insert("redundant_env_clone".to_string(), "warn".to_string());
-        lints.insert("unnecessary_host_function_call".to_string(), "allow".to_string());
+        lints.insert(
+            "unnecessary_host_function_call".to_string(),
+            "allow".to_string(),
+        );
         lints.insert("host_in_loop".to_string(), "forbid".to_string());
-        let config = Config {
-            lints: Some(lints),
-        };
+        let config = Config { lints: Some(lints) };
         let flags = config.to_lint_flags();
         assert_eq!(flags.len(), 4);
         assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
@@ -160,9 +161,7 @@ soroban_storage_in_loop = "deny"
         let mut lints = HashMap::new();
         lints.insert("some_lint".to_string(), "bogus".to_string());
         lints.insert("valid_lint".to_string(), "deny".to_string());
-        let config = Config {
-            lints: Some(lints),
-        };
+        let config = Config { lints: Some(lints) };
         let flags = config.to_lint_flags();
         assert_eq!(flags.len(), 1);
         assert!(flags.contains(&"-D valid_lint".to_string()));

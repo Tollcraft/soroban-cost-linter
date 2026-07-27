@@ -201,8 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     out.push_str("];\n");
 
-    fs::write(&names_path, out)
-        .map_err(|e| format!("Failed to write lint_names.rs: {}", e))?;
+    fs::write(&names_path, out).map_err(|e| format!("Failed to write lint_names.rs: {}", e))?;
 
     let mut metadata_out = String::new();
     metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");

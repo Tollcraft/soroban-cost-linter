@@ -437,6 +437,9 @@ pub const LINT_METADATA: &[LintMetadata] = &[
     },
     LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: UNBOUNDED_INPUT_LOOP,
         category: LintCategory::StorageOperations,
     },
