@@ -115,6 +115,7 @@ Each lint in this repository targets a specific resource dimension:
 |---|---|---|
 | [`soroban_storage_in_loop`](lints/soroban_storage_in_loop.md) | **Storage** (ledger entry accesses + I/O bytes) | Storage writes are the #1 cost driver; multiplying them by loop count is the most expensive pattern this tool detects. |
 | [`unnecessary_host_function_call`](lints/unnecessary_host_function_call.md) | **CPU** (host function dispatch) | Host calls are expensive relative to pure Wasm; repeating a constant-result call inside a loop wastes CPU. |
+| [`signature_verification_in_loop`](lints/signature_verification_in_loop.md) | **CPU** (elliptic-curve cryptographic host functions) | Signature verification is one of the most expensive host functions available; verifying one at a time in a loop is a sign that a batch/aggregate scheme should be used instead. |
 | [`redundant_env_clone`](lints/redundant_env_clone.md) | **CPU** (memory + dispatch overhead) | Cloning `Env` triggers `MemAlloc`/`MemCpy` and unnecessary object visits; the clone is never needed. |
 | [`nested_storage_collections`](lints/nested_storage_collections.md) | **Storage + CPU** (host-object (de)serialization) | A storage value that nests one collection inside another is deserialized and re-serialized as a whole on every access, so a single-field update pays for the entire nested structure. |
 

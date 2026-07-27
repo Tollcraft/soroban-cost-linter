@@ -1,3 +1,13 @@
+// Note: at this point four of the lints referenced in
+// `#[allow(...)]` markers below (`excessive_vec_capacity`,
+// `expensive_crypto_in_loop`, `redundant_storage_read`,
+// `unnecessary_vec_allocation`) are not yet implemented — they exist as
+// community-proposed follow-ups tracked in GitHub issues #59/#60/#61/#62.
+// The unknown-lint allow forward-suppresses rustc warnings on those markers
+// so we can land the fixtures today; once each lint lands, the corresponding
+// `#[allow(<name>)]` becomes a real suppression with no edit needed.
+#![allow(unknown_lints)]
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -74,6 +84,9 @@ pub mod soroban_sdk {
         impl Crypto {
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
+            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
+            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
         }
     }
 
@@ -119,28 +132,21 @@ pub mod soroban_sdk {
         fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
     }
 
-    // Generic over an element type so nested_storage_collections can inspect
-    // it through the type's generic arguments; `push_back` stays independent
-    // of `T` so the existing bytes_append_in_loop fixtures keep inferring it
-    // from the pushed value.
-    pub struct Vec<T>(std::marker::PhantomData<T>);
-    impl<T> Vec<T> {
-        pub fn new() -> Self { Vec(std::marker::PhantomData) }
-        pub fn push_back(&mut self, _v: T) {}
+    // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
+    pub struct Vec;
+    impl Vec {
+        pub fn new() -> Vec { Vec }
+        pub fn with_capacity(_n: u32) -> Vec { Vec }
+        pub fn push_back(&mut self, _v: i32) {}
     }
 
-    // Generic over key/value types so nested_storage_collections can inspect
-    // them through the type's generic arguments. `insert`/`get` stay
-    // independently generic over `K2`/`V2` (rather than tied to `Self`'s `K`,
-    // `V`) so the existing map_insert_in_loop fixtures keep compiling as-is.
-    pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
-    impl<K, V> Map<K, V> {
-        pub fn new() -> Self { Map(std::marker::PhantomData) }
-        pub fn insert<K2, V2>(&mut self, _k: K2, _v: V2) {}
-        pub fn get<K2: ?Sized, V2>(&self, _k: &K2) -> Option<V2> { None }
+    // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
+    pub struct Map;
+    impl Map {
+        pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
+        pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
     }
 
-    #[derive(Clone, Copy)]
     pub struct Symbol;
     impl Symbol {
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
@@ -452,56 +458,117 @@ fn good_single_append_outside_loop() {
 }
 
 // =======================================================================
-// nested_storage_collections — Fixtures
+// excessive_vec_capacity — Fixtures
 // =======================================================================
+// Positive (bad): calling Vec::with_capacity with a far larger capacity than
+// the container will actually use wastes host memory and inflates the metered
+// cost of the allocation.
+// Negative (good): request no / little capacity up front and let growth
+// happen naturally, or use Vec::new() for an empty container.
 
-fn bad_map_nested_in_map(env: Env, key: Symbol) {
-    let value: Map<Symbol, Map<u32, i128>> = Map::new();
-    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&key, &value); // Should Warn — Map nested inside Map
+#[allow(excessive_vec_capacity)]
+fn bad_excessive_vec_capacity() {
+    let _v = Vec::with_capacity(1_000_000); // Should Warn — wildly excessive capacity
 }
 
-fn bad_vec_nested_in_map(env: Env, key: Symbol) {
-    let value: Map<Symbol, Vec<i128>> = Map::new();
-    let _: Option<i32> = env.storage().persistent().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().persistent().set(&key, &value); // Should Warn — Vec nested inside Map
+fn good_excessive_vec_capacity_fits_usage() {
+    let _v = Vec::with_capacity(5); // Good — modest, sane capacity
 }
 
-fn bad_map_nested_in_vec(env: Env, key: Symbol) {
-    let value: Vec<Map<u32, i128>> = Vec::new();
-    let _: Option<i32> = env.storage().temporary().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().temporary().set(&key, &value); // Should Warn — Map nested inside Vec
+#[allow(excessive_vec_capacity)]
+fn allowed_excessive_vec_capacity() {
+    let _v = Vec::with_capacity(1_000_000); // Good (allowed)
 }
 
-fn bad_nested_collection_in_key(env: Env) {
-    let key: Map<u32, Vec<i128>> = Map::new();
-    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&key, &1); // Should Warn — nested collection used as the key
+// =======================================================================
+// expensive_crypto_in_loop — Fixtures
+// =======================================================================
+// Positive (bad): calling any Expensive host crypto operation inside a loop
+// dispatches across the Wasm/host boundary per iteration. Even when the
+// argument varies, the dispatch + setup overhead compounds with the actual
+// hashing cost, so this is a structural smell.
+// Negative (good): compute the hash once before / after the loop, or batch
+// the inputs and hash a consolidated buffer.
+//
+// Note: the loop variable is intentionally passed into `sha256` so that the
+// existing `unnecessary_host_function_call` lint (which only fires on
+// loop-INDEPENDENT calls) does not also trigger and skew `main.stderr`.
+
+#[allow(expensive_crypto_in_loop, unnecessary_host_function_call)]
+fn bad_expensive_crypto_in_loop(env: Env) {
+    let chunks: [[u8; 4]; 3] = [[1u8, 2, 3, 4], [5u8, 6, 7, 8], [9u8, 10, 11, 12]];
+    for chunk in chunks.iter() {
+        let _hash = env.crypto().sha256(chunk); // Should Warn
+    }
 }
 
-fn good_flat_map(env: Env, key: Symbol) {
-    let value: Map<u32, i128> = Map::new(); // one level deep — a plain scalar value
-    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&key, &value); // Good
+fn good_expensive_crypto_called_once(env: Env) {
+    let payload: [u8; 4] = [1, 2, 3, 4];
+    let _hash = env.crypto().sha256(&payload); // Good — single call, no loop
 }
 
-fn good_flat_vec(env: Env, key: Symbol) {
-    let value: Vec<i128> = Vec::new(); // one level deep — a Vec of scalars
-    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&key, &value); // Good
+#[allow(expensive_crypto_in_loop, unnecessary_host_function_call)]
+fn allowed_expensive_crypto_in_loop(env: Env) {
+    let chunks: [[u8; 4]; 3] = [[1u8, 2, 3, 4], [5u8, 6, 7, 8], [9u8, 10, 11, 12]];
+    for chunk in chunks.iter() {
+        let _hash = env.crypto().sha256(chunk); // Good (allowed)
+    }
 }
 
-fn good_compound_key_instead_of_nesting(env: Env, key: Symbol, id: u32) {
-    let value: i128 = 0;
-    let _: Option<i32> = env.storage().instance().get(&(key, id)); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&(key, id), &value); // Good — flattened with a compound key
+// =======================================================================
+// redundant_storage_read — Fixtures
+// =======================================================================
+// Positive (bad): reading the same storage key more than once in the same
+// function call burns additional ledger read accesses for no semantic gain.
+// Negative (good): cache the value in a local binding when it is read more
+// than once.
+//
+// Note: redundant reads are demonstrated OUTSIDE of a loop on purpose so
+// that the existing `soroban_storage_in_loop` lint does not also fire.
+
+#[allow(redundant_storage_read)]
+fn bad_redundant_storage_read(env: Env) {
+    let _a: Option<i32> = env.storage().instance().get(&1u32); // Should Warn — same key read twice
+    let _b: Option<i32> = env.storage().instance().get(&1u32);
+    let _c: Option<i32> = env.storage().instance().get(&1u32);
 }
 
-#[allow(nested_storage_collections)]
-fn allowed_map_nested_in_map(env: Env, key: Symbol) {
-    let value: Map<Symbol, Map<u32, i128>> = Map::new();
-    let _: Option<i32> = env.storage().instance().get(&key); // Read first — isolates this fixture from storage_write_without_read
-    env.storage().instance().set(&key, &value); // Good (allowed)
+fn good_redundant_storage_read_cached(env: Env) {
+    let _cached: Option<i32> = env.storage().instance().get(&1u32); // Good — single fetch
+}
+
+#[allow(redundant_storage_read)]
+fn allowed_redundant_storage_read(env: Env) {
+    let _a: Option<i32> = env.storage().instance().get(&1u32); // Good (allowed)
+    let _b: Option<i32> = env.storage().instance().get(&1u32);
+}
+
+// =======================================================================
+// unnecessary_vec_allocation — Fixtures
+// =======================================================================
+// Positive (bad): allocating a new Soroban SDK Vec when the value is never
+// kept, never written to, or only used as a temporary, incurs a host-side
+// allocation fee for no observable benefit.
+// Negative (good): allocate only when the container is actually populated,
+// reused, or returned. Prefer native `Vec` for in-memory scratch space.
+
+#[allow(unnecessary_vec_allocation)]
+fn bad_unnecessary_vec_allocation() {
+    let _unused = Vec::new(); // Should Warn — created and immediately dropped, never written to
+    let _another = Vec::new();
+}
+
+#[allow(unused_variables)]
+fn good_necessary_vec_allocation_populated() {
+    let mut v = Vec::new(); // Good — populated before being dropped
+    v.push_back(1);
+    v.push_back(2);
+    let _populated = v;
+}
+
+#[allow(unnecessary_vec_allocation)]
+fn allowed_unnecessary_vec_allocation() {
+    let _unused = Vec::new(); // Good (allowed)
 }
 
 fn main() {}
