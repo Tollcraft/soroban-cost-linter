@@ -17,10 +17,6 @@ and this project adheres to Semantic Versioning.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 - New lint `formatted_panic_payload` detecting `format!(...)`, `panic!(...)` with formatting arguments, and `.expect(&format!(...))`, all of which pull `core::fmt` string-formatting machinery into a `#![no_std]` contract; the diagnostic points at `panic_with_error!` with a `#[contracterror]` enum as the cheap alternative. Skips `#[cfg(test)]` code.
 
-### Fixed
-
-- Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
- <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from
