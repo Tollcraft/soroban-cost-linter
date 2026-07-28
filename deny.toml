@@ -1,0 +1,98 @@
+# deny.toml — cargo-deny configuration for soroban-cost-linter
+#
+# This configuration audits dependencies for:
+#  - Security vulnerabilities via the RustSec advisory database
+#  - License compliance (MIT OR Apache-2.0 ecosystem standard)
+#  - Unmaintained or banned crates
+#
+# Run locally with: cargo deny check
+# CI uses EmbarkStudios/cargo-deny-action@v2 in .github/workflows/security.yml
+
+[graph]
+# If a crate has an unlicensed dependency, the check will fail.
+all-features = false
+no-default-features = false
+
+# ------------------------------------ Advisories ------------------------------------
+# Security and maintenance checks via the RustSec Advisory Database
+# https://rustsec.org
+[advisories]
+# Deny known vulnerabilities — the core purpose of this check.
+vulnerability = "deny"
+# Deny crates flagged as unmaintained in the RustSec database.
+unmaintained = "deny"
+# Warn on unsound crates (but let CI pass). These are crates with unsound
+# API patterns that are not exploitable in the normal sense.
+unsound = "deny"
+# Warn on yanked crates. A yanked crate is a supply-chain risk.
+yanked = "deny"
+# Ignore timeouts when fetching the advisory database; fail instead of silently
+# skipping security checks.
+notice = "warn"
+# Advisory IDs to ignore (none currently needed).
+ignore = [
+    # Add entries like "RUSTSEC-2024-XXXX" with a comment explaining why the
+    # advisory does not apply to this project.
+]
+
+# ------------------------------------ Licenses ------------------------------------
+# Audit dependency licenses for compliance with ecosystem policies.
+# The Rust ecosystem standard is MIT OR Apache-2.0 — copyleft licenses like
+# GPL/AGPL are rejected to avoid encumbering downstream users.
+[licenses]
+# Fail the check if a crate has no detectable license.
+unlicensed = "deny"
+# Explicitly deny copyleft licenses (GPL, AGPL, LGPL, MPL-2.0, etc.) that are
+# incompatible with the permissive Apache-2.0 ecosystem policy.
+copyleft = "deny"
+# Allow MIT and Apache-2.0 as well as permissive licenses that are
+# broadly compatible with the ecosystem standard.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # Unicode-3.0 — required by unicode-ident (transitive dep of syn/proc-macro2)
+    "Unicode-3.0",
+    # ISC — used by some crates (similar to MIT)
+    "ISC",
+]
+# The precedence for determining which license applies when multiple are detected.
+confidence-threshold = 0.8
+exceptions = [
+    # clippy_utils — from a pinned git rev of rust-clippy; it follows the same
+    # dual MIT/Apache-2.0 license as the Rust project, but the license file may
+    # not be detectable by cargo-deny from a git source.
+    { name = "clippy_utils", allow = ["MIT", "Apache-2.0"] },
+]
+
+# ------------------------------------ Sources ------------------------------------
+# Restrict where crates can be sourced from.
+[sources]
+# Allow crates from crates.io — the primary Rust package registry.
+unknown-registry = "deny"
+# Deny git repositories that are not explicitly allowed below.
+unknown-git = "deny"
+# LFS sources are not used.
+allow-git = [
+    # clippy_utils pinned from rust-clippy repository
+    "https://github.com/rust-lang/rust-clippy",
+]
+
+# ------------------------------------ Bans ------------------------------------
+# Block specific crates or versions known to be problematic.
+[bans]
+# Deny multiple versions of the same crate (encourages deduplication).
+multiple-versions = "warn"
+# Highlight crates that are widely duplicated — useful for keeping the
+# dependency graph lean.
+highlight = "all"
+# Wildcards are acceptable for dev/build dependencies, but production deps
+# should use precise versions.
+wildcards = "allow"
+
+# Crates denied outright. None currently, but add entries like:
+# { name = "some-crate", reason = "Explains why this crate is blocked" }
+deny = []
+
+# Specific version skips — use when one version of a crate is broken but
+# upgrading isn't immediately feasible.
+skip = []
