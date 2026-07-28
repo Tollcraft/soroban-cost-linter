@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "description": "Baseline lint findings for real-world corpus. Regenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "contracts": {}
+}
