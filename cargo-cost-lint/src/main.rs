@@ -215,6 +215,32 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     Ok(lint_flags)
 }
 
+/// Lenient wrapper around [`parse_budget_config`] that uses safe defaults
+/// when the `budget.toml` file cannot be read or parsed, while still
+/// propagating validation errors (unknown lint name or level) so that
+/// real user mistakes remain loud.
+///
+/// This implements the "safe defaults" semantics requested by issue
+/// #191: a missing, unreadable, empty, or syntactically invalid file
+/// produces a stderr warning and an empty flag set, instead of
+/// aborting the lint run. Validation errors — which indicate the user
+/// actually wrote something wrong — are returned unchanged so the
+/// strict behaviour already covered by [`parse_budget_config`] and
+/// its existing tests is preserved.
+fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    match parse_budget_config(path) {
+        Ok(flags) => Ok(flags),
+        Err(e)
+            if e.starts_with("Error: Failed to read")
+                || e.starts_with("Error: Failed to parse") =>
+        {
+            eprintln!("warning: {e}\n         continuing with safe defaults (no lint overrides).");
+            Ok(Vec::new())
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[allow(clippy::collapsible_if)]
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
@@ -249,7 +275,7 @@ fn main() {
 
     let mut lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        match parse_budget_config(config_path) {
+        match try_parse_budget_config(config_path) {
             Ok(flags) => lint_flags = flags,
             Err(e) => {
                 eprintln!("{}", e);
@@ -751,5 +777,91 @@ mod tests {
         assert!(err.contains("Unknown lint level"));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The lenient parser (`try_parse_budget_config`) implements issue #191:
+    // missing / unreadable / empty / syntactically invalid config files
+    // must fall back to safe defaults (empty flag set, stderr warning)
+    // instead of aborting. Validation errors — unknown lint names or
+    // levels — still propagate so existing tests above keep passing.
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_missing_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_missing");
+        let _ = fs::remove_dir_all(&dir);
+
+        let result = try_parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for missing file"
+        );
+    }
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_invalid_toml() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        // Four `{` form two balanced `{{` escapes (two literal `{`
+        // characters), keeping the writeln! format string valid while
+        // still producing genuinely invalid TOML syntax.
+        writeln!(file, "this is not valid toml = {{{{").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for invalid TOML"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_empty_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_empty");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        // Create an empty file (no `mut`: never written to).
+        let _ = fs::File::create(&path).unwrap();
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for empty file"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_still_errors_on_unknown_level() {
+        // Validation errors must NOT be swallowed by safe-default
+        // fallback — a typo'd level is a real user mistake that should
+        // stay loud.
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err(), "expected Err for unknown level");
+        assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 }

@@ -20,6 +20,14 @@ and this project adheres to Semantic Versioning.
 
 - Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
  <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
+- `cargo-cost-lint` no longer exits with status 1 when the `budget.toml`
+  passed via `--config` is missing, unreadable, empty, or contains
+  syntactically invalid TOML. The new `try_parse_budget_config` shim in
+  `main.rs` warns on stderr and falls back to safe defaults (no lint
+  overrides) for these failure modes. Validation errors — unknown lint
+  name or level — still propagate unchanged so real user mistakes
+  remain loud. Closes #191.
+
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from
