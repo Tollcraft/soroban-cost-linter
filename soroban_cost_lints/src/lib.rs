@@ -593,9 +593,9 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     ///
     /// Storage access is metered on every iteration, so performing it in a loop
     /// multiplies the cost. The receiver type is matched against
-    /// [`SOROBAN_STORAGE_TYPES`]; the loop check uses [`enclosing_loop`]. No
-    /// suggestion is offered because the fix (hoisting or batching) is
-    /// context-specific, so only a help note is emitted.
+    /// [`SOROBAN_STORAGE_TYPES`]; the loop-or-closure check uses
+    /// [`enclosing_loop_or_closure`]. No suggestion is offered because the fix
+    /// (hoisting or batching) is context-specific, so only a help note is emitted.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         // --- Direct storage access in a loop ---
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
@@ -619,7 +619,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     false
                 };
 
-            if is_storage_access && enclosing_loop(cx, expr).is_some() {
+            if is_storage_access && enclosing_loop_or_closure(cx, expr).is_some() {
                 // Reads (`get`, `has`) and writes (`set`) deserve different
                 // advice: writes can be buffered and flushed once after the
                 // loop, but a loop-variant read cannot be accumulated — the
@@ -643,7 +643,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
 
         // --- Inter-procedural: call that transitively reaches storage ---
         if let hir::ExprKind::Call(_callee, _args) = expr.kind
-            && enclosing_loop(cx, expr).is_some()
+            && enclosing_loop_or_closure(cx, expr).is_some()
         {
             let mut visited: Vec<DefId> = Vec::new();
             if let Some(callee_def_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
