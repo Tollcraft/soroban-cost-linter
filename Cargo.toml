@@ -1,9 +1,19 @@
 [workspace]
 members = [
     "soroban_cost_lints",
-    "cargo-cost-lint"
+    "cargo-cost-lint",
+    "cargo-budget-report"
 ]
 exclude = [
-    "soroban_cost_lints/test_fixtures/real_sdk"
+    "soroban_cost_lints/test_fixtures/real_sdk",
+    "tests/corpus/contracts/token",
+    "tests/corpus/contracts/timelock",
+    "tests/corpus/contracts/swap",
+    "tests/corpus/contracts/storage_iter_simple",
+    "tests/corpus/contracts/storage_iter_nested",
+    "tests/corpus/contracts/storage_iter_while",
+    "tests/corpus/contracts/storage_iter_closure",
+    "tests/corpus/contracts/storage_iter_good",
+    "tests/corpus/contracts/storage_iter_mixed",
 ]
 resolver = "2"
