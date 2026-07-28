@@ -1,5 +1,5 @@
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:149:34
+  --> $DIR/main.rs:158:34
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |                                  ^^^^^^^^^^^
@@ -8,80 +8,48 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(storage_write_without_read)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:149:9
+  --> $DIR/main.rs:158:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
-   = note: `#[warn(soroban_storage_in_loop)]` on by default
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 
-warning: storage operation inside a loop
-  --> $DIR/main.rs:149:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:149:9
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:156:30
+   = help: hoist this storage operation out of the loop
+warning: storage read result is discarded or bound to `_`
+  --> $DIR/main.rs:80:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: use `has()` to check existence, or bind and use the result
+   = note: `#[warn(discarded_storage_read)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:156:30
+  --> $DIR/main.rs:165:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:156:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:163:12
+  --> $DIR/main.rs:172:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:163:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:163:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:170:30
+  --> $DIR/main.rs:179:30
    |
 LL |     env.storage().instance().set(&1, &1); // Good
    |                              ^^^^^^^^^^^
@@ -89,7 +57,7 @@ LL |     env.storage().instance().set(&1, &1); // Good
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:176:34
+  --> $DIR/main.rs:185:34
    |
 LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |                                  ^^^^^^^^^^^
@@ -116,11 +84,10 @@ LL |     let _cloned = env.clone(); // Should Warn
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:228:20
    |
-LL |         let _seq = env.ledger().sequence(); // Should Warn
-   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
    |
-   = help: call this function outside the loop and reuse the result
-   = note: `#[warn(unnecessary_host_function_call)]` on by default
+   = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:249:21
@@ -145,6 +112,31 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: call this function outside the loop and reuse the result
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:293:20
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: unnecessary String to Bytes conversion
+  --> $DIR/main.rs:316:14
+   |
+LL |     let _b = s.to_bytes(); // Should Warn
+   |              ^^^^^^^^^^^^
+   |
+   = help: use the String directly where Bytes is accepted, or construct Bytes directly instead
+   = note: `#[warn(unnecessary_string_to_bytes)]` on by default
+
+warning: unnecessary String to Bytes conversion
+  --> $DIR/main.rs:320:14
+   |
+LL |     let _b = String::from_str(&env, "hello").to_bytes(); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use the String directly where Bytes is accepted, or construct Bytes directly instead
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:299:16
@@ -227,3 +219,79 @@ LL |         v.push_back(i); // Should Warn
 
 warning: 28 warnings emitted
 
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:579:26
+   |
+LL | fn bad_vec_by_value_iter(v: Vec) {
+   |                          ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:585:25
+   |
+LL | fn bad_vec_by_value_len(v: Vec) {
+   |                         ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:454:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:454:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+   = note: `#[warn(signature_verification_in_loop)]` on by default
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:461:19
+   |
+LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:461:19
+   |
+LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:468:9
+   |
+LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: signature verification inside a loop
+  --> $DIR/main.rs:468:9
+   |
+LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: unnecessary host function call inside loop
+  --> $DIR/main.rs:480:9
+   |
+LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: call this function outside the loop and reuse the result
+
+warning: 33 warnings emitted
+
+warning: 4 warnings emitted
