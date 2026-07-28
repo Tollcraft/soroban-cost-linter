@@ -90,7 +90,26 @@ mod tests {
     }
 
     #[test]
-    fn from_file_or_default_parses_valid_toml() {
+    fn from_file_validated_returns_error_for_missing_file() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("nonexistent.toml");
+        let result = BudgetConfig::from_file_validated(&missing, KNOWN_LINTS);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read"));
+    }
+
+    #[test]
+    fn from_file_validated_returns_error_for_malformed_toml() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(&path, "this is not valid toml [[[");
+        let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse"));
+    }
+
+    #[test]
+    fn from_file_validated_parses_valid_toml() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("budget.toml");
         write_file(
@@ -126,9 +145,23 @@ soroban_storage_in_loop = "deny"
     }
 
     #[test]
-    fn default_config_has_no_lints() {
-        let config = Config::default();
-        assert!(config.lints.is_none());
+    fn from_file_validated_rejects_unknown_lint_name() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(&path, "[lints]\nnot_a_real_lint = \"deny\"\n");
+        let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint name"));
+    }
+
+    #[test]
+    fn from_file_validated_rejects_unknown_level() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(&path, "[lints]\nsoroban_storage_in_loop = \"oops\"\n");
+        let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 
     #[test]
