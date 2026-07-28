@@ -1,0 +1,20 @@
+{
+    "name": "soroban-cost-linter",
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": ".."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer"
+            ],
+            "settings": {
+                "rust-analyzer.rustc.source": "discover",
+                "rust-analyzer.cargo.buildScripts.enable": true
+            }
+        }
+    },
+    "postCreateCommand": "cargo build",
+    "remoteUser": "root"
+}
