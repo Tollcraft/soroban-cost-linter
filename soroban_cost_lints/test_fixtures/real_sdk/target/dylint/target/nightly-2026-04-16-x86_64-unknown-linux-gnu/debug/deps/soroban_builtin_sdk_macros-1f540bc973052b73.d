@@ -1,0 +1,7 @@
+/workspaces/soroban-cost-linter/soroban_cost_lints/test_fixtures/real_sdk/target/dylint/target/nightly-2026-04-16-x86_64-unknown-linux-gnu/debug/deps/soroban_builtin_sdk_macros-1f540bc973052b73.d: /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/lib.rs /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_fn.rs /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_type.rs
+
+/workspaces/soroban-cost-linter/soroban_cost_lints/test_fixtures/real_sdk/target/dylint/target/nightly-2026-04-16-x86_64-unknown-linux-gnu/debug/deps/libsoroban_builtin_sdk_macros-1f540bc973052b73.so: /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/lib.rs /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_fn.rs /home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_type.rs
+
+/home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/lib.rs:
+/home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_fn.rs:
+/home/codespace/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-builtin-sdk-macros-26.1.4/src/derive_type.rs:
