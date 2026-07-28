@@ -191,6 +191,7 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let names_path = Path::new(&out_dir).join("lint_names.rs");
     let metadata_path = Path::new(&out_dir).join("lint_metadata.rs");
+    let info_path = Path::new(&out_dir).join("lint_info.rs");
 
     let mut names_out = String::new();
     names_out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
@@ -218,31 +219,24 @@ fn main() {
     metadata_out.push_str("    schema: \"https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/README.md#lint-inventory-schema\",\n");
     metadata_out.push_str("    lints: &[\n");
 
-    let mut out = String::new();
+    // Emit LintInfo/LINT_INFO for --list-lints (included by main.rs).
+    let mut info_out = String::new();
+    info_out.push_str("pub struct LintInfo {\n");
+    info_out.push_str("    pub name: &'static str,\n");
+    info_out.push_str("    pub level: &'static str,\n");
+    info_out.push_str("    pub description: &'static str,\n");
+    info_out.push_str("}\n\n");
 
-    // Emit LINT_NAMES (used by the filter logic in main.rs).
-    out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
-    for name in &names {
-        out.push_str(&format!("    \"{}\",\n", name));
-    }
-    out.push_str("];\n\n");
-
-    // Emit LINT_INFO for --list-lints.
-    out.push_str("pub struct LintInfo {\n");
-    out.push_str("    pub name: &'static str,\n");
-    out.push_str("    pub level: &'static str,\n");
-    out.push_str("    pub description: &'static str,\n");
-    out.push_str("}\n\n");
-
-    out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
+    info_out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
     for lint in &ordered {
-        out.push_str("    LintInfo {\n");
-        out.push_str(&format!("        name: \"{}\",\n", lint.name));
-        out.push_str(&format!("        level: \"{}\",\n", lint.level));
-        out.push_str(&format!("        description: \"{}\",\n", lint.description));
-        out.push_str("    },\n");
+        info_out.push_str("    LintInfo {\n");
+        info_out.push_str(&format!("        name: \"{}\",\n", lint.name));
+        info_out.push_str(&format!("        level: \"{}\",\n", lint.level));
+        info_out.push_str(&format!("        description: \"{}\",\n", lint.description));
+        info_out.push_str("    },\n");
     }
-    out.push_str("];\n");
+    info_out.push_str("];\n");
+    fs::write(&info_path, info_out).expect("Failed to write lint_info.rs");
 
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");

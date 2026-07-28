@@ -133,7 +133,7 @@ cargo cost-lint --version
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
 ```text
-warning: storage operation inside a loop
+error: storage operation inside a loop
   --> src/lib.rs:12:9
    |
 LL |         env.storage().instance().set(&i, &1);
@@ -209,12 +209,13 @@ for item in items {
 The linter flags this as:
 
 ```text
-warning: storage operation inside a loop
- --> src/lib.rs:4:9
-  |
+error: storage operation inside a loop
+  --> src/lib.rs:4:9
+   |
 LL |         env.storage().instance().set(&item, &1);
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: move storage operations out of the loop or accumulate mutations in memory first
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 ```
 
 **Fix** &mdash; accumulate in memory, then write once:
@@ -309,6 +310,16 @@ storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
 
+Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
 ```
 
 #### Pointing `cargo cost-lint` at a config — the `--config` flag

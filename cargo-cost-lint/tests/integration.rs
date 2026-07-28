@@ -26,14 +26,20 @@ fn test_list_lints() {
     // update this array as well.
     let expected_lints = &[
         "soroban_storage_in_loop",
+        "loop_invariant_storage_access",
+        "unbounded_input_loop",
         "redundant_env_clone",
         "unnecessary_host_function_call",
         "host_in_loop",
         "symbol_new_for_short_literal",
+        "unnecessary_string_to_bytes",
         "storage_write_without_read",
         "inefficient_bytes_concat",
         "map_insert_in_loop",
         "bytes_append_in_loop",
+        "signature_verification_in_loop",
+        "storage_key_construction_in_loop",
+        "vec_where_slice_could_be_used",
     ];
 
     for expected in expected_lints {

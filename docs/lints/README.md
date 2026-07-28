@@ -6,6 +6,15 @@ This section provides detailed documentation for all lints supported by `soroban
 See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.
 {% endhint %}
 
+## Confidence / Impact Classification
+
+Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mitigation-strategy):
+
+| Classification | Default Level | Meaning |
+|---|---|---|
+| **High Confidence, High Impact** | `deny` | Pattern is unambiguous and always expensive. Fails CI by default. |
+| **Medium Impact / Context-Dependent** | `warn` | Pattern may be acceptable in small or bounded contexts. Does not block CI by default. |
+
 ## Storage Operations
 
 | Lint                                                                  | Default Severity | Catches                                    |

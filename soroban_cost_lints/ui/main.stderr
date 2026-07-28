@@ -14,7 +14,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
-   = note: `#[warn(soroban_storage_in_loop)]` on by default
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 
 warning: loop-invariant storage operation inside a loop
   --> $DIR/main.rs:144:9
