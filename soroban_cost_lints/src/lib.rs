@@ -160,7 +160,7 @@ const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend
 /// contained type.
 // Scaffolding for the `nested_storage_collections` lint (#267): the
 // matching `LateLintPass` isn't registered yet (and so has no callers
-// of these helpers). Remove this `#[expect]` once the pass is wired in
+// of these helpers). Remove this `#[allow]` once the pass is wired in
 // `register_lints()`.
 #[allow(dead_code)]
 const SOROBAN_NESTABLE_COLLECTION_TYPES: &[&[&str]] =
