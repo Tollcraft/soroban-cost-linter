@@ -174,7 +174,7 @@ If the performance overhead is too high for daily development, consider these al
 
 ## GitHub Actions
 
-We provide a template to easily integrate the linter into your GitHub Actions pipeline:
+We provide a template to easily integrate the linter into your GitHub Actions pipeline. The template runs on both Linux and Windows:
 
 {% code title=".github/workflows/cost-lint.yml" %}
 ```yaml
@@ -184,11 +184,15 @@ on: [push, pull_request]
 
 jobs:
   cost-lint:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           # Keep this toolchain pin in sync with the soroban-cost-linter release you install
           toolchain: nightly-2026-04-16

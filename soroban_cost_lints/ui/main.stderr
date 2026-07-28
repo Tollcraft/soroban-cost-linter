@@ -1,26 +1,34 @@
-warning: storage write without a corresponding read
-  --> $DIR/main.rs:158:34
+error[E0428]: the name `bad_symbol_new_short_literal` is defined multiple times
+  --> $DIR/main.rs:445:1
    |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |                                  ^^^^^^^^^^^
+LL | fn bad_symbol_new_short_literal(env: Env) {
+   | ----------------------------------------- previous definition of the value `bad_symbol_new_short_literal` here
+...
+LL | fn bad_symbol_new_short_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_short_literal` redefined here
    |
-   = help: consider reading the value before writing or using `.has()` to check existence
-   = note: `#[warn(storage_write_without_read)]` on by default
+   = note: `bad_symbol_new_short_literal` must be defined only once in the value namespace of this module
 
-warning: storage operation inside a loop
-  --> $DIR/main.rs:158:9
+error[E0428]: the name `bad_symbol_new_9_chars` is defined multiple times
+  --> $DIR/main.rs:449:1
    |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn bad_symbol_new_9_chars(env: Env) {
+   | ----------------------------------- previous definition of the value `bad_symbol_new_9_chars` here
+...
+LL | fn bad_symbol_new_9_chars(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_9_chars` redefined here
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[deny(soroban_storage_in_loop)]` on by default
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:144:9
+error[E0428]: the name `bad_symbol_new_short_with_underscore` is defined multiple times
+  --> $DIR/main.rs:457:1
    |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
+LL | fn bad_symbol_new_short_with_underscore(env: Env) {
+   | ------------------------------------------------- previous definition of the value `bad_symbol_new_short_with_underscore` here
+...
+LL | fn bad_symbol_new_short_with_underscore(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_short_with_underscore` redefined here
    |
    = help: hoist this storage operation out of the loop
 warning: storage read result is discarded or bound to `_`
@@ -223,6 +231,7 @@ LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:236:9
@@ -289,6 +298,31 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |
    = help: call this function outside the loop and reuse the result
 
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:313:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+   = note: `#[warn(contract_call_in_loop)]` on by default
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:320:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:327:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
 warning: unnecessary String to Bytes conversion
   --> $DIR/main.rs:316:14
    |
@@ -326,13 +360,24 @@ warning: Symbol::new called with a short literal that could use symbol_short! ma
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: storage write without a corresponding read
-  --> $DIR/main.rs:380:30
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/main.rs:292:37
    |
-LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
-   |                              ^^^^^^^^^^^^^^^^
+LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: consider reading the value before writing or using `.has()` to check existence
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/main.rs:296:12
+   |
+LL |     if env.storage().persistent().has(&1) { // Should Warn
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+
+warning: 19 warnings emitted
 
 warning: inefficient bytes concatenation in a loop
   --> $DIR/main.rs:405:18
@@ -418,55 +463,73 @@ LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
    |
    = help: call this function outside the loop and reuse the result
 
-warning: signature verification inside a loop
-  --> $DIR/main.rs:454:9
+error[E0428]: the name `good_symbol_new_too_long` is defined multiple times
+  --> $DIR/main.rs:461:1
    |
-LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn good_symbol_new_too_long(env: Env) {
+   | ------------------------------------- previous definition of the value `good_symbol_new_too_long` here
+...
+LL | fn good_symbol_new_too_long(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_too_long` redefined here
    |
-   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
-   = note: `#[warn(signature_verification_in_loop)]` on by default
+   = note: `good_symbol_new_too_long` must be defined only once in the value namespace of this module
 
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:461:19
+error[E0428]: the name `good_symbol_new_invalid_chars` is defined multiple times
+  --> $DIR/main.rs:465:1
    |
-LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn good_symbol_new_invalid_chars(env: Env) {
+   | ------------------------------------------ previous definition of the value `good_symbol_new_invalid_chars` here
+...
+LL | fn good_symbol_new_invalid_chars(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_invalid_chars` redefined here
    |
-   = help: call this function outside the loop and reuse the result
+   = note: `good_symbol_new_invalid_chars` must be defined only once in the value namespace of this module
 
-warning: signature verification inside a loop
-  --> $DIR/main.rs:461:19
+error[E0428]: the name `good_symbol_new_non_literal` is defined multiple times
+  --> $DIR/main.rs:469:1
    |
-LL |         let _pk = env.crypto().secp256k1_recover(&digest, &sig, 0); // Should Warn
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn good_symbol_new_non_literal(env: Env) {
+   | ---------------------------------------- previous definition of the value `good_symbol_new_non_literal` here
+...
+LL | fn good_symbol_new_non_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_non_literal` redefined here
    |
-   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+   = note: `good_symbol_new_non_literal` must be defined only once in the value namespace of this module
 
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:468:9
+error[E0428]: the name `good_symbol_new_empty` is defined multiple times
+  --> $DIR/main.rs:474:1
    |
-LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn good_symbol_new_empty(env: Env) {
+   | ---------------------------------- previous definition of the value `good_symbol_new_empty` here
+...
+LL | fn good_symbol_new_empty(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_empty` redefined here
    |
-   = help: call this function outside the loop and reuse the result
+   = note: `good_symbol_new_empty` must be defined only once in the value namespace of this module
 
-warning: signature verification inside a loop
-  --> $DIR/main.rs:468:9
+error[E0428]: the name `allowed_symbol_new_short_literal` is defined multiple times
+  --> $DIR/main.rs:479:1
    |
-LL |         env.crypto().secp256r1_verify(&pk, &digest, &sig); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn allowed_symbol_new_short_literal(env: Env) {
+   | --------------------------------------------- previous definition of the value `allowed_symbol_new_short_literal` here
+...
+LL | fn allowed_symbol_new_short_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `allowed_symbol_new_short_literal` redefined here
    |
-   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+   = note: `allowed_symbol_new_short_literal` must be defined only once in the value namespace of this module
 
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:480:9
+error[E0252]: the name `Env` is defined multiple times
+  --> $DIR/main.rs:174:5
    |
-LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
+   |                          --- previous import of the type `Env` here
+...
+LL | use soroban_sdk::Env;
+   |     ^^^^^^^^^^^^^^^^ `Env` reimported here
    |
-   = help: call this function outside the loop and reuse the result
+   = note: `Env` must be defined only once in the type namespace of this module
 
-warning: 33 warnings emitted
+error: aborting due to 9 previous errors
 
-warning: 4 warnings emitted
+Some errors have detailed explanations: E0252, E0428.
+For more information about an error, try `rustc --explain E0252`.
