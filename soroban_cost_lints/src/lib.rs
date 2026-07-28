@@ -73,6 +73,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 dylint_linting::dylint_library!();
 
@@ -937,8 +938,8 @@ impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
             if let hir::ExprKind::Lit(lit) = args[1].kind
                 && let LitKind::Str(symbol, _) = lit.node
             {
-                let s = symbol.as_str();
-                if is_valid_short_symbol(s) {
+                let symbol_str = symbol.as_str();
+                if is_valid_short_symbol(symbol_str) {
                     // Check if there's a valid suggestion
                     if let Some(snippet) = snippet_opt(cx, args[1].span) {
                         let suggestion = format!("symbol_short!({})", snippet);
@@ -1258,11 +1259,13 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
 }
 
 /// Check if a string is a valid short symbol (<= 9 chars, only a-zA-Z0-9_)
-fn is_valid_short_symbol(s: &str) -> bool {
-    if s.len() > 9 || s.is_empty() {
+fn is_valid_short_symbol(symbol_str: &str) -> bool {
+    if symbol_str.len() > 9 || symbol_str.is_empty() {
         return false;
     }
-    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    symbol_str
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 // =======================================================================
@@ -1300,7 +1303,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         /// receiver-snippet and key-snippet for later cross-referencing.
         struct ReadVisitor<'a, 'tcx> {
             cx: &'a LateContext<'tcx>,
-            reads: Vec<(String, String)>,
+            reads: HashSet<(String, String)>,
         }
 
         impl<'a, 'tcx> Visitor<'tcx> for ReadVisitor<'a, 'tcx> {
@@ -1325,7 +1328,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                         let receiver_snippet =
                             snippet_opt(self.cx, receiver.span).unwrap_or_default();
                         let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
-                        self.reads.push((receiver_snippet, key_snippet));
+                        self.reads.insert((receiver_snippet, key_snippet));
                     }
                 }
                 intravisit::walk_expr(self, expr);
@@ -1364,7 +1367,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        let reads = Vec::new();
+        let reads = HashSet::new();
         let writes = Vec::new();
         let mut read_visitor = ReadVisitor { cx, reads };
         read_visitor.visit_body(body);
@@ -1375,8 +1378,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         for (w_receiver, w_key, w_span) in &write_visitor.writes {
             let has_read = read_visitor
                 .reads
-                .iter()
-                .any(|(r_receiver, r_key)| r_receiver == w_receiver && r_key == w_key);
+                .contains(&(w_receiver.clone(), w_key.clone()));
             if !has_read {
                 span_lint_and_help(
                     cx,
@@ -1696,4 +1698,52 @@ impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
+}
+
+/// Benchmarks the read/write matching lookup backing
+/// [`STORAGE_WRITE_WITHOUT_READ`] — a `HashSet::contains` lookup (current)
+/// against the `Vec::iter().any()` scan it replaced — on synthetic data
+/// sized to approximate a function body with many storage operations.
+/// Not a correctness test beyond the parity assertion: mirrors
+/// `cargo-cost-lint/benches/linter_performance.rs`'s `Instant`-based,
+/// no-hard-assertion-on-timing reporting style, since this workspace has
+/// no Criterion dependency.
+#[test]
+fn storage_write_without_read_lookup_benchmark() {
+    const N: usize = 500;
+
+    let reads: HashSet<(String, String)> = (0..N)
+        .map(|i| (format!("storage_{}", i % 7), format!("key_{i}")))
+        .collect();
+    let writes: Vec<(String, String)> = (0..N)
+        .map(|i| (format!("storage_{}", i % 7), format!("other_key_{i}")))
+        .collect();
+    let reads_vec: Vec<(String, String)> = reads.iter().cloned().collect();
+
+    let started = std::time::Instant::now();
+    let hashset_misses = writes
+        .iter()
+        .filter(|(receiver, key)| !reads.contains(&(receiver.clone(), key.clone())))
+        .count();
+    let hashset_elapsed = started.elapsed();
+
+    let started = std::time::Instant::now();
+    let vec_misses = writes
+        .iter()
+        .filter(|(w_receiver, w_key)| {
+            !reads_vec
+                .iter()
+                .any(|(r_receiver, r_key)| r_receiver == w_receiver && r_key == w_key)
+        })
+        .count();
+    let vec_elapsed = started.elapsed();
+
+    assert_eq!(
+        hashset_misses, vec_misses,
+        "HashSet and Vec lookups must agree on which writes are missing a read"
+    );
+
+    eprintln!(
+        "storage_write_without_read_lookup/{N}x{N}: hashset={hashset_elapsed:?} vec_scan={vec_elapsed:?}"
+    );
 }

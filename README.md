@@ -310,6 +310,16 @@ storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
 
+Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
 ```
 
 #### Pointing `cargo cost-lint` at a config — the `--config` flag

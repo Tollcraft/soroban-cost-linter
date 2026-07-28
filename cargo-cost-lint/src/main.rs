@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
 mod config;
-use config::Config;
+use config::BudgetConfig;
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
@@ -125,7 +125,10 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
+    #[arg(
+        long,
+        help = "List all registered lints with their default levels and descriptions"
+    )]
     list_lints: bool,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
@@ -137,6 +140,7 @@ struct Cli {
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 
 /// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
 /// canonicalized set of files that are allowed to be linted (i.e. not
@@ -185,44 +189,25 @@ fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
 
 #[allow(dead_code)]
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
-    let config_str =
-        fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
-    let config: BudgetConfig = toml::from_str(&config_str)
-        .map_err(|e| format!("Error: Failed to parse {}: {}", path, e))?;
-    let mut lint_flags = Vec::new();
+    let config = BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
 
+    let mut lint_flags = Vec::new();
     if let Some(lints) = config.lints {
         for (lint, level) in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
-                return Err(format!(
-                    "Error: Unknown lint name '{}' in {}. Valid lints: {}",
-                    lint,
-                    path,
-                    LINT_NAMES.join(", ")
-                ));
-            }
-
-            let level_flag = match level.as_str() {
-                "allow" => Some("-A"),
-                "warn" => Some("-W"),
-                "deny" => Some("-D"),
-                _ => None,
+            let flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => unreachable!("level already validated by BudgetConfig::from_file_validated"),
             };
-
-            if let Some(flag) = level_flag {
-                lint_flags.push(format!("{} {}", flag, lint));
-            } else {
-                return Err(format!(
-                    "Error: Unknown lint level '{}' for '{}' in {}. Valid levels are allow, warn, and deny.",
-                    level, lint, path
-                ));
-            }
+            lint_flags.push(format!("{} {}", flag, lint));
         }
     }
 
     Ok(lint_flags)
 }
 
+#[allow(clippy::collapsible_if)]
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
@@ -254,13 +239,15 @@ fn main() {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = Vec::new();
+    let mut lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if let Some(config) = load_budget_config(Path::new(config_path)) {
-            // ... validate (existing code)
-            let _ = config;
+        match parse_budget_config(config_path) {
+            Ok(flags) => lint_flags = flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
         }
-        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let preflight = Command::new("cargo")
@@ -327,7 +314,7 @@ fn main() {
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let diagnostic_message = message
+                                let diagnostic_message = diagnostic
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
@@ -339,7 +326,8 @@ fn main() {
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) =
+                                    diagnostic.get("spans").and_then(|s| s.as_array())
                                 {
                                     for span in spans {
                                         if span
@@ -377,6 +365,8 @@ fn main() {
                                     }
                                 }
 
+                                // Only apply .lintignore filtering to known soroban lints.
+                                // Regular compiler diagnostics always pass through.
                                 if !is_reportable(&file, &allowed) {
                                     continue;
                                 }
@@ -390,7 +380,7 @@ fn main() {
                                 let mut help_text = None;
                                 let mut suggestion = None;
                                 if let Some(children) =
-                                    message.get("children").and_then(|c| c.as_array())
+                                    diagnostic.get("children").and_then(|c| c.as_array())
                                 {
                                     for child_item in children {
                                         if child_item.get("level").and_then(|l| l.as_str())
@@ -399,7 +389,7 @@ fn main() {
                                             let child_msg = child_item
                                                 .get("message")
                                                 .and_then(|m| m.as_str())
-                                                .map(|s| s.to_string());
+                                                .map(|text| text.to_string());
                                             help_text = child_msg.clone();
                                             if cli.fix {
                                                 suggestion =
@@ -428,7 +418,7 @@ fn main() {
                                         println!("{}", json_str);
                                     }
                                 } else if cli.format != OutputFormat::Sarif {
-                                    let rendered = message
+                                    let rendered = diagnostic
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
                                         .unwrap_or(diagnostic_message);
