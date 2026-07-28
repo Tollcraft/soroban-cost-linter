@@ -1,0 +1,10 @@
+[package]
+name = "cost-benchmarks"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "Cost measurement harness for soroban-cost-linter lints. Run via `cargo test -- --nocapture` to print before/after budget figures for each anti-pattern."
+
+[dependencies]
+soroban-sdk = "26"
