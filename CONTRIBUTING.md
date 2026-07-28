@@ -8,7 +8,41 @@ First off, thank you for considering contributing to `soroban-cost-linter`!
 
 This tool leverages Dylint to hook into the Rust compiler's AST and High-Level Intermediate Representation (HIR). Familiarity with `rustc` internals (like `rustc_hir`, `rustc_middle`) and `clippy` source code is highly beneficial.
 
-### 2. Setting up Locally
+### 2. Getting Started
+
+#### Recommended: Dev Container
+
+The project includes a pre-configured dev container image with the exact nightly toolchain,
+compiler components (`rustc-dev`, `llvm-tools-preview`), and Dylint binaries already installed.
+
+**VS Code / GitHub Codespaces:** open this repo and choose "Reopen in Container" when prompted.
+The `.devcontainer/devcontainer.json` will build and launch the container automatically.
+
+**Standalone Docker:**
+
+```bash
+docker build -t soroban-cost-linter .
+docker run --rm -it -v "$(pwd)":/workspace soroban-cost-linter bash
+# Inside the container:
+cargo test --workspace
+```
+
+A prebuilt image is also published to the GitHub Container Registry on every push to `main`
+that touches the Dockerfile or the toolchain pin:
+
+```bash
+docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+```
+
+#### Manual Local Setup
+
+If you prefer to set up the toolchain on your machine directly:
+
+> **Windows users:** see [`docs/windows_setup.md`](docs/windows_setup.md) for
+> WSL2 and native-PowerShell instructions. The commands below work on Linux and
+> macOS, and on Windows inside WSL2 with Ubuntu.
+
+#### Linux / macOS
 
 1. Install Dylint:
 
@@ -19,14 +53,51 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 2. Clone the repository and build:
 
    ```bash
+   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   cd soroban-cost-linter
    cargo build
    ```
 
 3. Run tests:
 
    ```bash
-   cargo test
+   cargo test --workspace
    ```
+
+#### Windows (PowerShell)
+
+1. **Install the Rust toolchain.** Use [rustup](https://rustup.rs/) to install the nightly toolchain with the required components:
+
+   ```powershell
+   rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
+   rustup default nightly-2026-04-16
+   ```
+
+   The `rust-toolchain` file in the repository root will pin the correct nightly automatically once the toolchain is installed, but running the command above ensures the required components are present.
+
+2. **Install Dylint** (the lint driver this project depends on):
+
+   ```powershell
+   cargo install cargo-dylint dylint-link --version "^6.0.1"
+   ```
+
+3. **Clone the repository and build:**
+
+   ```powershell
+   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   cd soroban-cost-linter
+   cargo build
+   ```
+
+4. **Run the full quality checks** (these must pass before opening a PR):
+
+   ```powershell
+   cargo fmt --all -- --check
+   cargo clippy --workspace --all-targets -- -D warnings
+   cargo test --workspace
+   ```
+
+> **Note:** All `cargo` commands work identically in PowerShell, CMD, and Git Bash. If you use Git Bash, you can also use the `bash` code blocks above.
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
@@ -34,7 +105,8 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 - Assign the lint to one of the defined cost categories (`StorageOperations`, `Compute`, `Memory`, or `EntryLifecycle`) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
 - Write a failing test case in the `ui` tests directory.
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
-- Update the documentation and `README.md`, ensuring the new lint is placed under the correct category header.
+- Update the `LINT_METADATA` entry with the correct category.
+- Run `cargo run -p generate-lint-docs` from the workspace root to regenerate `docs/lints/README.md` and `docs/lints/lint-registry.json`.
 
 ### Lint Naming Convention
 
@@ -67,7 +139,7 @@ are already part of the public interface. Although they do not fully match the c
 
 ### 4. Code Quality Standards
 
-All PRs are checked by CI, and these checks must pass before a PR can be merged. Run them locally before pushing:
+All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing:
 
 1. Format your code with rustfmt (CI rejects unformatted code):
 
@@ -87,20 +159,42 @@ All PRs are checked by CI, and these checks must pass before a PR can be merged.
    cargo test --workspace
    ```
 
+> **Windows tip:** All three commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
+
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
 ### 5. Upgrading the Nightly Toolchain
 
+The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files, the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`, and the container image.
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across multiple files. Upgrading is a multi-step, order-dependent process. The complete procedure—including identification of the matching `clippy_utils` revision, common breakages, and how to verify success—is documented in the [Nightly Upgrade Runbook](./docs/NIGHTLY_UPGRADE_RUNBOOK.md).
 
 **TL;DR:** The critical relationship is between the nightly channel in `rust-toolchain` and the `clippy_utils` git revision in `soroban_cost_lints/Cargo.toml`. See the runbook for guidance on finding the matching revision from the `rust-lang/rust-clippy` repository's `rustup` branch.
 
-### 6. Releasing a New Lint
+1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-05-01`).
+2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `rustup` branch on that date, and update the `rev` field in `soroban_cost_lints/Cargo.toml`.
+3. Update `.github/workflows/lint.yml`, `templates/github-action.yml`, and `docs/integration.md` with the new nightly date.
+4. Run the drift guard to confirm everything agrees:
+   ```bash
+   # Linux / macOS
+   bash .github/scripts/validate-toolchain-pins.sh
+
+   # Windows (PowerShell)
+   powershell -ExecutionPolicy Bypass -File .github/scripts/validate-toolchain-pins.ps1
+   ```
+5. Run the full test suite:
+   ```bash
+   cargo test --workspace
+   ```
 
 A new lint is released as part of the next project version after its implementation has been merged. The release process is documented in [Releasing a New Lint](docs/release_process.md).
 
 Before a release, maintainers must confirm that the lint is complete, documented, registered, covered by UI tests, and included in the changelog. The lint name must remain stable after release because it is part of the public configuration and command-line interface.
 
+{% hint style="info" %}
+The `Dockerfile` reads `rust-toolchain` at build time, so updating the channel there is sufficient — the container image will be rebuilt and published automatically by CI when `rust-toolchain` changes.
+{% endhint %}
+
+### 6. Submitting a Pull Request
 ### 7. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.

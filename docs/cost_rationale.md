@@ -119,6 +119,7 @@ Each lint in this repository targets a specific resource dimension:
 | [`redundant_env_clone`](lints/redundant_env_clone.md) | **CPU** (memory + dispatch overhead) | Cloning `Env` triggers `MemAlloc`/`MemCpy` and unnecessary object visits; the clone is never needed. |
 | [`contract_call_in_loop`](lints/contract_call_in_loop.md) | **CPU** (cross-contract VM instantiation + dispatch) | Each `invoke_contract` call spins up a new VM context; repeating it per iteration multiplies that overhead by the loop count. |
 | [`excessive_vec_capacity`](lints/excessive_vec_capacity.md) | **Memory** (guest linear memory, hard-capped) | A large hard-coded capacity is charged against the guest's memory cap the moment it's allocated, whether or not it's ever filled. |
+| [`extend_ttl_in_loop`](lints/extend_ttl_in_loop.md) | **Storage** (ledger space rent) | `extend_ttl` is a metered host call that also pays rent; calling it once per iteration multiplies both costs by the loop count instead of batching the extension. |
 
 ---
 
