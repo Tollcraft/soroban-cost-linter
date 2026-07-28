@@ -158,6 +158,11 @@ const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend
 /// type, and so can themselves be nested one inside another. `Bytes` is
 /// deliberately absent: it is a leaf byte buffer, not generic over a
 /// contained type.
+// Scaffolding for the `nested_storage_collections` lint (#267): the
+// matching `LateLintPass` isn't registered yet (and so has no callers
+// of these helpers). Remove this `#[expect]` once the pass is wired in
+// `register_lints()`.
+#[allow(dead_code)]
 const SOROBAN_NESTABLE_COLLECTION_TYPES: &[&[&str]] =
     &[&["soroban_sdk", "Map"], &["soroban_sdk", "Vec"]];
 
@@ -169,6 +174,7 @@ fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str
 
 /// Whether `ty`, after peeling references, is a [`SOROBAN_NESTABLE_COLLECTION_TYPES`]
 /// (`Map` or `Vec`).
+#[allow(dead_code)]
 fn is_soroban_collection<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
     if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
         matches_any_path(cx, adt_def.did(), SOROBAN_NESTABLE_COLLECTION_TYPES)
@@ -184,6 +190,7 @@ fn is_soroban_collection<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<
 /// Both generic positions are checked (not just the "value" slot) because a
 /// collection nested in the key position is exactly as expensive to
 /// deserialize on every access as one nested in the value position.
+#[allow(dead_code)]
 fn has_nested_soroban_collection<'tcx>(
     cx: &LateContext<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
