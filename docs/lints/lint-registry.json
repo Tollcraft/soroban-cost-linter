@@ -1,0 +1,37 @@
+[
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "storage operations inside a loop",
+    "docs_path": "docs/lints/soroban_storage_in_loop.md",
+    "name": "soroban_storage_in_loop"
+  },
+  {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "redundant clone on Env object",
+    "docs_path": "docs/lints/redundant_env_clone.md",
+    "name": "redundant_env_clone"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "unnecessary host function call inside loop",
+    "docs_path": "docs/lints/unnecessary_host_function_call.md",
+    "name": "unnecessary_host_function_call"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "use of Host object inside a loop",
+    "docs_path": "docs/lints/host_in_loop.md",
+    "name": "host_in_loop"
+  },
+  {
+    "category": "SymbolOperations",
+    "default_level": "warn",
+    "description": "Symbol::new used with a short literal that could use symbol_short! macro",
+    "docs_path": "docs/lints/symbol_new_for_short_literal.md",
+    "name": "symbol_new_for_short_literal"
+  }
+]
