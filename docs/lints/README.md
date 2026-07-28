@@ -22,7 +22,6 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
 | [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
 | [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
-| [`nested_storage_collections`](nested_storage_collections.md)         | `warn`           | Storage values that nest one `Map`/`Vec` inside another |
 
 ## CPU/Compute
 
