@@ -1,3 +1,6 @@
+mod module_13;
+mod module_15;
+
 use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -32,6 +35,7 @@ struct LintFinding {
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
+#[command(version)]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
@@ -94,6 +98,56 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
     None
 }
 
+/// Loads `path` as a validated `BudgetConfig` and formats its `[lints]`
+/// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
+/// (unknown lint names, invalid levels) is handled by
+/// `BudgetConfig::from_file_validated`, the single canonical config parser.
+fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    let config = BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
+
+    let mut lint_flags = Vec::new();
+    if let Some(lints) = config.lints {
+        for (lint, level) in lints {
+            let flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => unreachable!("level already validated by BudgetConfig::from_file_validated"),
+            };
+            lint_flags.push(format!("{} {}", flag, lint));
+        }
+    }
+
+    Ok(lint_flags)
+}
+
+/// Lenient wrapper around [`parse_budget_config`] that uses safe defaults
+/// when the `budget.toml` file cannot be read or parsed, while still
+/// propagating validation errors (unknown lint name or level) so that
+/// real user mistakes remain loud.
+///
+/// This implements the "safe defaults" semantics requested by issue
+/// #191: a missing, unreadable, empty, or syntactically invalid file
+/// produces a stderr warning and an empty flag set, instead of
+/// aborting the lint run. Validation errors — which indicate the user
+/// actually wrote something wrong — are returned unchanged so the
+/// strict behaviour already covered by [`parse_budget_config`] and
+/// its existing tests is preserved.
+fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    match parse_budget_config(path) {
+        Ok(flags) => Ok(flags),
+        Err(e)
+            if e.starts_with("Error: Failed to read")
+                || e.starts_with("Error: Failed to parse") =>
+        {
+            eprintln!("warning: {e}\n         continuing with safe defaults (no lint overrides).");
+            Ok(Vec::new())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[allow(clippy::collapsible_if)]
 fn main() {
     // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
@@ -289,6 +343,76 @@ fn main() {
     }
 }
 
+/// Prints the explanation for a lint, or errors with valid lint names if not found.
+fn print_explanation(lint_name: &str) {
+    let normalized = lint_name.to_lowercase();
+
+    let explanation = LINT_EXPLANATIONS
+        .iter()
+        .find(|e| e.name == normalized);
+
+    match explanation {
+        Some(entry) => {
+            // Clean up the markdown for terminal display
+            let cleaned = clean_markdown_for_terminal(entry.markdown);
+            println!("{}", cleaned);
+        }
+        None => {
+            eprintln!(
+                "Error: unknown lint '{}'.\n\nValid lints:\n",
+                lint_name
+            );
+            for info in LINT_INFO {
+                eprintln!("  {} — {}", info.name, info.description);
+            }
+            exit(1);
+        }
+    }
+}
+
+/// Strips GitBook-specific hint syntax and lightens the markdown for plain
+/// terminal output. The result is still markdown-ish but without block-level
+/// tags that only render on a documentation site.
+fn clean_markdown_for_terminal(markdown: &str) -> String {
+    let mut result = String::new();
+    let mut in_code_block = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+
+        // Track code-fence boundaries so we don't strip inside them
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        if in_code_block {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // Strip GitBook hint tags and their content delimiters
+        if trimmed.starts_with("{% hint")
+            || trimmed.starts_with("{% endhint")
+            || trimmed.ends_with("%}") && !line.starts_with("    ")
+        {
+            // Skip hint markers entirely
+            continue;
+        }
+
+        // Replace bold markers with plain text for terminal
+        let cleaned = line.replace("**", "");
+
+        result.push_str(&cleaned);
+        result.push('\n');
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,6 +458,262 @@ mod tests {
         let config = BudgetConfig { lints: Some(lints) };
         let result = validate_and_build_flags(&config);
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
+    }
+
+    #[test]
+    fn every_registered_lint_has_explanation_text() {
+        for info in LINT_INFO {
+            let explanation = LINT_EXPLANATIONS
+                .iter()
+                .find(|e| e.name == info.name);
+            assert!(
+                explanation.is_some(),
+                "lint '{}' is registered but has no explanation text. \
+                 Add a documentation page at docs/lints/{}.md",
+                info.name,
+                info.name
+            );
+            if let Some(entry) = explanation {
+                assert!(
+                    !entry.markdown.is_empty(),
+                    "lint '{}' has an empty explanation text",
+                    info.name
+                );
+            }
+        }
+    }
+
+    /// Verifies that document has at least the structure of valid markdown
+    /// by checking it contains the key sections.
+    #[test]
+    fn every_explanation_has_key_sections() {
+        for entry in LINT_EXPLANATIONS {
+            assert!(
+                entry.markdown.contains("## What it does"),
+                "lint '{}' explanation is missing 'What it does' section",
+                entry.name
+            );
+            assert!(
+                entry.markdown.contains("## Why is this bad")
+                    || entry.markdown.contains("## Why is this bad?"),
+                "lint '{}' explanation is missing 'Why is this bad' section",
+                entry.name
+            );
+        }
+    }
+
+    #[test]
+    fn print_explanation_known_lint_succeeds() {
+        // Test that the first registered lint's explanation resolves
+        // correctly and produces terminal-clean output.
+        let first = LINT_INFO.first().expect("at least one lint registered");
+        let explanation = LINT_EXPLANATIONS
+            .iter()
+            .find(|e| e.name == first.name);
+        assert!(
+            explanation.is_some(),
+            "lint '{}' should have explanation",
+            first.name
+        );
+        let entry = explanation.unwrap();
+        assert!(!entry.markdown.is_empty(), "explanation should not be empty");
+        // The cleaned output should not contain GitBook hint tags
+        let cleaned = clean_markdown_for_terminal(entry.markdown);
+        assert!(
+            !cleaned.contains("{% hint"),
+            "cleaned output should not contain GitBook hint tags"
+        );
+    }
+
+    #[test]
+    fn clean_markdown_removes_hint_tags() {
+        let input = "{% hint style=\"danger\" %}\nSome content\n{% endhint %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(
+            !cleaned.contains("{% hint"),
+            "hint open tag should be removed"
+        );
+        assert!(
+            !cleaned.contains("{% endhint"),
+            "endhint tag should be removed"
+        );
+        // Content between hint tags should remain
+        assert!(
+            cleaned.contains("Some content"),
+            "content between hint tags should remain"
+        );
+    }
+
+    #[test]
+    fn clean_markdown_preserves_code_blocks() {
+        let input = "```rust\nlet x = 1;\n```";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(cleaned.contains("```rust"), "code fence start should remain");
+        assert!(cleaned.contains("let x = 1;"), "code content should remain");
+        assert!(cleaned.contains("```"), "code fence end should remain");
+    }
+
+    #[test]
+    fn absent_config_returns_default_lint_levels() {
+        let dir = std::env::temp_dir().join("cost_lint_test_absent");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unparseable_config_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "this is not valid toml = {{{{{{").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to parse"),
+            "expected parse error, got: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn valid_config_returns_flags() {
+        let dir = std::env::temp_dir().join("cost_lint_test_valid");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(flags.len(), 2);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_level_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The lenient parser (`try_parse_budget_config`) implements issue #191:
+    // missing / unreadable / empty / syntactically invalid config files
+    // must fall back to safe defaults (empty flag set, stderr warning)
+    // instead of aborting. Validation errors — unknown lint names or
+    // levels — still propagate so existing tests above keep passing.
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_missing_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_missing");
+        let _ = fs::remove_dir_all(&dir);
+
+        let result = try_parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for missing file"
+        );
+    }
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_invalid_toml() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        // Four `{` form two balanced `{{` escapes (two literal `{`
+        // characters), keeping the writeln! format string valid while
+        // still producing genuinely invalid TOML syntax.
+        writeln!(file, "this is not valid toml = {{{{").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for invalid TOML"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_empty_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_empty");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        // Create an empty file (no `mut`: never written to).
+        let _ = fs::File::create(&path).unwrap();
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for empty file"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_still_errors_on_unknown_level() {
+        // Validation errors must NOT be swallowed by safe-default
+        // fallback — a typo'd level is a real user mistake that should
+        // stay loud.
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err(), "expected Err for unknown level");
         assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 }

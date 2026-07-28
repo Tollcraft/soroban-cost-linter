@@ -24,7 +24,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Seven lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Eight lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -33,6 +33,9 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
+*   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
+*   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
+*   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
 
 ## How it Fits into Tollcraft
 
@@ -45,34 +48,82 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ## Getting Started
 
+### Recommended: Dev Container
+
+The fastest way to get a working environment is the pre-built container image, which ships with
+the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
+
+```bash
+docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/Tollcraft/soroban-cost-linter:latest bash
+# Inside the container:
+cargo test --workspace
+```
+
+VS Code / GitHub Codespaces users can open the repo and choose **"Reopen in Container"** — the
+`.devcontainer/devcontainer.json` handles everything automatically.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manual local setup path.
+
 ### Prerequisites
+
+> **Windows users:** the project CI runs on Ubuntu. For the smoothest setup,
+> prefer **WSL2 with Ubuntu** — see
+> [docs/windows_setup.md](docs/windows_setup.md). Native-PowerShell install is
+> covered in the same page; **Visual Studio Build Tools is required** because
+> the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
 
 Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
-```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1"
-```
+1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
+
+   ```bash
+   rustup toolchain install <channel-from-rust-toolchain>
+   ```
+
+2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `^6.0.1` to run dynamic library lints:
+
+   ```bash
+   cargo install cargo-dylint dylint-link --version "^6.0.1"
+   ```
+
+> **Windows:** Install via PowerShell after setting up Rust through [rustup](https://rustup.rs/). The command is identical. Make sure the nightly toolchain with `rustc-dev` and `llvm-tools-preview` components is installed (`rustup toolchain install nightly --component rustc-dev llvm-tools-preview`).
 
 ### Installation
 
-Add the linter to your Soroban workspace:
+Add the linter to your Soroban workspace. **Ensure you are using the pinned nightly toolchain** (see [Prerequisites](#prerequisites)) when building:
 
 ```bash
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-
+cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 ```
+
+> **Why is the nightly required?** The lint library links against `rustc_private`, which is only available on nightly compilers. A different nightly version may produce linker errors due to ABI mismatches.
 
 ## Quick Start
 
-```bash
-# Install the tool
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+1. Complete the [Prerequisites](#prerequisites) (nightly toolchain + Dylint).
+2. Install the linter using the pinned nightly:
 
-# Run it on your Soroban project
-cargo cost-lint
-```
+   ```bash
+   cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+   ```
+3. Run it on your Soroban project:
+
+   ```bash
+   cargo cost-lint
+   ```
 
 ## Usage
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
+| `--format <text\|json>` | Output format (default: `text`) |
+| `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
+| `--version` | Print the crate version and exit |
 
 ### Running the linter
 
@@ -93,7 +144,7 @@ The output is a versioned JSON object with the lint name, default level, descrip
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
 ```text
-warning: storage operation inside a loop
+error: storage operation inside a loop
   --> src/lib.rs:12:9
    |
 LL |         env.storage().instance().set(&i, &1);
@@ -147,6 +198,12 @@ LL |     let _cloned = env.clone();
    |
    = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
+
+lint summary:
+  redundant_env_clone: 1
+  soroban_storage_in_loop: 3
+  unnecessary_host_function_call: 2
+total: 6
 ```
 
 ### Example: storage in a loop
@@ -163,12 +220,13 @@ for item in items {
 The linter flags this as:
 
 ```text
-warning: storage operation inside a loop
- --> src/lib.rs:4:9
-  |
+error: storage operation inside a loop
+  --> src/lib.rs:4:9
+   |
 LL |         env.storage().instance().set(&item, &1);
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: move storage operations out of the loop or accumulate mutations in memory first
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[deny(soroban_storage_in_loop)]` on by default
 ```
 
 **Fix** &mdash; accumulate in memory, then write once:
@@ -225,6 +283,28 @@ for _ in 0..10 {
 }
 ```
 
+### Example: cross-contract call in a loop
+
+**Bad** &mdash; invoking another contract on every iteration re-instantiates its VM context each time:
+
+```rust
+// ❌ Triggers: contract_call_in_loop
+for item in items.iter() {
+    let _: i128 = env.invoke_contract(&token_address, &symbol_short!("balance"), (item,).into_val(&env));
+}
+```
+
+**Fix** &mdash; add a batched endpoint on the callee, or call once and reuse the result if it's invariant:
+
+```rust
+// ✅ Fixed: a single batched call
+let balances: Vec<i128> = env.invoke_contract(
+    &token_address,
+    &symbol_short!("balances"),
+    (items.clone(),).into_val(&env),
+);
+```
+
 ### Suppressing false positives
 
 If a flagged pattern is intentional, suppress it with a standard Rust attribute:
@@ -238,16 +318,31 @@ fn deliberate_storage_loop(env: Env) {
 }
 ```
 
-### Automatically fixing lints
+### Ratchet workflow with `--max-warnings`
 
-`cargo-cost-lint` includes a `--fix` flag that automatically applies safe, machine-applicable suggestions for simple lints. For example, it can replace `Symbol::new(&env, "short")` with `symbol_short!("short")`:
+You can enforce a quality gate by setting a maximum number of warnings:
 
 ```bash
-# Check and auto-fix fixable lints
-cargo cost-lint --fix
+# Fail CI if more than 5 lint findings are emitted
+cargo cost-lint --max-warnings 5
+
+# Strict mode: zero warnings allowed
+cargo cost-lint --max-warnings 0
 ```
 
-When `--fix` is passed, the tool applies all `MachineApplicable` suggestions in-place and writes the updated source files.
+The threshold can also be set in `budget.toml` so both CI and local runs agree:
+
+```toml
+max_warnings = 5
+```
+
+The CLI flag takes precedence over `budget.toml`. When the threshold is exceeded, the tool prints:
+
+```
+error: number of warnings (N) exceeds --max-warnings (M)
+```
+
+and exits with code 1.
 
 ### Configuration (`budget.toml`)
 
@@ -262,7 +357,18 @@ unnecessary_host_function_call = "warn"
 storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
+contract_call_in_loop = "warn"
 
+Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "cost-lint",
+    "--all-diagnostics"
+  ]
+}
 ```
 
 #### Pointing `cargo cost-lint` at a config — the `--config` flag
@@ -291,7 +397,8 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements. If you are writing your first custom Dylint lint, read the [How to add a new lint developer guide](DEVELOPING_LINTS.md) for a step-by-step walkthrough of lint registration, HIR matching, UI tests, and `clippy_utils`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+**Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
 
 ## Community
 

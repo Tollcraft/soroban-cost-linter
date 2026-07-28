@@ -8,11 +8,15 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
@@ -36,3 +40,5 @@ jobs:
           fi
       - name: Run tests
         run: cargo test --workspace
+      - name: Check lint docs are up to date
+        run: cargo run -p generate-lint-docs -- --check
