@@ -25,11 +25,13 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. **Three lints ship in the released [`v0.1.1`](CHANGELOG.md); two more are documented on `main` and remain `Unreleased` until the next versioned release.** The full set of available lints is:
 
-*   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
-*   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
-*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable.
+*   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md)** &mdash; Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead. *(shipped in `v0.1.1`)*
+*   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md)** &mdash; Detects unnecessary `.clone()` calls on the Soroban `Env` object. *(shipped in `v0.1.1`)*
+*   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md)** &mdash; Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable. *(shipped in `v0.1.1`)*
+*   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md)** &mdash; Flags growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies, where each iteration reallocates a progressively larger host-side buffer. *(Unreleased &mdash; currently on `main`)*
+*   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md)** &mdash; Detects `Symbol::new(&env, "literal")` calls whose literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore), suggesting the `symbol_short!` macro for compile-time creation. *(Unreleased &mdash; currently on `main`)*
 
 ## How it Fits into Tollcraft
 

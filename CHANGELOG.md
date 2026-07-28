@@ -10,6 +10,7 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.
 
 ### Changed
 
