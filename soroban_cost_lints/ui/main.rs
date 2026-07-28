@@ -535,14 +535,14 @@ fn allowed_inefficient_bytes_concat(env: Env) {
 // =======================================================================
 
 fn bad_map_insert_in_loop(env: Env) {
-    let mut map = Map::<i32, i32>::new();
+    let mut map = Map;
     for i in 0..10 {
         map.insert(&i, &1); // Should Warn
     }
 }
 
 fn good_map_insert_outside_loop(env: Env) {
-    let mut map = Map::<i32, i32>::new();
+    let mut map = Map;
     map.insert(&1, &1); // Good — outside the loop
     for i in 0..10 {
         let _: Option<i32> = map.get(&i);
@@ -551,7 +551,7 @@ fn good_map_insert_outside_loop(env: Env) {
 
 #[allow(map_insert_in_loop)]
 fn allowed_map_insert_in_loop(env: Env) {
-    let mut map = Map::<i32, i32>::new();
+    let mut map = Map;
     for i in 0..10 {
         map.insert(&i, &1); // Good (allowed)
     }
@@ -569,7 +569,7 @@ fn bad_bytes_append_in_for_loop() {
 }
 
 fn bad_vec_push_back_in_while_loop() {
-    let mut v = Vec::new();
+    let mut v = Vec;
     let mut i = 0;
     while i < 10 {
         v.push_back(i); // Should Warn

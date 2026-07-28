@@ -154,57 +154,10 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 /// buffer, causing increasingly expensive host-side work per call.
 const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
 
-/// Soroban SDK collection types that are generic over an element or value
-/// type, and so can themselves be nested one inside another. `Bytes` is
-/// deliberately absent: it is a leaf byte buffer, not generic over a
-/// contained type.
-// Scaffolding for the `nested_storage_collections` lint (#267): the
-// matching `LateLintPass` isn't registered yet (and so has no callers
-// of these helpers). Remove this `#[allow]` once the pass is wired in
-// `register_lints()`.
-#[allow(dead_code)]
-const SOROBAN_NESTABLE_COLLECTION_TYPES: &[&[&str]] =
-    &[&["soroban_sdk", "Map"], &["soroban_sdk", "Vec"]];
-
 fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str]]) -> bool {
     paths
         .iter()
         .any(|segments| match_soroban_def_path(cx, def_id, segments))
-}
-
-/// Whether `ty`, after peeling references, is a [`SOROBAN_NESTABLE_COLLECTION_TYPES`]
-/// (`Map` or `Vec`).
-#[allow(dead_code)]
-fn is_soroban_collection<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    if let rustc_middle::ty::Adt(adt_def, _) = ty.peel_refs().kind() {
-        matches_any_path(cx, adt_def.did(), SOROBAN_NESTABLE_COLLECTION_TYPES)
-    } else {
-        false
-    }
-}
-
-/// Whether `ty` is a Soroban `Map` or `Vec` that itself has another `Map` or
-/// `Vec` among its generic type arguments, e.g. `Map<K, Map<K2, V2>>` or
-/// `Vec<Map<K, V>>`.
-///
-/// Both generic positions are checked (not just the "value" slot) because a
-/// collection nested in the key position is exactly as expensive to
-/// deserialize on every access as one nested in the value position.
-#[allow(dead_code)]
-fn has_nested_soroban_collection<'tcx>(
-    cx: &LateContext<'tcx>,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> bool {
-    let rustc_middle::ty::Adt(adt_def, generic_args) = ty.peel_refs().kind() else {
-        return false;
-    };
-    if !matches_any_path(cx, adt_def.did(), SOROBAN_NESTABLE_COLLECTION_TYPES) {
-        return false;
-    }
-    generic_args
-        .iter()
-        .filter_map(|arg| arg.as_type())
-        .any(|inner_ty| is_soroban_collection(cx, inner_ty))
 }
 
 fn match_soroban_def_path_tcx(tcx: TyCtxt<'_>, def_id: DefId, segments: &[&str]) -> bool {
