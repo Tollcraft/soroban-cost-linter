@@ -10,6 +10,7 @@
 
 * [Scope: Clippy vs. soroban-cost-linter](scope_boundary.md)
 * [Integration Guide](integration.md)
+* [Windows Setup Guide](windows_setup.md)
 * [Handling False Positives](false_positives.md)
 
 ## Lints

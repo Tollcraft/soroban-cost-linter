@@ -14,6 +14,7 @@ and this project adheres to Semantic Versioning.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
+- `docs/windows_setup.md` covering WSL2 (recommended) and native-PowerShell install, PATH setup, prerequisites (Visual Studio Build Tools, MSVC toolchain, long path support), and common Windows-specific issues. Linked from `CONTRIBUTING.md`, `README.md`, and the `docs/SUMMARY.md` TOC.
 
 ### Fixed
 

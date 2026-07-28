@@ -48,6 +48,12 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
+> **Windows users:** the project CI runs on Ubuntu. For the smoothest setup,
+> prefer **WSL2 with Ubuntu** — see
+> [docs/windows_setup.md](docs/windows_setup.md). Native-PowerShell install is
+> covered in the same page; **Visual Studio Build Tools is required** because
+> the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
+
 Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 ```bash
@@ -238,6 +244,7 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 4. Pass all local tests before submitting.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+**Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
 
 ## Community
 

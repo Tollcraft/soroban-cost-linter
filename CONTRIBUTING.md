@@ -10,6 +10,10 @@ This tool leverages Dylint to hook into the Rust compiler's AST and High-Level I
 
 ### 2. Setting up Locally
 
+> **Windows users:** see [`docs/windows_setup.md`](docs/windows_setup.md) for
+> WSL2 and native-PowerShell instructions. The commands below work on Linux and
+> macOS, and on Windows inside WSL2 with Ubuntu.
+
 1. Install Dylint:
 
    ```bash
