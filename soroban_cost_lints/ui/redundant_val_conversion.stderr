@@ -1,0 +1,16 @@
+warning: unknown lint: `redundant_val_conversion`
+  --> $DIR/redundant_val_conversion.rs:2:9
+   |
+LL | #![warn(redundant_val_conversion)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unknown_lints)]` on by default
+
+warning: unknown lint: `redundant_val_conversion`
+  --> $DIR/redundant_val_conversion.rs:45:9
+   |
+LL | #[allow(redundant_val_conversion)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: 2 warnings emitted
+
