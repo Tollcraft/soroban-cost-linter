@@ -96,6 +96,7 @@ cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/
 | `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--version` | Print the crate version and exit |
 
 ### Running the linter
