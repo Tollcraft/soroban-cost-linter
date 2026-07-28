@@ -17,10 +17,6 @@ and this project adheres to Semantic Versioning.
 - New lint `instance_storage_for_unbounded_data` detecting `env.storage().instance().set(...)` calls where the written value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten as a single blob on every contract invocation regardless of which call touches it.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 
-### Fixed
-
-- Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
- <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from
