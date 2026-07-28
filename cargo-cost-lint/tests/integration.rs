@@ -26,14 +26,20 @@ fn test_list_lints() {
     // update this array as well.
     let expected_lints = &[
         "soroban_storage_in_loop",
+        "loop_invariant_storage_access",
+        "unbounded_input_loop",
         "redundant_env_clone",
         "unnecessary_host_function_call",
         "host_in_loop",
         "symbol_new_for_short_literal",
+        "unnecessary_string_to_bytes",
         "storage_write_without_read",
         "inefficient_bytes_concat",
         "map_insert_in_loop",
         "bytes_append_in_loop",
+        "signature_verification_in_loop",
+        "storage_key_construction_in_loop",
+        "vec_where_slice_could_be_used",
     ];
 
     for expected in expected_lints {
@@ -246,6 +252,115 @@ fn test_cli_workspace_lints_all_contracts() {
 }
 
 #[test]
+fn test_explain_known_lint() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("soroban_storage_in_loop")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert!(
+        output.status.success(),
+        "--explain should exit 0 for known lint, got: {}",
+        output.status
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout is not valid UTF-8");
+
+    // Should contain key sections from the doc
+    assert!(
+        stdout.contains("What it does"),
+        "output should contain 'What it does' section. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Why is this bad"),
+        "output should contain 'Why is this bad' section. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Suggested Fix"),
+        "output should contain 'Suggested Fix' section. Output: {}",
+        stdout
+    );
+
+    // Should NOT contain GitBook hint syntax
+    assert!(
+        !stdout.contains("{% hint"),
+        "output should not contain raw GitBook hint tags. Output: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_explain_unknown_lint_exits_with_error() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("nonexistent_lint")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert!(
+        !output.status.success(),
+        "--explain should exit with error for unknown lint"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr is not valid UTF-8");
+
+    // Should mention the unknown lint name
+    assert!(
+        stderr.contains("nonexistent_lint"),
+        "error should mention the unknown lint name. Stderr: {}",
+        stderr
+    );
+    // Should mention valid lint names
+    assert!(
+        stderr.contains("Valid lints"),
+        "error should list valid lints. Stderr: {}",
+        stderr
+    );
+    // Should mention at least one known lint
+    assert!(
+        stderr.contains("soroban_storage_in_loop"),
+        "error should include known lints. Stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_explain_flag_does_not_run_lint_pass() {
+    // --explain should exit immediately without invoking cargo dylint,
+    // even if run in a directory without a Cargo project.
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Use tmpdir so there's no Cargo.toml
+    let dir = tempfile::tempdir().unwrap();
+
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("redundant_env_clone")
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert!(
+        output.status.success(),
+        "--explain should succeed even outside a Cargo project, got: {}",
+        output.status
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout is not valid UTF-8");
+    assert!(
+        stdout.contains("redundant_env_clone"),
+        "explain should print content for redundant_env_clone"
+    );
+}
+
+#[test]
 fn test_sarif_output() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 
@@ -348,4 +463,91 @@ fn test_sarif_output() {
             "SARIF physicalLocation missing artifactLocation"
         );
     }
+}
+
+#[test]
+fn test_deny_lint_exit_code() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let mut fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fixture_dir.pop();
+    fixture_dir.push("test_fixtures");
+    fixture_dir.push("smoke_test");
+
+    assert!(
+        fixture_dir.exists(),
+        "Fixture directory not found: {:?}",
+        fixture_dir
+    );
+
+    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
+    target_dir.pop();
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    // Running with --config budget.toml (which has soroban_storage_in_loop = deny)
+    let output = Command::new(bin_path)
+        .arg("--config")
+        .arg("budget.toml")
+        .current_dir(&fixture_dir)
+        .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        !output.status.success(),
+        "cargo-cost-lint should exit with non-zero exit code when a deny lint is triggered, but got success exit code"
+    );
+}
+
+#[test]
+fn test_warn_lint_exit_code_zero() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let mut fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fixture_dir.pop();
+    fixture_dir.push("test_fixtures");
+    fixture_dir.push("smoke_test");
+
+    assert!(
+        fixture_dir.exists(),
+        "Fixture directory not found: {:?}",
+        fixture_dir
+    );
+
+    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
+    target_dir.pop();
+
+    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    lint_dir.pop();
+    lint_dir.push("soroban_cost_lints");
+
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .current_dir(&lint_dir)
+        .status()
+        .expect("Failed to build soroban_cost_lints");
+    assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    // Running without deny lints configured should exit 0
+    let output = Command::new(bin_path)
+        .current_dir(&fixture_dir)
+        .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint should exit 0 when only warn lints occur, got: {}",
+        output.status
+    );
 }

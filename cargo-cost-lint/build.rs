@@ -101,6 +101,22 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
     results
 }
 
+fn raw_string_literal(s: &str) -> String {
+    // Find the smallest n such that " followed by n # signs does not appear
+    // in the string, so r###"..."### is a valid raw string literal.
+    let mut hashes: usize = 0;
+    loop {
+        let needle: String = format!("\"{}", "#".repeat(hashes));
+        if s.contains(&needle) {
+            hashes += 1;
+        } else {
+            break;
+        }
+    }
+    let hash_str = "#".repeat(hashes);
+    format!("r{hash_str}\"{}\"{hash_str}", s, hash_str = hash_str)
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
 
@@ -140,6 +156,32 @@ fn main() {
                 meta.name
             );
         }
+    }
+
+    // --- Verify every registered lint has a corresponding doc file ---
+    let docs_dir = "../docs/lints";
+    for name in &names {
+        let doc_path = format!("{}/{}.md", docs_dir, name);
+        assert!(
+            Path::new(&doc_path).exists(),
+            "lint '{}' is registered but has no doc file at '{}'. \
+             Create a documentation page at docs/lints/{}.md to explain \
+             what the lint does, why it is expensive, and how to fix it.",
+            name,
+            doc_path,
+            name
+        );
+    }
+
+    // --- Read each doc file and embed as raw string literals ---
+    let mut explanations: Vec<(String, String)> = Vec::new();
+    for name in &names {
+        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_content = fs::read_to_string(&doc_path)
+            .unwrap_or_else(|e| panic!("Failed to read doc file '{}': {}", doc_path, e));
+        // Notify cargo to re-run build.rs when any doc file changes
+        println!("cargo:rerun-if-changed={}", doc_path);
+        explanations.push((name.clone(), doc_content));
     }
 
     let mut declarations = Vec::new();
@@ -191,6 +233,8 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let names_path = Path::new(&out_dir).join("lint_names.rs");
     let metadata_path = Path::new(&out_dir).join("lint_metadata.rs");
+    let info_path = Path::new(&out_dir).join("lint_info.rs");
+    let explanations_path = Path::new(&out_dir).join("lint_explanations.rs");
 
     let mut metadata_out = String::new();
     metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");
@@ -210,35 +254,45 @@ fn main() {
     metadata_out.push_str("    schema: \"https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/README.md#lint-inventory-schema\",\n");
     metadata_out.push_str("    lints: &[\n");
 
-    let mut out = String::new();
+    // Emit LintInfo/LINT_INFO for --list-lints (included by main.rs).
+    let mut info_out = String::new();
+    info_out.push_str("pub struct LintInfo {\n");
+    info_out.push_str("    pub name: &'static str,\n");
+    info_out.push_str("    pub level: &'static str,\n");
+    info_out.push_str("    pub description: &'static str,\n");
+    info_out.push_str("}\n\n");
 
-    // Emit LINT_NAMES (used by the filter logic in main.rs).
-    out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
-    for name in &names {
-        out.push_str(&format!("    \"{}\",\n", name));
-    }
-    out.push_str("];\n\n");
-
-    // Emit LINT_INFO for --list-lints.
-    out.push_str("pub struct LintInfo {\n");
-    out.push_str("    pub name: &'static str,\n");
-    out.push_str("    pub level: &'static str,\n");
-    out.push_str("    pub description: &'static str,\n");
-    out.push_str("}\n\n");
-
-    out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
+    info_out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
     for lint in &ordered {
-        out.push_str("    LintInfo {\n");
-        out.push_str(&format!("        name: \"{}\",\n", lint.name));
-        out.push_str(&format!("        level: \"{}\",\n", lint.level));
-        out.push_str(&format!("        description: \"{}\",\n", lint.description));
-        out.push_str("    },\n");
+        info_out.push_str("    LintInfo {\n");
+        info_out.push_str(&format!("        name: \"{}\",\n", lint.name));
+        info_out.push_str(&format!("        level: \"{}\",\n", lint.level));
+        info_out.push_str(&format!("        description: \"{}\",\n", lint.description));
+        info_out.push_str("    },\n");
     }
-    out.push_str("];\n");
+    info_out.push_str("];\n");
+    fs::write(&info_path, info_out).expect("Failed to write lint_info.rs");
 
     fs::write(&names_path, &out).expect("Failed to write lint_names.rs");
 
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");
     fs::write(&metadata_path, metadata_out).expect("Failed to write lint_metadata.rs");
+
+    // --- Write lint_explanations.rs with embedded doc content as raw string literals ---
+    let mut explanations_out = String::new();
+    explanations_out.push_str("pub struct LintExplanation {\n");
+    explanations_out.push_str("    pub name: &'static str,\n");
+    explanations_out.push_str("    pub markdown: &'static str,\n");
+    explanations_out.push_str("}\n\n");
+    explanations_out.push_str("pub const LINT_EXPLANATIONS: &[LintExplanation] = &[\n");
+    for (name, content) in &explanations {
+        let escaped = raw_string_literal(content);
+        explanations_out.push_str("    LintExplanation {\n");
+        explanations_out.push_str(&format!("        name: \"{}\",\n", name));
+        explanations_out.push_str(&format!("        markdown: {},\n", escaped));
+        explanations_out.push_str("    },\n");
+    }
+    explanations_out.push_str("];\n");
+    fs::write(&explanations_path, explanations_out).expect("Failed to write lint_explanations.rs");
 }
