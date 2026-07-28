@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "freebuff": "^0.0.128",
+    "opencode-ai": "^1.18.5"
+  }
+}

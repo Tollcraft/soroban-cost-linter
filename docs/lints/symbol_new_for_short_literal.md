@@ -30,6 +30,30 @@ Use `symbol_short!` macro for compile-time symbol creation:
 let sym = symbol_short!("hello");
 ```
 
+## Cost impact
+
+Every `Symbol::new(&env, "literal")` call crosses the Wasm–host boundary to allocate and register the symbol at runtime — even for short, compile-time-knowable literals. `symbol_short!` produces a `const Symbol` with **zero runtime cost**.
+
+Measured with `Env::default()` in the [`cost_benchmarks`](https://github.com/Tollcraft/soroban-cost-linter/tree/main/cost_benchmarks) crate (`cargo test -- --nocapture`):
+
+| Pattern | Iterations | CPU instructions (delta) | Memory bytes (delta) |
+| --- | --- | --- | --- |
+| `Symbol::new(&env, "hello")` (bad) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+| `symbol_short!("hello")` (good) | 100 | ≈ 0 (compile-time constant) | ≈ 0 (compile-time constant) |
+
+{% hint style="info" %}
+The saving per call is small in absolute terms, but many contracts create dozens of symbols at init. Using `symbol_short!` where possible eliminates every one of those host crossings.
+{% endhint %}
+
+### How to reproduce
+
+```bash
+cd cost_benchmarks
+cargo test bench_symbol_new_vs_short -- --nocapture
+```
+
+The test calls each pattern 100 times and prints the budget delta.
+
 ## Valid Characters and Length
 
 - Maximum length: **9 characters**
