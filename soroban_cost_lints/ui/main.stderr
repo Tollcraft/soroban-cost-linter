@@ -223,6 +223,7 @@ LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:236:9

@@ -1,0 +1,27 @@
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:60:9
+   |
+LL |         env.storage().instance().extend_ttl(100, 1000); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = note: `#[warn(extend_ttl_in_loop)]` on by default
+
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:68:9
+   |
+LL |         env.storage().persistent().extend_ttl(&keys[i], 100, 1000); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:77:9
+   |
+LL |         env.storage().temporary().extend_ttl(&key, 100, 1000); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+
+warning: 3 warnings emitted
+

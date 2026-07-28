@@ -35,6 +35,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
 *   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
 *   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
+*   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
 
 ## How it Fits into Tollcraft
 
@@ -47,9 +48,32 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ## Getting Started
 
+### Recommended: Dev Container
+
+The fastest way to get a working environment is the pre-built container image, which ships with
+the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
+
+```bash
+docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/Tollcraft/soroban-cost-linter:latest bash
+# Inside the container:
+cargo test --workspace
+```
+
+VS Code / GitHub Codespaces users can open the repo and choose **"Reopen in Container"** — the
+`.devcontainer/devcontainer.json` handles everything automatically.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manual local setup path.
+
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, its lint library links against `rustc_private` and therefore **must be built with the same nightly toolchain** that the project pins. The exact channel is declared in the [`rust-toolchain`](rust-toolchain) file at the repository root.
+> **Windows users:** the project CI runs on Ubuntu. For the smoothest setup,
+> prefer **WSL2 with Ubuntu** — see
+> [docs/windows_setup.md](docs/windows_setup.md). Native-PowerShell install is
+> covered in the same page; **Visual Studio Build Tools is required** because
+> the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
+
+Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
 
@@ -98,6 +122,7 @@ cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/
 | `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--version` | Print the crate version and exit |
 
 ### Running the linter
@@ -311,6 +336,7 @@ unnecessary_host_function_call = "warn"
 storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
+extend_ttl_in_loop = "warn"
 
 Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
 
@@ -350,7 +376,8 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements. If you are writing your first custom Dylint lint, read the [How to add a new lint developer guide](DEVELOPING_LINTS.md) for a step-by-step walkthrough of lint registration, HIR matching, UI tests, and `clippy_utils`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+**Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
 
 ## Community
 

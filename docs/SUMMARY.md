@@ -10,10 +10,12 @@
 
 * [Scope: Clippy vs. soroban-cost-linter](scope_boundary.md)
 * [Integration Guide](integration.md)
+* [Windows Setup Guide](windows_setup.md)
 * [Handling False Positives](false_positives.md)
 
 ## Lints
 
+* [Lint Catalog](lint_catalog.md)
 * [Lint Reference](lints/README.md)
   * [soroban\_storage\_in\_loop](lints/soroban_storage_in_loop.md)
   * [loop\_invariant\_storage\_access](lints/loop_invariant_storage_access.md)
@@ -22,6 +24,7 @@
   * [symbol\_new\_for\_short\_literal](lints/symbol_new_for_short_literal.md)
   * [bytes\_append\_in\_loop](lints/bytes_append_in_loop.md)
   * [vec\_where\_slice\_could\_be\_used](lints/vec_where_slice_could_be_used.md)
+  * [extend\_ttl\_in\_loop](lints/extend_ttl_in_loop.md)
 
 ## Branding
 

@@ -47,6 +47,12 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn`           | Loop-invariant `Symbol::new` key construction inside loops |
 
+## Entry Lifecycle
+
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`extend_ttl_in_loop`](extend_ttl_in_loop.md)                         | `warn`           | `extend_ttl` calls on instance/persistent/temporary storage inside loops |
+
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}

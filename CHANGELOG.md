@@ -14,12 +14,22 @@ and this project adheres to Semantic Versioning.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
+- New lint `extend_ttl_in_loop` detecting `extend_ttl` calls on instance/persistent/temporary storage inside loop bodies, suggesting batching the TTL extension (or extending once with a generously-sized threshold) instead of refreshing per-entry per-iteration.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
+- `docs/windows_setup.md` covering WSL2 (recommended) and native-PowerShell install, PATH setup, prerequisites (Visual Studio Build Tools, MSVC toolchain, long path support), and common Windows-specific issues. Linked from `CONTRIBUTING.md`, `README.md`, and the `docs/SUMMARY.md` TOC.
 
 ### Fixed
 
 - Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
  <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
+- `cargo-cost-lint` no longer exits with status 1 when the `budget.toml`
+  passed via `--config` is missing, unreadable, empty, or contains
+  syntactically invalid TOML. The new `try_parse_budget_config` shim in
+  `main.rs` warns on stderr and falls back to safe defaults (no lint
+  overrides) for these failure modes. Validation errors — unknown lint
+  name or level — still propagate unchanged so real user mistakes
+  remain loud. Closes #191.
+
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from

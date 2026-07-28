@@ -118,6 +118,7 @@ Each lint in this repository targets a specific resource dimension:
 | [`signature_verification_in_loop`](lints/signature_verification_in_loop.md) | **CPU** (elliptic-curve cryptographic host functions) | Signature verification is one of the most expensive host functions available; verifying one at a time in a loop is a sign that a batch/aggregate scheme should be used instead. |
 | [`redundant_env_clone`](lints/redundant_env_clone.md) | **CPU** (memory + dispatch overhead) | Cloning `Env` triggers `MemAlloc`/`MemCpy` and unnecessary object visits; the clone is never needed. |
 | [`excessive_vec_capacity`](lints/excessive_vec_capacity.md) | **Memory** (guest linear memory, hard-capped) | A large hard-coded capacity is charged against the guest's memory cap the moment it's allocated, whether or not it's ever filled. |
+| [`extend_ttl_in_loop`](lints/extend_ttl_in_loop.md) | **Storage** (ledger space rent) | `extend_ttl` is a metered host call that also pays rent; calling it once per iteration multiplies both costs by the loop count instead of batching the extension. |
 
 ---
 
