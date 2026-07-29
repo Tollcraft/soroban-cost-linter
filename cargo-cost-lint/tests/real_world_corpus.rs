@@ -70,7 +70,14 @@ fn run_lints_on_contract(contract_dir: &Path) -> Vec<Finding> {
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
-    if !output.status.success() {
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+
+    // A non-zero exit can mean cargo-cost-lint genuinely failed to run, or
+    // that a `deny`-level lint fired and correctly failed the underlying
+    // `cargo check` — findings were already streamed to stdout before the
+    // process exited in that case. Only treat this as a hard failure when
+    // there's nothing to show for it.
+    if !output.status.success() && stdout_str.trim().is_empty() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!(
             "cargo-cost-lint failed on {:?}:\n{}",
@@ -79,7 +86,6 @@ fn run_lints_on_contract(contract_dir: &Path) -> Vec<Finding> {
         );
     }
 
-    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
     let findings: Vec<Finding> = stdout_str
         .lines()
         .filter(|l| !l.is_empty())
