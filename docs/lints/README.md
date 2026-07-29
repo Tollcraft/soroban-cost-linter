@@ -8,7 +8,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 ## Confidence / Impact Classification
 
-Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mitigation-strategy):
+Lints are classified per the [MVP roadmap](../../roadmap_mvp.md#3-false-positive-mitigation-strategy):
 
 | Classification | Default Level | Meaning |
 |---|---|---|
