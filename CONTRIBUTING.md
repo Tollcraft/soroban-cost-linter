@@ -91,13 +91,11 @@ If you prefer to set up the toolchain on your machine directly:
 
 4. **Run the full quality checks** (these must pass before opening a PR):
 
-   ```powershell
-   cargo fmt --all -- --check
-   cargo clippy --workspace --all-targets -- -D warnings
-   cargo test --workspace
-   ```
+    ```bash
+    make check
+    ```
 
-> **Note:** All `cargo` commands work identically in PowerShell, CMD, and Git Bash. If you use Git Bash, you can also use the `bash` code blocks above.
+    This runs `fmt`, `lint`, and `test` in sequence. See the [`Makefile`](./Makefile) for all available targets.
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.

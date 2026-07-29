@@ -716,4 +716,52 @@ mod tests {
         assert!(result.is_err(), "expected Err for unknown level");
         assert!(result.unwrap_err().contains("Unknown lint level"));
     }
+
+    // --- CLI argument parser unit tests (issue #320) ---
+
+    #[test]
+    fn cli_default_values_when_no_flags() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert_eq!(cli.config, None);
+        assert_eq!(cli.list_lints, false);
+        assert_eq!(cli.format, OutputFormat::Text);
+    }
+
+    #[test]
+    fn cli_parses_config_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--config", "my-budget.toml"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.config, Some("my-budget.toml".to_string()));
+    }
+
+    #[test]
+    fn cli_parses_list_lints_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--list-lints"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.list_lints, true);
+        assert_eq!(cli.config, None);
+        assert_eq!(cli.format, OutputFormat::Text);
+    }
+
+    #[test]
+    fn cli_parses_format_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "json"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_parses_multiple_flags() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--config", "budget.toml", "--format", "json", "--list-lints"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.config, Some("budget.toml".to_string()));
+        assert_eq!(cli.format, OutputFormat::Json);
+        assert_eq!(cli.list_lints, true);
+    }
+
+    #[test]
+    fn cli_unknown_flag_returns_error() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--unknown-flag"]);
+        assert!(result.is_err());
+    }
 }
