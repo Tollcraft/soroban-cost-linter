@@ -406,6 +406,32 @@ fn enclosing_loop<'tcx>(
     matches!(enclosing.kind, hir::ExprKind::Loop(..)).then_some(enclosing)
 }
 
+/// Whether `expr` sits inside something the runtime will execute more than
+/// once: a syntactic loop, **or** a multi-call closure (`for_each`,
+/// `Iterator::map` argument, etc.).
+///
+/// `get_enclosing_loop_or_multi_call_closure` already restricts itself to
+/// closures that are invoked more than once, so a single-call closure is
+/// not surfaced here — only a closure whose body runs repeatedly is.
+///
+/// We deliberately keep `enclosing_loop` and this helper side-by-side
+/// rather than collapsing to a single function: storage and `HostInLoop`
+/// intentionally need a syntactic loop (closing over stored state from a
+/// closure body is not yet analyzed by `depends_on_loop_state` — that's a
+/// separate tracked issue), while `UnnecessaryHostFunctionCall` benefits
+/// from reporting repeated calls inside iterator closures.
+fn enclosing_loop_or_closure<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    let enclosing = get_enclosing_loop_or_multi_call_closure(cx, expr)?;
+    matches!(
+        enclosing.kind,
+        hir::ExprKind::Loop(..) | hir::ExprKind::Closure(..)
+    )
+    .then_some(enclosing)
+}
+
 /// High-level cost category a lint belongs to. Surfaced by `cargo-cost-lint`
 /// to group warnings in the `--report` output and to label `budget.toml`
 /// rows under their category.
