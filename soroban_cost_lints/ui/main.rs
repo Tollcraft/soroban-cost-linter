@@ -38,9 +38,19 @@ pub mod soroban_sdk {
         pub fn current_contract_address(&self) -> Address {
             Address
         }
+        pub fn invoke_contract<T>(&self, _contract: &Address, _func: &Symbol, _args: ()) -> T
+        where
+            T: Default,
+        {
+            T::default()
+        }
     }
 
     pub struct Address;
+    impl Address {
+        pub fn require_auth(&self) {}
+        pub fn require_auth_for_args(&self, _args: &[Env]) {}
+    }
 
     pub mod storage {
         pub struct Storage;
@@ -59,9 +69,10 @@ pub mod soroban_sdk {
 
         pub struct Persistent;
         impl Persistent {
-            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
+            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn extend_ttl<K>(&self, _k: &K, _threshold: &()) {}
         }
 
         pub struct Temporary;
@@ -79,36 +90,10 @@ pub mod soroban_sdk {
         }
     }
 
-    pub mod crypto {
-        pub struct Crypto;
-        impl Crypto {
-            pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
-            pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
-            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
-            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
-            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
-        }
-    }
-
-    pub mod prng {
-        pub struct Prng;
-        impl Prng {
-            pub fn u64_in_range(&self, _lo: u64, _hi: u64) -> u64 { 0 }
-        }
-    }
-
-    pub mod events {
-        pub struct Events;
-        impl Events {
-            pub fn publish<T, D>(&self, _topics: T, _data: D) {}
-        }
-    }
-
-    pub mod deploy {
-        pub struct Deployer;
-        impl Deployer {
-            pub fn uploaded_wasm_hash(&self) -> [u8; 32] { [0; 32] }
-        }
+    pub struct Bytes;
+    impl Bytes {
+        pub fn push_back(&mut self, _val: u8) {}
+        pub fn append(&mut self, _other: &Bytes) {}
     }
 
     pub mod host {
@@ -151,9 +136,74 @@ pub mod soroban_sdk {
     impl Symbol {
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
     }
+
+    pub mod vec {
+        pub struct Vec<T>(std::marker::PhantomData<T>);
+        impl<T> Vec<T> {
+            pub fn contains(&self, _item: &T) -> bool { false }
+            pub fn position(&self, _f: impl FnMut(&T) -> bool) -> Option<usize> { None }
+            pub fn find(&self, _f: impl FnMut(&T) -> bool) -> Option<&T> { None }
+        }
+    }
+
+    pub mod map {
+        pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
+        impl<K, V> Map<K, V> {
+            pub fn contains_key(&self, _k: &K) -> bool { false }
+            pub fn get(&self, _k: &K) -> Option<&V> { None }
+        }
+    }
 }
 
 use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
+use soroban_sdk::{Env, Symbol, vec::Vec, map::Map};
+
+
+use soroban_sdk::Env;
+
+
+// Realistic false-positive scenario: batch-writing different keys per iteration
+#[allow(soroban_storage_in_loop)]
+fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
+    for (key, val) in pairs {
+        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
+    }
+}
+
+// =======================================================================
+// soroban_storage_in_loop — Inter-procedural Fixtures
+// =======================================================================
+
+fn persist(env: &Env) {
+    env.storage().instance().set(&"key", &42);
+}
+
+fn noop(_env: &Env) {
+    // nothing
+}
+
+fn bad_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Should Warn — callee performs storage
+    }
+}
+
+fn good_noop_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        noop(&env); // Good — callee does nothing costly
+    }
+}
+
+fn good_storage_through_call_outside_loop(env: Env) {
+    persist(&env); // Good — not inside a loop
+}
+
+#[allow(soroban_storage_in_loop)]
+fn allowed_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Good (allowed)
+    }
+}
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -433,21 +483,19 @@ fn allowed_map_insert_in_loop(env: Env) {
 }
 
 // =======================================================================
-// bytes_append_in_loop — Fixtures
+// contract_call_in_loop — Fixtures
 // =======================================================================
 
-fn bad_bytes_append_in_for_loop() {
-    let mut bytes = Bytes(vec![]);
+fn bad_invoke_contract_in_for_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     for _ in 0..10 {
-        bytes.append(&Bytes(vec![])); // Should Warn
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
     }
 }
 
-fn bad_vec_push_back_in_while_loop() {
-    let mut v = Vec;
+fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     let mut i = 0;
     while i < 10 {
-        v.push_back(i); // Should Warn
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
         i += 1;
     }
 }
@@ -499,106 +547,104 @@ fn allowed_signature_verification_in_loop(env: Env) {
 #[allow(excessive_vec_capacity)]
 fn bad_excessive_vec_capacity() {
     let _v = Vec::with_capacity(1_000_000); // Should Warn — wildly excessive capacity
-}
-
-fn good_excessive_vec_capacity_fits_usage() {
-    let _v = Vec::with_capacity(5); // Good — modest, sane capacity
-}
-
-#[allow(excessive_vec_capacity)]
-fn allowed_excessive_vec_capacity() {
-    let _v = Vec::with_capacity(1_000_000); // Good (allowed)
-}
-
-// =======================================================================
-// expensive_crypto_in_loop — Fixtures
-// =======================================================================
-// Positive (bad): calling any Expensive host crypto operation inside a loop
-// dispatches across the Wasm/host boundary per iteration. Even when the
-// argument varies, the dispatch + setup overhead compounds with the actual
-// hashing cost, so this is a structural smell.
-// Negative (good): compute the hash once before / after the loop, or batch
-// the inputs and hash a consolidated buffer.
-//
-// Note: the loop variable is intentionally passed into `sha256` so that the
-// existing `unnecessary_host_function_call` lint (which only fires on
-// loop-INDEPENDENT calls) does not also trigger and skew `main.stderr`.
-
-#[allow(expensive_crypto_in_loop, unnecessary_host_function_call)]
-fn bad_expensive_crypto_in_loop(env: Env) {
-    let chunks: [[u8; 4]; 3] = [[1u8, 2, 3, 4], [5u8, 6, 7, 8], [9u8, 10, 11, 12]];
-    for chunk in chunks.iter() {
-        let _hash = env.crypto().sha256(chunk); // Should Warn
+fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    loop {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        break;
     }
 }
 
-fn good_expensive_crypto_called_once(env: Env) {
-    let payload: [u8; 4] = [1, 2, 3, 4];
-    let _hash = env.crypto().sha256(&payload); // Good — single call, no loop
+fn good_invoke_contract_outside_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    let _: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
 }
 
-#[allow(expensive_crypto_in_loop, unnecessary_host_function_call)]
-fn allowed_expensive_crypto_in_loop(env: Env) {
-    let chunks: [[u8; 4]; 3] = [[1u8, 2, 3, 4], [5u8, 6, 7, 8], [9u8, 10, 11, 12]];
-    for chunk in chunks.iter() {
-        let _hash = env.crypto().sha256(chunk); // Good (allowed)
+#[allow(contract_call_in_loop)]
+fn allowed_invoke_contract_in_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    for _ in 0..10 {
+        let _: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
     }
 }
 
 // =======================================================================
-// redundant_storage_read — Fixtures
+// unnecessary_string_to_bytes — Fixtures
 // =======================================================================
-// Positive (bad): reading the same storage key more than once in the same
-// function call burns additional ledger read accesses for no semantic gain.
-// Negative (good): cache the value in a local binding when it is read more
-// than once.
-//
-// Note: redundant reads are demonstrated OUTSIDE of a loop on purpose so
-// that the existing `soroban_storage_in_loop` lint does not also fire.
 
-#[allow(redundant_storage_read)]
-fn bad_redundant_storage_read(env: Env) {
-    let _a: Option<i32> = env.storage().instance().get(&1u32); // Should Warn — same key read twice
-    let _b: Option<i32> = env.storage().instance().get(&1u32);
-    let _c: Option<i32> = env.storage().instance().get(&1u32);
+fn bad_persistent_read_no_ttl_extension(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
 }
 
-fn good_redundant_storage_read_cached(env: Env) {
-    let _cached: Option<i32> = env.storage().instance().get(&1u32); // Good — single fetch
+fn bad_persistent_has_no_ttl_extension(env: Env) {
+    if env.storage().persistent().has(&1) { // Should Warn
+    }
 }
 
-#[allow(redundant_storage_read)]
-fn allowed_redundant_storage_read(env: Env) {
-    let _a: Option<i32> = env.storage().instance().get(&1u32); // Good (allowed)
-    let _b: Option<i32> = env.storage().instance().get(&1u32);
+fn good_persistent_read_with_ttl_extension(env: Env) {
+    env.storage().persistent().extend_ttl(&1, &());
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good
 }
 
-// =======================================================================
-// unnecessary_vec_allocation — Fixtures
-// =======================================================================
-// Positive (bad): allocating a new Soroban SDK Vec when the value is never
-// kept, never written to, or only used as a temporary, incurs a host-side
-// allocation fee for no observable benefit.
-// Negative (good): allocate only when the container is actually populated,
-// reused, or returned. Prefer native `Vec` for in-memory scratch space.
-
-#[allow(unnecessary_vec_allocation)]
-fn bad_unnecessary_vec_allocation() {
-    let _unused = Vec::new(); // Should Warn — created and immediately dropped, never written to
-    let _another = Vec::new();
+fn good_instance_read(env: Env) {
+    let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
 }
 
-#[allow(unused_variables)]
-fn good_necessary_vec_allocation_populated() {
-    let mut v = Vec::new(); // Good — populated before being dropped
-    v.push_back(1);
-    v.push_back(2);
-    let _populated = v;
+fn good_temporary_read(env: Env) {
+    let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
 }
 
-#[allow(unnecessary_vec_allocation)]
-fn allowed_unnecessary_vec_allocation() {
-    let _unused = Vec::new(); // Good (allowed)
+#[allow(persistent_read_without_ttl_extension)]
+fn allowed_persistent_read(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
 }
 
 fn main() {}
+
+// =======================================================================
+// soroban_redundant_storage_read — Fixtures
+// =======================================================================
+
+fn bad_sequential_get_same_key(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_get(env: Env, key: i32) {
+    let exists = env.storage().instance().has(&key);
+    let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_has(env: Env, key: i32) {
+    let _a = env.storage().instance().has(&key);
+    let _b = env.storage().instance().has(&key); // Should Warn
+}
+
+fn bad_sequential_persistent_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().persistent().get(&key);
+    let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
+}
+
+fn bad_sequential_temporary_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().temporary().get(&key);
+    let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
+}
+
+fn good_set_resets_tracking(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    env.storage().instance().set(&key, &1);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
+}
+
+fn main() {}
+fn good_different_keys(env: Env, key1: i32, key2: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key1);
+    let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+}
+
+fn good_single_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
+}
+
+#[allow(soroban_redundant_storage_read)]
+fn allowed_sequential_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
+}

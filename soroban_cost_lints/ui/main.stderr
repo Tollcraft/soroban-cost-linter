@@ -1,20 +1,48 @@
 warning: storage write without a corresponding read
   --> $DIR/main.rs:164:34
+error[E0428]: the name `bad_symbol_new_short_literal` is defined multiple times
+  --> $DIR/main.rs:445:1
    |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |                                  ^^^^^^^^^^^
+LL | fn bad_symbol_new_short_literal(env: Env) {
+   | ----------------------------------------- previous definition of the value `bad_symbol_new_short_literal` here
+...
+LL | fn bad_symbol_new_short_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_short_literal` redefined here
    |
-   = help: consider reading the value before writing or using `.has()` to check existence
-   = note: `#[warn(storage_write_without_read)]` on by default
+   = note: `bad_symbol_new_short_literal` must be defined only once in the value namespace of this module
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:164:9
+error[E0428]: the name `bad_symbol_new_9_chars` is defined multiple times
+  --> $DIR/main.rs:449:1
    |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | fn bad_symbol_new_9_chars(env: Env) {
+   | ----------------------------------- previous definition of the value `bad_symbol_new_9_chars` here
+...
+LL | fn bad_symbol_new_9_chars(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_9_chars` redefined here
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[deny(soroban_storage_in_loop)]` on by default
+
+error[E0428]: the name `bad_symbol_new_short_with_underscore` is defined multiple times
+  --> $DIR/main.rs:457:1
+   |
+LL | fn bad_symbol_new_short_with_underscore(env: Env) {
+   | ------------------------------------------------- previous definition of the value `bad_symbol_new_short_with_underscore` here
+...
+LL | fn bad_symbol_new_short_with_underscore(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bad_symbol_new_short_with_underscore` redefined here
+   |
+   = help: hoist this storage operation out of the loop
+warning: storage read result is discarded or bound to `_`
+  --> $DIR/main.rs:80:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use `has()` to check existence, or bind and use the result
+   = note: `#[warn(discarded_storage_read)]` on by default
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:171:30
@@ -55,6 +83,175 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    |                                  ^^^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:158:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:208:19
@@ -106,6 +303,48 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |
    = help: call this function outside the loop and reuse the result
 
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:313:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+   = note: `#[warn(contract_call_in_loop)]` on by default
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:320:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:327:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: unnecessary String to Bytes conversion
+  --> $DIR/main.rs:316:14
+   |
+LL |     let _b = s.to_bytes(); // Should Warn
+   |              ^^^^^^^^^^^^
+   |
+   = help: use the String directly where Bytes is accepted, or construct Bytes directly instead
+   = note: `#[warn(unnecessary_string_to_bytes)]` on by default
+
+warning: unnecessary String to Bytes conversion
+  --> $DIR/main.rs:320:14
+   |
+LL |     let _b = String::from_str(&env, "hello").to_bytes(); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use the String directly where Bytes is accepted, or construct Bytes directly instead
+
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:321:16
    |
@@ -128,11 +367,24 @@ LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars wit
 
 warning: storage write without a corresponding read
   --> $DIR/main.rs:363:30
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/main.rs:292:37
    |
-LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
-   |                              ^^^^^^^^^^^^^^^^
+LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: consider reading the value before writing or using `.has()` to check existence
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/main.rs:296:12
+   |
+LL |     if env.storage().persistent().has(&1) { // Should Warn
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+
+warning: 19 warnings emitted
 
 warning: inefficient bytes concatenation in a loop
   --> $DIR/main.rs:388:18
@@ -198,17 +450,80 @@ warning: signature verification inside a loop
    |
 LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error[E0428]: the name `good_symbol_new_too_long` is defined multiple times
+  --> $DIR/main.rs:461:1
    |
-   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
-   = note: `#[warn(signature_verification_in_loop)]` on by default
+LL | fn good_symbol_new_too_long(env: Env) {
+   | ------------------------------------- previous definition of the value `good_symbol_new_too_long` here
+...
+LL | fn good_symbol_new_too_long(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_too_long` redefined here
+   |
+   = note: `good_symbol_new_too_long` must be defined only once in the value namespace of this module
 
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:486:9
    |
 LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error[E0428]: the name `good_symbol_new_invalid_chars` is defined multiple times
+  --> $DIR/main.rs:465:1
    |
-   = help: call this function outside the loop and reuse the result
+LL | fn good_symbol_new_invalid_chars(env: Env) {
+   | ------------------------------------------ previous definition of the value `good_symbol_new_invalid_chars` here
+...
+LL | fn good_symbol_new_invalid_chars(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_invalid_chars` redefined here
+   |
+   = note: `good_symbol_new_invalid_chars` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `good_symbol_new_non_literal` is defined multiple times
+  --> $DIR/main.rs:469:1
+   |
+LL | fn good_symbol_new_non_literal(env: Env) {
+   | ---------------------------------------- previous definition of the value `good_symbol_new_non_literal` here
+...
+LL | fn good_symbol_new_non_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_non_literal` redefined here
+   |
+   = note: `good_symbol_new_non_literal` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `good_symbol_new_empty` is defined multiple times
+  --> $DIR/main.rs:474:1
+   |
+LL | fn good_symbol_new_empty(env: Env) {
+   | ---------------------------------- previous definition of the value `good_symbol_new_empty` here
+...
+LL | fn good_symbol_new_empty(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `good_symbol_new_empty` redefined here
+   |
+   = note: `good_symbol_new_empty` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `allowed_symbol_new_short_literal` is defined multiple times
+  --> $DIR/main.rs:479:1
+   |
+LL | fn allowed_symbol_new_short_literal(env: Env) {
+   | --------------------------------------------- previous definition of the value `allowed_symbol_new_short_literal` here
+...
+LL | fn allowed_symbol_new_short_literal(env: Env) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `allowed_symbol_new_short_literal` redefined here
+   |
+   = note: `allowed_symbol_new_short_literal` must be defined only once in the value namespace of this module
+
+error[E0252]: the name `Env` is defined multiple times
+  --> $DIR/main.rs:174:5
+   |
+LL | use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
+   |                          --- previous import of the type `Env` here
+...
+LL | use soroban_sdk::Env;
+   |     ^^^^^^^^^^^^^^^^ `Env` reimported here
+   |
+   = note: `Env` must be defined only once in the type namespace of this module
 
 warning: 26 warnings emitted
 
+error: aborting due to 9 previous errors
+
+Some errors have detailed explanations: E0252, E0428.
+For more information about an error, try `rustc --explain E0252`.
