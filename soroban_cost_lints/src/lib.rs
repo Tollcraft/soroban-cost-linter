@@ -722,7 +722,10 @@ pub struct SorobanRedundantStorageRead;
 rustc_session::impl_lint_pass!(SorobanRedundantStorageRead => [SOROBAN_REDUNDANT_STORAGE_READ]);
 
 impl SorobanRedundantStorageRead {
-    fn is_storage_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Option<DefId> {
+    fn is_storage_type<'tcx>(
+        cx: &LateContext<'tcx>,
+        ty: rustc_middle::ty::Ty<'tcx>,
+    ) -> Option<DefId> {
         let peeled = ty.peel_refs();
         if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
             let did = adt_def.did();
@@ -794,7 +797,9 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
             .stmts
             .iter()
             .filter_map(|stmt| match stmt.kind {
-                hir::StmtKind::Let(hir::LetStmt { init: Some(init), .. }) => Some(init),
+                hir::StmtKind::Let(hir::LetStmt {
+                    init: Some(init), ..
+                }) => Some(init),
                 hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => Some(expr),
                 _ => None,
             })
@@ -2028,7 +2033,11 @@ impl<'tcx> Visitor<'tcx> for PersistentReadVisitor<'_, 'tcx> {
             let peeled_ty = receiver_ty.peel_refs();
 
             if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                if match_soroban_def_path(self.cx, adt_def.did(), &["soroban_sdk", "storage", "Persistent"]) {
+                if match_soroban_def_path(
+                    self.cx,
+                    adt_def.did(),
+                    &["soroban_sdk", "storage", "Persistent"],
+                ) {
                     match method_name {
                         "get" | "has" => {
                             self.reads.push(expr);

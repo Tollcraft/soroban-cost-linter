@@ -13,7 +13,10 @@ fn test_list_lints_json() {
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
-    assert!(output.status.success(), "cargo-cost-lint --list-lints failed");
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
 
     let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
     let inventory: serde_json::Value =
@@ -22,7 +25,9 @@ fn test_list_lints_json() {
     assert_eq!(inventory["version"], "1.0");
     assert!(inventory["schema"].is_string());
 
-    let lints = inventory["lints"].as_array().expect("lints is not an array");
+    let lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
     assert!(!lints.is_empty(), "lints array should not be empty");
 
     let names: Vec<&str> = lints
@@ -46,10 +51,22 @@ fn test_list_lints_json() {
 
     for lint in lints {
         assert!(lint.get("name").is_some(), "lint entry missing 'name'");
-        assert!(lint.get("default_level").is_some(), "lint entry missing 'default_level'");
-        assert!(lint.get("description").is_some(), "lint entry missing 'description'");
-        assert!(lint.get("category").is_some(), "lint entry missing 'category'");
-        assert!(lint.get("documentation_url").is_some(), "lint entry missing 'documentation_url'");
+        assert!(
+            lint.get("default_level").is_some(),
+            "lint entry missing 'default_level'"
+        );
+        assert!(
+            lint.get("description").is_some(),
+            "lint entry missing 'description'"
+        );
+        assert!(
+            lint.get("category").is_some(),
+            "lint entry missing 'category'"
+        );
+        assert!(
+            lint.get("documentation_url").is_some(),
+            "lint entry missing 'documentation_url'"
+        );
     }
 }
 
@@ -62,7 +79,10 @@ fn test_list_lints_text() {
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
-    assert!(output.status.success(), "cargo-cost-lint --list-lints failed");
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
 
     let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
     assert!(stdout_str.contains("Lint inventory (version 1.0):"));

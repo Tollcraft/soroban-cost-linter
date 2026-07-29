@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::{exit, Command, Stdio};
+use std::process::{Command, Stdio, exit};
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
@@ -75,7 +75,7 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
                     return Err(format!(
                         "Error: Unknown lint level '{}' for lint '{}'",
                         level, lint
-                    ))
+                    ));
                 }
             };
             lint_flags.push(format!("{} {}", level_flag, lint));
@@ -169,7 +169,10 @@ fn main() {
         } else {
             println!("Lint inventory (version {}):", LINT_INVENTORY.version);
             for lint in LINT_INVENTORY.lints {
-                println!("{} | {} | {} | {}", lint.name, lint.default_level, lint.category, lint.documentation_url);
+                println!(
+                    "{} | {} | {} | {}",
+                    lint.name, lint.default_level, lint.category, lint.documentation_url
+                );
             }
         }
         return;
@@ -347,9 +350,7 @@ fn main() {
 fn print_explanation(lint_name: &str) {
     let normalized = lint_name.to_lowercase();
 
-    let explanation = LINT_EXPLANATIONS
-        .iter()
-        .find(|e| e.name == normalized);
+    let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
 
     match explanation {
         Some(entry) => {
@@ -358,10 +359,7 @@ fn print_explanation(lint_name: &str) {
             println!("{}", cleaned);
         }
         None => {
-            eprintln!(
-                "Error: unknown lint '{}'.\n\nValid lints:\n",
-                lint_name
-            );
+            eprintln!("Error: unknown lint '{}'.\n\nValid lints:\n", lint_name);
             for info in LINT_INFO {
                 eprintln!("  {} — {}", info.name, info.description);
             }
@@ -419,7 +417,10 @@ mod tests {
 
     #[test]
     fn lint_metadata_matches_registered_lints() {
-        let registered_names = LINT_NAMES.iter().copied().collect::<std::collections::HashSet<_>>();
+        let registered_names = LINT_NAMES
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
         let inventory_names = LINT_INVENTORY
             .lints
             .iter()
@@ -464,9 +465,7 @@ mod tests {
     #[test]
     fn every_registered_lint_has_explanation_text() {
         for info in LINT_INFO {
-            let explanation = LINT_EXPLANATIONS
-                .iter()
-                .find(|e| e.name == info.name);
+            let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == info.name);
             assert!(
                 explanation.is_some(),
                 "lint '{}' is registered but has no explanation text. \
@@ -508,16 +507,17 @@ mod tests {
         // Test that the first registered lint's explanation resolves
         // correctly and produces terminal-clean output.
         let first = LINT_INFO.first().expect("at least one lint registered");
-        let explanation = LINT_EXPLANATIONS
-            .iter()
-            .find(|e| e.name == first.name);
+        let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == first.name);
         assert!(
             explanation.is_some(),
             "lint '{}' should have explanation",
             first.name
         );
         let entry = explanation.unwrap();
-        assert!(!entry.markdown.is_empty(), "explanation should not be empty");
+        assert!(
+            !entry.markdown.is_empty(),
+            "explanation should not be empty"
+        );
         // The cleaned output should not contain GitBook hint tags
         let cleaned = clean_markdown_for_terminal(entry.markdown);
         assert!(
@@ -549,7 +549,10 @@ mod tests {
     fn clean_markdown_preserves_code_blocks() {
         let input = "```rust\nlet x = 1;\n```";
         let cleaned = clean_markdown_for_terminal(input);
-        assert!(cleaned.contains("```rust"), "code fence start should remain");
+        assert!(
+            cleaned.contains("```rust"),
+            "code fence start should remain"
+        );
         assert!(cleaned.contains("let x = 1;"), "code content should remain");
         assert!(cleaned.contains("```"), "code fence end should remain");
     }
@@ -752,8 +755,15 @@ mod tests {
 
     #[test]
     fn cli_parses_multiple_flags() {
-        let cli = Cli::try_parse_from(["cargo-cost-lint", "--config", "budget.toml", "--format", "json", "--list-lints"])
-            .expect("parsing should succeed");
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--config",
+            "budget.toml",
+            "--format",
+            "json",
+            "--list-lints",
+        ])
+        .expect("parsing should succeed");
         assert_eq!(cli.config, Some("budget.toml".to_string()));
         assert_eq!(cli.format, OutputFormat::Json);
         assert_eq!(cli.list_lints, true);

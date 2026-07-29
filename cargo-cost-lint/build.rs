@@ -7,12 +7,6 @@ fn rust_string(value: &str) -> String {
     format!("{:?}", value)
 }
 
-fn main() {
-    println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
-
-    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs")
-        .expect("Failed to read soroban_cost_lints/src/lib.rs");
-
 /// Parse lint names from the `register_lints` call, returning lowercase names
 /// in the order they appear.
 fn parse_register_lints(content: &str) -> Vec<String> {
@@ -310,15 +304,36 @@ fn main() {
     metadata_out.push_str("    lints: &[\n");
 
     for name in &names {
-        if let Some((_, default_level, description)) = declarations.iter().find(|(lint_name, _, _)| lint_name.to_lowercase() == *name) {
-            let category = category_map.get(name).map(|value| value.as_str()).unwrap_or("Unknown");
-            let docs_path = format!("https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md", name);
+        if let Some((_, default_level, description)) = declarations
+            .iter()
+            .find(|(lint_name, _, _)| lint_name.to_lowercase() == *name)
+        {
+            let category = category_map
+                .get(name)
+                .map(|value| value.as_str())
+                .unwrap_or("Unknown");
+            let docs_path = format!(
+                "https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md",
+                name
+            );
             metadata_out.push_str("        LintInventoryEntry {\n");
             metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
-            metadata_out.push_str(&format!("            default_level: {},\n", rust_string(default_level)));
-            metadata_out.push_str(&format!("            description: {},\n", rust_string(description)));
-            metadata_out.push_str(&format!("            category: {},\n", rust_string(category)));
-            metadata_out.push_str(&format!("            documentation_url: {},\n", rust_string(&docs_path)));
+            metadata_out.push_str(&format!(
+                "            default_level: {},\n",
+                rust_string(default_level)
+            ));
+            metadata_out.push_str(&format!(
+                "            description: {},\n",
+                rust_string(description)
+            ));
+            metadata_out.push_str(&format!(
+                "            category: {},\n",
+                rust_string(category)
+            ));
+            metadata_out.push_str(&format!(
+                "            documentation_url: {},\n",
+                rust_string(&docs_path)
+            ));
             metadata_out.push_str("        },\n");
         }
     }
