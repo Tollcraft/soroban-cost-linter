@@ -400,6 +400,8 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
 **Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
 
+Release history is documented in [CHANGELOG.md](CHANGELOG.md).
+
 ## Community
 
 Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
