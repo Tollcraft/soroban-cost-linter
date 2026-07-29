@@ -3,11 +3,8 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-/// A single lint's metadata parsed from `declare_lint!`.
-struct LintMeta {
-    name: String,        // lowercase snake_case, e.g. "soroban_storage_in_loop"
-    level: String,       // lowercase level, e.g. "warn"
-    description: String, // one-line description from the macro
+fn rust_string(value: &str) -> String {
+    format!("{:?}", value)
 }
 
 /// Parse lint names from the `register_lints` call, returning lowercase names
@@ -101,6 +98,22 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
     results
 }
 
+fn raw_string_literal(s: &str) -> String {
+    // Find the smallest n such that " followed by n # signs does not appear
+    // in the string, so r###"..."### is a valid raw string literal.
+    let mut hashes: usize = 0;
+    loop {
+        let needle: String = format!("\"{}", "#".repeat(hashes));
+        if s.contains(&needle) {
+            hashes += 1;
+        } else {
+            break;
+        }
+    }
+    let hash_str = "#".repeat(hashes);
+    format!("r{hash_str}\"{}\"{hash_str}", s, hash_str = hash_str)
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
 
@@ -139,6 +152,78 @@ fn main() {
                 "lint '{}' has a declare_lint! block but is not in register_lints",
                 meta.name
             );
+        }
+    }
+
+    // --- Verify every registered lint has a corresponding doc file ---
+    let docs_dir = "../docs/lints";
+    for name in &names {
+        let doc_path = format!("{}/{}.md", docs_dir, name);
+        assert!(
+            Path::new(&doc_path).exists(),
+            "lint '{}' is registered but has no doc file at '{}'. \
+             Create a documentation page at docs/lints/{}.md to explain \
+             what the lint does, why it is expensive, and how to fix it.",
+            name,
+            doc_path,
+            name
+        );
+    }
+
+    // --- Read each doc file and embed as raw string literals ---
+    let mut explanations: Vec<(String, String)> = Vec::new();
+    for name in &names {
+        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_content = fs::read_to_string(&doc_path)
+            .unwrap_or_else(|e| panic!("Failed to read doc file '{}': {}", doc_path, e));
+        // Notify cargo to re-run build.rs when any doc file changes
+        println!("cargo:rerun-if-changed={}", doc_path);
+        explanations.push((name.clone(), doc_content));
+    }
+
+    let mut declarations = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
+        let absolute_start = search_from + start;
+        let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
+        let end = after.find('}').expect("Could not parse declare_lint block");
+        let block = &after[..end];
+        let parts: Vec<&str> = block.split(',').map(str::trim).collect();
+        if parts.len() >= 3 {
+            let lint_name = parts[0].trim_start_matches("pub ").trim();
+            let default_level = parts[1].to_ascii_lowercase();
+            let description = parts[2].trim().trim_matches('"').to_string();
+            declarations.push((lint_name.to_string(), default_level, description));
+        }
+        search_from = absolute_start + 1;
+    }
+
+    let mut category_map = HashMap::new();
+    let metadata_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
+    if let Some(start) = content.find(metadata_marker) {
+        let after = &content[start + metadata_marker.len()..];
+        if let Some(end) = after.find("];") {
+            let metadata_body = &after[..end];
+            for entry in metadata_body.split("LintMetadata {") {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                if let Some(lint_part) = entry.split("lint:").nth(1) {
+                    let lint_name = lint_part.split(',').next().unwrap().trim();
+                    if let Some(category_part) = entry.split("category:").nth(1) {
+                        let category = category_part
+                            .split(',')
+                            .next()
+                            .unwrap()
+                            .trim()
+                            .split("::")
+                            .last()
+                            .unwrap();
+                        category_map.insert(lint_name.to_lowercase(), category.to_string());
+                    }
+                }
+            }
         }
     }
 
@@ -218,31 +303,40 @@ fn main() {
     metadata_out.push_str("    schema: \"https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/README.md#lint-inventory-schema\",\n");
     metadata_out.push_str("    lints: &[\n");
 
-    let mut out = String::new();
-
-    // Emit LINT_NAMES (used by the filter logic in main.rs).
-    out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
     for name in &names {
-        out.push_str(&format!("    \"{}\",\n", name));
+        if let Some((_, default_level, description)) = declarations
+            .iter()
+            .find(|(lint_name, _, _)| lint_name.to_lowercase() == *name)
+        {
+            let category = category_map
+                .get(name)
+                .map(|value| value.as_str())
+                .unwrap_or("Unknown");
+            let docs_path = format!(
+                "https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md",
+                name
+            );
+            metadata_out.push_str("        LintInventoryEntry {\n");
+            metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
+            metadata_out.push_str(&format!(
+                "            default_level: {},\n",
+                rust_string(default_level)
+            ));
+            metadata_out.push_str(&format!(
+                "            description: {},\n",
+                rust_string(description)
+            ));
+            metadata_out.push_str(&format!(
+                "            category: {},\n",
+                rust_string(category)
+            ));
+            metadata_out.push_str(&format!(
+                "            documentation_url: {},\n",
+                rust_string(&docs_path)
+            ));
+            metadata_out.push_str("        },\n");
+        }
     }
-    out.push_str("];\n\n");
-
-    // Emit LINT_INFO for --list-lints.
-    out.push_str("pub struct LintInfo {\n");
-    out.push_str("    pub name: &'static str,\n");
-    out.push_str("    pub level: &'static str,\n");
-    out.push_str("    pub description: &'static str,\n");
-    out.push_str("}\n\n");
-
-    out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
-    for lint in &ordered {
-        out.push_str("    LintInfo {\n");
-        out.push_str(&format!("        name: \"{}\",\n", lint.name));
-        out.push_str(&format!("        level: \"{}\",\n", lint.level));
-        out.push_str(&format!("        description: \"{}\",\n", lint.description));
-        out.push_str("    },\n");
-    }
-    out.push_str("];\n");
 
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");

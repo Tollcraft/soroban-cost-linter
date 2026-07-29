@@ -1,0 +1,63 @@
+name: 'Soroban Cost Lint'
+description: 'Static analysis for Soroban smart contracts – catch expensive patterns before they hit testnet'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  config:
+    description: 'Path to budget.toml configuration file (relative to working-directory)'
+    required: false
+    default: ''
+  toolchain:
+    description: 'Rust nightly toolchain version'
+    required: false
+    default: 'nightly-2026-04-16'
+  args:
+    description: 'Additional arguments to pass to cargo cost-lint'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Directory containing the Soroban contract workspace to lint'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: rustc-dev, llvm-tools-preview
+
+    - name: Install Dylint
+      shell: bash
+      run: cargo install cargo-dylint dylint-link --version "^6.0.1"
+
+    - name: Build lint library
+      shell: bash
+      run: cargo build --release --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
+
+    - name: Register lint library with dylint
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > /tmp/dylint-register.log 2>&1 || true
+        echo "dylint registration done ($(wc -l < /tmp/dylint-register.log) lines logged)"
+
+    - name: Build CLI
+      shell: bash
+      run: cargo build --release --manifest-path "${{ github.action_path }}/cargo-cost-lint/Cargo.toml"
+
+    - name: Run Cost Linter
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
+      run: |
+        CONFIG_ARG=""
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_ARG="--config ${{ inputs.config }}"
+        fi
+        "${{ github.action_path }}/target/release/cargo-cost-lint" $CONFIG_ARG ${{ inputs.args }}
