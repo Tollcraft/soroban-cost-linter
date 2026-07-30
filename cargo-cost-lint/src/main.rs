@@ -1,12 +1,15 @@
+mod config;
 mod module_13;
 mod module_15;
 
 use clap::{Parser, ValueEnum};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
+
+use config::BudgetConfig;
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
@@ -48,13 +51,9 @@ struct Cli {
     format: OutputFormat,
 }
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    lints: Option<std::collections::HashMap<String, String>>,
-}
-
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 
 fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
     let mut lint_flags = Vec::new();
@@ -414,6 +413,7 @@ fn clean_markdown_for_terminal(markdown: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn lint_metadata_matches_registered_lints() {

@@ -9,9 +9,13 @@ sidebar_position: 6
 | ---------------- | ------------ |
 | `warn`           | StorageOperations |
 
-## What It Catches
+## What it does
 
-Calling `Map::insert()` inside a loop incurs storage read/write costs on every iteration. If the same map is being modified repeatedly, the costs accumulate quickly.
+Detects `Map::insert()` calls inside loops that incur storage read/write costs on every iteration.
+
+## Why is this bad
+
+Calling `Map::insert()` inside a loop incurs storage read/write costs on every iteration. If the same map is being modified repeatedly, the costs accumulate quickly, consuming unnecessary CPU and memory budget.
 
 ## Example
 

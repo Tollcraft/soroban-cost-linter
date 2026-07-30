@@ -3,6 +3,12 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+struct LintMeta {
+    name: String,
+    level: String,
+    description: String,
+}
+
 fn rust_string(value: &str) -> String {
     format!("{:?}", value)
 }
@@ -188,53 +194,15 @@ fn main() {
         let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
         let end = after.find('}').expect("Could not parse declare_lint block");
         let block = &after[..end];
-        let parts: Vec<&str> = block.split(',').map(str::trim).collect();
-        if parts.len() >= 3 {
-            let lint_name = parts[0].trim_start_matches("pub ").trim();
-            let default_level = parts[1].to_ascii_lowercase();
-            let description = parts[2].trim().trim_matches('"').to_string();
-            declarations.push((lint_name.to_string(), default_level, description));
-        }
-        search_from = absolute_start + 1;
-    }
-
-    let mut category_map = HashMap::new();
-    let metadata_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
-    if let Some(start) = content.find(metadata_marker) {
-        let after = &content[start + metadata_marker.len()..];
-        if let Some(end) = after.find("];") {
-            let metadata_body = &after[..end];
-            for entry in metadata_body.split("LintMetadata {") {
-                let entry = entry.trim();
-                if entry.is_empty() {
-                    continue;
-                }
-                if let Some(lint_part) = entry.split("lint:").nth(1) {
-                    let lint_name = lint_part.split(',').next().unwrap().trim();
-                    if let Some(category_part) = entry.split("category:").nth(1) {
-                        let category = category_part
-                            .split(',')
-                            .next()
-                            .unwrap()
-                            .trim()
-                            .split("::")
-                            .last()
-                            .unwrap();
-                        category_map.insert(lint_name.to_lowercase(), category.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    let mut declarations = Vec::new();
-    let mut search_from = 0usize;
-    while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
-        let absolute_start = search_from + start;
-        let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').expect("Could not parse declare_lint block");
-        let block = &after[..end];
-        let parts: Vec<&str> = block.split(',').map(str::trim).collect();
+        // Filter out comment lines (///, //) and blank lines before splitting
+        // by comma, so that doc-commented declare_lint! blocks parse correctly.
+        let clean_lines: Vec<&str> = block
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with("//"))
+            .collect();
+        let block_text = clean_lines.join("\n");
+        let parts: Vec<&str> = block_text.split(',').map(str::trim).collect();
         if parts.len() >= 3 {
             let lint_name = parts[0].trim_start_matches("pub ").trim();
             let default_level = parts[1].to_ascii_lowercase();
@@ -341,4 +309,33 @@ fn main() {
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");
     fs::write(&metadata_path, metadata_out).expect("Failed to write lint_metadata.rs");
+
+    // --- Write LINT_INFO (ordered lint metadata) ---
+    let info_path = Path::new(&out_dir).join("lint_info.rs");
+    let mut info_out = String::new();
+    info_out.push_str(
+        "#[derive(Debug)]\npub struct LintInfo {\n    pub name: &'static str,\n    pub description: &'static str,\n}\n\n",
+    );
+    info_out.push_str(
+        "#[derive(Debug)]\npub struct LintExplanation {\n    pub name: &'static str,\n    pub markdown: &'static str,\n}\n\n",
+    );
+    info_out.push_str("pub const LINT_INFO: &[LintInfo] = &[\n");
+    for meta in &ordered {
+        info_out.push_str(&format!(
+            "    LintInfo {{ name: {}, description: {} }},\n",
+            rust_string(&meta.name),
+            rust_string(&meta.description),
+        ));
+    }
+    info_out.push_str("];\n\n");
+    info_out.push_str("pub const LINT_EXPLANATIONS: &[LintExplanation] = &[\n");
+    for (name, markdown) in &explanations {
+        info_out.push_str(&format!(
+            "    LintExplanation {{ name: {}, markdown: {} }},\n",
+            rust_string(name),
+            raw_string_literal(markdown),
+        ));
+    }
+    info_out.push_str("];\n");
+    fs::write(&info_path, info_out).expect("Failed to write lint_info.rs");
 }

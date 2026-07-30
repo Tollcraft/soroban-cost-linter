@@ -469,6 +469,62 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: LOOP_INVARIANT_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: SOROBAN_INEFFICIENT_BYTES_CONCAT,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: INEFFICIENT_BYTES_CONCAT,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: UNNECESSARY_STRING_TO_BYTES,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: UNBOUNDED_INPUT_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
+        lint: BYTES_APPEND_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: STORAGE_WRITE_WITHOUT_READ,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: MAP_INSERT_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: SIGNATURE_VERIFICATION_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
+        lint: VEC_WHERE_SLICE_COULD_BE_USED,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
+        lint: EXTEND_TTL_IN_LOOP,
+        category: LintCategory::EntryLifecycle,
+    },
+    LintMetadata {
+        lint: LINEAR_SCAN_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
+        lint: REQUIRE_AUTH_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
         category: LintCategory::SymbolOperations,
     },
@@ -494,6 +550,20 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         CONTRACT_CALL_IN_LOOP,
+        LOOP_INVARIANT_STORAGE_ACCESS,
+        SOROBAN_INEFFICIENT_BYTES_CONCAT,
+        INEFFICIENT_BYTES_CONCAT,
+        UNNECESSARY_STRING_TO_BYTES,
+        UNBOUNDED_INPUT_LOOP,
+        BYTES_APPEND_IN_LOOP,
+        STORAGE_WRITE_WITHOUT_READ,
+        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+        MAP_INSERT_IN_LOOP,
+        SIGNATURE_VERIFICATION_IN_LOOP,
+        VEC_WHERE_SLICE_COULD_BE_USED,
+        EXTEND_TTL_IN_LOOP,
+        LINEAR_SCAN_IN_LOOP,
+        REQUIRE_AUTH_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
     ]);
@@ -503,6 +573,20 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
+    lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
+    lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
+    lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
+    lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
+    lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
+    lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
+    lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
+    lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
+    lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+    lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
+    lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
+    lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
 }
@@ -873,6 +957,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 if ref_count > 0 {
                     return;
                 }
+            }
 
             // If the receiver is a local binding that is still used after
             // the clone, the original and the clone are both live — skip.
@@ -894,7 +979,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 None,
                 "pass Env by reference or value instead of cloning",
             );
-        }
+        };
     }
 }
 
