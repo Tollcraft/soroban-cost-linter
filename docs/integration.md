@@ -174,7 +174,7 @@ If the performance overhead is too high for daily development, consider these al
 
 ## GitHub Actions
 
-We provide a template to easily integrate the linter into your GitHub Actions pipeline:
+We provide a template to easily integrate the linter into your GitHub Actions pipeline. The template runs on both Linux and Windows:
 
 {% code title=".github/workflows/cost-lint.yml" %}
 ```yaml
@@ -184,27 +184,31 @@ on: [push, pull_request]
 
 jobs:
   cost-lint:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          # Keep this toolchain pin in sync with the soroban-cost-linter release you install
           toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
-      - name: Install soroban-cost-linter
-        run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-      - name: Run Cost Linter
-        run: cargo cost-lint
 ```
-{% endcode %}
 
-{% hint style="warning" %}
-Keep the pinned `toolchain` in sync with the `soroban-cost-linter` release you install — a mismatched nightly will fail to link the lint library.
+{% hint style="info" %}
+The action defaults to the toolchain that matches the release. Override it only if you need a specific nightly for compatibility with your workspace.
 {% endhint %}
+
+### Full input reference
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `config` | No | `''` | Path to `budget.toml` (relative to `working-directory`) |
+| `toolchain` | No | `nightly-2026-04-16` | Rust nightly toolchain version |
+| `args` | No | `''` | Extra arguments forwarded to `cargo cost-lint` |
+| `working-directory` | No | `'.'` | Directory containing the Soroban workspace |
 
 ## JSON Output and CI Annotations
 
@@ -232,10 +236,14 @@ Each line of stdout is a JSON object with the following schema:
 You can pipe the JSON output into a tool like `jq` to create GitHub annotations (which show up directly on your PR's Files Changed tab).
 
 ```yaml
-      - name: Run Cost Linter (JSON mode with annotations)
+      - uses: Tollcraft/soroban-cost-linter@v1
+        with:
+          args: '--format json'
+      - name: Create GitHub annotations
+        if: always()
         run: |
-          cargo cost-lint --format json | jq -r '
-            . | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"
-          '
+          # If you captured the JSON output to a file, parse it:
+          # cargo cost-lint --format json > lint-results.json
+          # jq -r '. | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"' lint-results.json
 ```
 *(Note: If the linter returns a non-zero exit code due to a `deny` lint, the step will still fail correctly in Actions).*

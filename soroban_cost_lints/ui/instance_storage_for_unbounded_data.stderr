@@ -1,0 +1,27 @@
+warning: unbounded collection written to instance storage
+  --> $DIR/instance_storage_for_unbounded_data.rs:74:5
+   |
+LL |     env.storage().instance().set(&1u32, &items); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
+   = note: `#[warn(instance_storage_for_unbounded_data)]` on by default
+
+warning: unbounded collection written to instance storage
+  --> $DIR/instance_storage_for_unbounded_data.rs:80:5
+   |
+LL |     env.storage().instance().set(&2u32, &entries); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
+
+warning: unbounded collection written to instance storage
+  --> $DIR/instance_storage_for_unbounded_data.rs:86:5
+   |
+LL |     env.storage().instance().set(&3u32, &blob); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
+
+warning: 3 warnings emitted
+

@@ -86,12 +86,31 @@ fn good_storage_multiple_outside(env: Env) {
     env.storage().instance().set(&2, &2); // Good
 }
 
-// Note: The lint currently relies on `hir::ExprKind::Loop` and does not
-// trigger inside closure-based iterators like `for_each`. This is an acceptable
-// limitation for now unless explicitly requested. However, we document the behavior here.
-fn storage_in_closure(env: Env) {
+fn bad_storage_in_for_each_closure(env: Env) {
     (0..3).for_each(|i| {
-        env.storage().instance().set(&i, &1);
+        env.storage().instance().set(&i, &1); // Should Warn
+    });
+}
+
+fn bad_storage_in_map_closure(env: Env) {
+    let items = vec![1, 2, 3];
+    items.iter().map(|x| {
+        env.storage().instance().set(x, &1); // Should Warn
+    }).count();
+}
+
+fn bad_storage_in_fold_closure(env: Env) {
+    let items = vec![1, 2, 3];
+    items.iter().fold(0, |acc, x| {
+        env.storage().instance().set(x, &acc); // Should Warn
+        acc + 1
+    });
+}
+
+fn good_storage_in_option_map(env: Env) {
+    let opt = Some(42);
+    opt.map(|x| {
+        env.storage().instance().set(&x, &1); // Good — Option::map calls at most once
     });
 }
 

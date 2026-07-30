@@ -1,0 +1,17 @@
+name: Dogfood Composite Action
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run composite action against test fixtures
+        uses: ./
+        with:
+          working-directory: soroban_cost_lints/test_fixtures/real_sdk

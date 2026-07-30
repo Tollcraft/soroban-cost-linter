@@ -9,9 +9,13 @@ sidebar_position: 4
 | ---------------- | ------------ |
 | `warn`           | StorageOperations |
 
-## What It Catches
+## What it does
 
-When your Soroban contract writes to storage (`.set()`) on a storage object but never reads that value back with `.get()` or checks existence with `.has()` using the same key — you're paying storage write fees for data that's never used.
+Flags storage writes (`.set()`) on a storage object when the same key is never read back with `.get()` or checked with `.has()` — indicating a write whose value is never used.
+
+## Why is this bad
+
+Performing a storage write without reading the value first wastes Soroban storage write fees for data that's never used. Each unnecessary write consumes CPU and memory budget, adding cost without benefit.
 
 ## Example
 
