@@ -52,16 +52,7 @@ pub mod soroban_sdk {
         pub fn require_auth_for_args(&self, _args: &[Env]) {}
     }
 
-    pub struct String;
-    impl Clone for String {
-        fn clone(&self) -> Self { String }
-    }
-    impl String {
-        pub fn from_str(_env: &Env, _s: &str) -> String { String }
-        pub fn to_bytes(&self) -> Bytes { Bytes(vec![]) }
-    }
-
-    pub mod storage{
+    pub mod storage {
         pub struct Storage;
         impl Storage {
             pub fn instance(&self) -> Instance { Instance }
@@ -127,17 +118,11 @@ pub mod soroban_sdk {
     }
 
     // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
-    // Extended with `get`, `len`, and `iter` so the vec_where_slice_could_be_used
-    // fixtures can exercise read-only patterns.
     pub struct Vec;
     impl Vec {
         pub fn new() -> Vec { Vec }
         pub fn with_capacity(_n: u32) -> Vec { Vec }
         pub fn push_back(&mut self, _v: i32) {}
-        pub fn get(&self, _i: u32) -> i32 { 0 }
-        pub fn len(&self) -> u32 { 0 }
-        // Returns a native std Vec to simulate iteration.
-        pub fn iter(&self) -> std::vec::IntoIter<i32> { vec![1, 2, 3].into_iter() }
     }
 
     // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
@@ -170,6 +155,7 @@ pub mod soroban_sdk {
     }
 }
 
+use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 use soroban_sdk::{Env, Symbol, vec::Vec, map::Map};
 
 
@@ -220,67 +206,47 @@ fn allowed_storage_through_call_in_loop(env: Env) {
 }
 
 // =======================================================================
-// loop_invariant_storage_access — Fixtures
+// soroban_storage_in_loop — Fixtures
 // =======================================================================
 
-// soroban_storage_in_loop suppressed so only loop_invariant_storage_access fires
-#[allow(soroban_storage_in_loop)]
-fn bad_invariant_storage_write_in_loop(env: Env) {
-    for _i in 0..10 {
-        env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+fn bad_storage_in_for_loop(env: Env) {
+    for i in 0..10 {
+        env.storage().instance().set(&i, &1); // Should Warn
     }
 }
 
-#[allow(soroban_storage_in_loop)]
-fn bad_invariant_storage_read_in_loop(env: Env) {
-    for _i in 0..10 {
-        let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+fn bad_storage_in_while_loop(env: Env) {
+    let mut i = 0;
+    while i < 10 {
+        let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+        i += 1;
     }
 }
 
-#[allow(soroban_storage_in_loop)]
-fn bad_invariant_storage_has_in_loop(env: Env) {
+fn bad_storage_in_loop_loop(env: Env) {
     loop {
-        if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+        if env.storage().temporary().has(&1) { // Should Warn
             break;
         }
     }
 }
 
+fn good_storage_outside_loop(env: Env) {
+    env.storage().instance().set(&1, &1); // Good
+}
+
 #[allow(soroban_storage_in_loop)]
-fn good_variant_storage_write_in_loop(env: Env) {
+fn allowed_storage_in_loop(env: Env) {
     for i in 0..10 {
-        env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+        env.storage().instance().set(&i, &1); // Good (allowed)
     }
 }
 
+// Realistic false-positive scenario: batch-writing different keys per iteration
 #[allow(soroban_storage_in_loop)]
-fn good_variant_storage_read_in_loop(env: Env) {
-    for i in 0..10 {
-        let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
-    }
-}
-
-#[allow(soroban_storage_in_loop)]
-fn good_variant_storage_has_in_loop(env: Env) {
-    let mut n = 0;
-    while n < 10 {
-        if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
-            n += 1;
-        } else {
-            break;
-        }
-    }
-}
-
-fn good_invariant_storage_outside_loop(env: Env) {
-    env.storage().instance().set(&"key", &42); // Good — not inside a loop
-}
-
-#[allow(loop_invariant_storage_access)]
-fn allowed_invariant_storage_in_loop(env: Env) {
-    for _i in 0..10 {
-        env.storage().instance().set(&"key", &42); // Good (allowed)
+fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
+    for (key, val) in pairs {
+        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
     }
 }
 
@@ -326,7 +292,84 @@ fn allowed_clone_env(env: Env) {
     let _cloned = env.clone(); // Good (allowed)
 }
 
+// =======================================================================
+// unnecessary_host_function_call — Fixtures
+// =======================================================================
 
+fn bad_host_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _seq = env.ledger().sequence(); // Should Warn
+    }
+}
+
+fn good_host_call_outside_loop(env: Env) {
+    let seq = env.ledger().sequence(); // Good — called once before the loop
+    for _ in 0..10 {
+        let _seq = seq;
+    }
+}
+
+#[allow(unnecessary_host_function_call)]
+fn allowed_host_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _seq = env.ledger().sequence(); // Good (allowed)
+    }
+}
+
+fn bad_crypto_call_in_loop(env: Env) {
+    let data = [1u8, 2, 3];
+    for _ in 0..10 {
+        let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
+    }
+}
+
+fn good_crypto_call_on_loop_variable(env: Env) {
+    let data = [[1u8; 4], [2u8; 4], [3u8; 4]];
+    for chunk in data.iter() {
+        let _hash = env.crypto().sha256(chunk); // Good — hashes a different input each iteration
+    }
+}
+
+fn good_crypto_call_indexed_by_counter(env: Env) {
+    let data = [1u8, 2, 3];
+    let mut i = 0;
+    while i < 3 {
+        let _hash = env.crypto().keccak256(&data[i..]); // Good — argument moves with the counter
+        i += 1;
+    }
+}
+
+fn bad_prng_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _n = env.prng().u64_in_range(0, 100); // Should Warn
+    }
+}
+
+fn bad_current_contract_address_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _addr = env.current_contract_address(); // Should Warn
+    }
+}
+
+fn bad_host_call_in_iterator_closure(env: Env) {
+    let items = [1u32, 2, 3];
+    items.iter().for_each(|_| {
+        let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+    });
+}
+
+fn good_events_publish_of_loop_value(env: Env) {
+    for i in 0..10 {
+        env.events().publish((i,), i); // Good — publishes the value of this iteration
+    }
+}
+
+fn good_deployer_call_outside_loop(env: Env) {
+    let hash = env.deployer().uploaded_wasm_hash(); // Good — called once before the loop
+    for _ in 0..10 {
+        let _hash = hash;
+    }
+}
 
 // =======================================================================
 // symbol_new_for_short_literal — Fixtures
@@ -371,6 +414,83 @@ fn allowed_symbol_new_short_literal(env: Env) {
 }
 
 // =======================================================================
+// storage_write_without_read — Fixtures
+// =======================================================================
+
+fn bad_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
+}
+
+fn good_storage_write_with_read(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
+    env.storage().instance().set(&"key1", &1); // Good — read before write
+}
+
+fn good_storage_write_with_has(env: Env) {
+    let _exists = env.storage().instance().has(&"key1"); // Check first
+    env.storage().instance().set(&"key1", &1); // Good — has before write
+}
+
+#[allow(storage_write_without_read)]
+fn allowed_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Good (allowed)
+}
+
+// =======================================================================
+// inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Should Warn
+    }
+}
+
+fn good_efficient_bytes_concat(env: Env) {
+    let mut buf: std::vec::Vec<u8> = std::vec::Vec::new();
+    for _ in 0..10 {
+        buf.extend_from_slice(b"x"); // Good — aggregate in Vec first
+    }
+    let _result = Bytes(buf);
+}
+
+#[allow(inefficient_bytes_concat)]
+fn allowed_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// map_insert_in_loop — Fixtures
+// =======================================================================
+
+fn bad_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Should Warn
+    }
+}
+
+fn good_map_insert_outside_loop(env: Env) {
+    let mut map = Map;
+    map.insert(&1, &1); // Good — outside the loop
+    for i in 0..10 {
+        let _: Option<i32> = map.get(&i);
+    }
+}
+
+#[allow(map_insert_in_loop)]
+fn allowed_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Good (allowed)
+    }
+}
+
+// =======================================================================
 // contract_call_in_loop — Fixtures
 // =======================================================================
 
@@ -388,6 +508,53 @@ fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func:
     }
 }
 
+fn good_single_append_outside_loop() {
+    let mut bytes = Bytes(vec![]);
+    bytes.append(&Bytes(vec![])); // Good - single append outside loop
+}
+
+// =======================================================================
+// signature_verification_in_loop — Fixtures
+// =======================================================================
+
+fn bad_signature_verification_in_for_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    for _ in 0..10 {
+        env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
+    }
+}
+
+fn good_signature_verification_outside_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    env.crypto().ed25519_verify(&key, &msg, &sig); // Good — called once
+}
+
+#[allow(signature_verification_in_loop)]
+fn allowed_signature_verification_in_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    for _ in 0..10 {
+        env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// excessive_vec_capacity — Fixtures
+// =======================================================================
+// Positive (bad): calling Vec::with_capacity with a far larger capacity than
+// the container will actually use wastes host memory and inflates the metered
+// cost of the allocation.
+// Negative (good): request no / little capacity up front and let growth
+// happen naturally, or use Vec::new() for an empty container.
+
+#[allow(excessive_vec_capacity)]
+fn bad_excessive_vec_capacity() {
+    let _v = Vec::with_capacity(1_000_000); // Should Warn — wildly excessive capacity
 fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     loop {
         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
@@ -474,6 +641,7 @@ fn good_set_resets_tracking(env: Env, key: i32) {
     let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
 }
 
+fn main() {}
 fn good_different_keys(env: Env, key1: i32, key2: i32) {
     let _a: Option<i32> = env.storage().instance().get(&key1);
     let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key

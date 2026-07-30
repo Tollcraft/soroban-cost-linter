@@ -24,7 +24,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Eight lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Nine lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -33,9 +33,11 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
+*   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
 *   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
 *   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
 *   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
+*   **[`instance_storage_for_unbounded_data`](docs/lints/instance_storage_for_unbounded_data.md):** Flags `env.storage().instance().set(...)` calls where the value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten in full on every contract invocation.
 
 ## How it Fits into Tollcraft
 
@@ -357,7 +359,9 @@ unnecessary_host_function_call = "warn"
 storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
+```
 contract_call_in_loop = "warn"
+instance_storage_for_unbounded_data = "warn"
 
 Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
 

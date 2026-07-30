@@ -3,14 +3,23 @@ mod module_13;
 mod module_15;
 
 use clap::{Parser, ValueEnum};
-use serde::Serialize;
+use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
-use config::BudgetConfig;
+mod config;
+mod error;
 
+use config::Config;
+use error::{LinterError, LinterResult};
+
+/// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Text,
@@ -34,6 +43,97 @@ struct LintFinding {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     help: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<String>,
+}
+
+/// SARIF 2.1.0 report root.
+#[derive(Serialize)]
+struct SarifReport {
+    #[serde(rename = "$schema")]
+    schema: String,
+    version: String,
+    runs: Vec<SarifRun>,
+}
+
+/// A single SARIF run (one invocation of the linter).
+#[derive(Serialize)]
+struct SarifRun {
+    tool: SarifTool,
+    results: Vec<SarifResult>,
+}
+
+/// Tool metadata for SARIF output.
+#[derive(Serialize)]
+struct SarifTool {
+    driver: SarifToolDriver,
+}
+
+/// Tool-driver metadata for SARIF output.
+#[allow(non_snake_case)]
+#[derive(Serialize)]
+struct SarifToolDriver {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<serde_json::Value>,
+}
+
+/// A single SARIF result (one lint finding).
+#[derive(Serialize)]
+struct SarifResult {
+    #[serde(rename = "ruleId")]
+    rule_id: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+/// SARIF message text.
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+/// SARIF location referencing a physical file.
+#[derive(Serialize)]
+struct SarifLocation {
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
+}
+
+/// SARIF physical location in a file.
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+/// SARIF artifact location (file URI).
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+/// SARIF region (line/column range within a file).
+#[derive(Serialize)]
+struct SarifRegion {
+    #[serde(rename = "startLine")]
+    start_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -43,9 +143,6 @@ struct LintFinding {
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
-
-    #[arg(long, help = "Emit the lint inventory and exit")]
-    list_lints: bool,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
@@ -83,6 +180,18 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
     Ok(lint_flags)
 }
 
+/// Budget config deserialized from budget.toml — used by the
+/// `parse_budget_config` test helper and `load_budget_config`.
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct BudgetConfig {
+    lints: Option<HashMap<String, String>>,
+}
+
+#[allow(dead_code)]
+fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
+    if !config_path.exists() {
+        return None;
 fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
     if let Some(path) = config {
         let p = PathBuf::from(path);
@@ -97,6 +206,7 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code)]
 /// Loads `path` as a validated `BudgetConfig` and formats its `[lints]`
 /// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
 /// (unknown lint names, invalid levels) is handled by
@@ -148,17 +258,34 @@ fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 
 #[allow(clippy::collapsible_if)]
 fn main() {
+    if let Err(e) = run() {
+        eprintln!("Error: {}", e);
+        exit(1);
+    }
+}
+
+/// Core logic extracted into a fallible function so that all error sites can
+/// use the `?` operator rather than a mix of `unwrap`, `expect`, and `exit`.
+fn run() -> LinterResult<()> {
     // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
 
+    // Handle --version / -V explicitly: clap 4.0's #[command(version)]
+    // displays the version but does not auto-exit, so we must check early
+    // and exit 0 before falling through to the cargo-dylint machinery.
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("cargo-cost-lint {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
         Err(e) => {
-            e.print().unwrap();
-            exit(1);
+            e.print()?;
+            return Err(LinterError::Other("argument parsing failed".into()));
         }
     };
 
@@ -174,10 +301,32 @@ fn main() {
                 );
             }
         }
-        return;
+        return Ok(());
     }
 
     let mut lint_flags = Vec::new();
+
+    let lint_flags = if let Some(config_path) = &cli.config {
+        let config = Config::from_file_or_default(Path::new(config_path))?;
+        config.to_lint_flags()
+    } else {
+        Vec::new()
+    };
+
+    let preflight = Command::new("cargo")
+        .arg("dylint")
+        .arg("--version")
+        .output();
+
+    match preflight {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("Error: cargo-dylint is not installed or not available in PATH.");
+            eprintln!("Please install it by running:");
+            eprintln!("    cargo install cargo-dylint dylint-link");
+            exit(1);
+        }
+    }
 
     if let Some(ref path) = resolve_config(cli.config.as_deref()) {
         eprintln!("Using config: {}", path.display());
@@ -220,6 +369,97 @@ fn main() {
         cmd.stdout(Stdio::piped());
     }
 
+    let mut child = cmd.spawn().map_err(|e| {
+        LinterError::MissingPrerequisite(format!(
+            "Failed to execute cargo dylint: {}. Is cargo-dylint installed?",
+            e
+        ))
+    })?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| LinterError::Other("Failed to capture stdout".into()))?;
+    let reader = BufReader::new(stdout);
+    let mut highest_exit_code = 0;
+    let mut lint_counts: HashMap<String, usize> = HashMap::new();
+
+    let mut findings: Vec<LintFinding> = Vec::new();
+
+    for line_str in reader.lines().map_while(Result::ok) {
+        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str)
+            && msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message")
+            && let Some(message) = msg.get("message")
+            && let Some(code) = message.get("code")
+            && let Some(lint_name) = code.get("code").and_then(|c| c.as_str())
+            && LINT_NAMES.contains(&lint_name)
+        {
+            let level = message
+                .get("level")
+                .and_then(|l| l.as_str())
+                .unwrap_or("unknown");
+
+            let diagnostic_message = message
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("");
+            let mut file = String::new();
+            let mut primary_span = Span {
+                line_start: 0,
+                line_end: 0,
+                column_start: 0,
+                column_end: 0,
+            };
+
+            if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
+                for span in spans {
+                    if span
+                        .get("is_primary")
+                        .and_then(|p| p.as_bool())
+                        .unwrap_or(false)
+                    {
+                        file = span
+                            .get("file_name")
+                            .and_then(|f| f.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        primary_span.line_start =
+                            span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                        primary_span.line_end =
+                            span.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                        primary_span.column_start =
+                            span.get("column_start")
+                                .and_then(|c| c.as_u64())
+                                .unwrap_or(0) as usize;
+                        primary_span.column_end =
+                            span.get("column_end").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+                        break;
+                    }
+                }
+            }
+
+            if !is_reportable(&file, &allowed) {
+                continue;
+            }
+
+            *lint_counts.entry(lint_name.to_string()).or_insert(0) += 1;
+
+            if level == "error" || level == "deny" {
+                highest_exit_code = 1;
+            }
+
+            let mut help_text = None;
+            let mut suggestion = None;
+            if let Some(children) = message.get("children").and_then(|c| c.as_array()) {
+                for child_item in children {
+                    if child_item.get("level").and_then(|l| l.as_str()) == Some("help") {
+                        let child_msg = child_item
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .map(|s| s.to_string());
+                        help_text = child_msg.clone();
+                        if cli.fix {
+                            suggestion = extract_suggestion(&child_msg, lint_name);
     let mut child = cmd
         .spawn()
         .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
@@ -326,8 +566,35 @@ fn main() {
                                 }
                             }
                         }
+                        break;
                     }
                 }
+            }
+
+            let finding = LintFinding {
+                name: lint_name.to_string(),
+                level: level.to_string(),
+                file: file.clone(),
+                span: primary_span,
+                message: diagnostic_message.to_string(),
+                help: help_text,
+                suggestion,
+            };
+
+            findings.push(finding);
+
+            if cli.format == OutputFormat::Json {
+                // Safe: we just pushed an element above.
+                let finding_json = findings.last().unwrap();
+                if let Ok(json_str) = serde_json::to_string(finding_json) {
+                    println!("{}", json_str);
+                }
+            } else if cli.format != OutputFormat::Sarif {
+                let rendered = message
+                    .get("rendered")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or(diagnostic_message);
+                print!("{}", rendered);
             }
         }
 
@@ -345,6 +612,30 @@ fn main() {
     }
 }
 
+    let status = child.wait()?;
+
+    // Print per-lint summary to stderr when there are findings
+    if !lint_counts.is_empty() {
+        eprintln!("lint summary:");
+        let mut sorted: Vec<_> = lint_counts.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+        for (name, count) in &sorted {
+            eprintln!("  {}: {}", name, count);
+        }
+        let total: usize = lint_counts.values().sum();
+        eprintln!("total: {}", total);
+    }
+
+    if !status.success() {
+        return Err(LinterError::Subprocess {
+            code: status.code(),
+        });
+    } else if highest_exit_code != 0 {
+        exit(highest_exit_code);
+    }
+
+    Ok(())
+}
 /// Prints the explanation for a lint, or errors with valid lint names if not found.
 fn print_explanation(lint_name: &str) {
     let normalized = lint_name.to_lowercase();
@@ -391,6 +682,29 @@ fn clean_markdown_for_terminal(markdown: &str) -> String {
             continue;
         }
 
+    for (file_path, edits) in &file_edits {
+        match fs::read_to_string(file_path) {
+            Ok(content) => {
+                let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+                for (line_idx, _message, suggestion) in edits {
+                    if *line_idx > 0 && *line_idx <= lines.len() {
+                        let line = &mut lines[*line_idx - 1];
+                        if let Some(start) = line.find("Symbol::new")
+                            && let Some(end) = line[start..].find(')')
+                        {
+                            let replace_end = start + end + 1;
+                            line.replace_range(start..replace_end, suggestion);
+                        }
+                    }
+                }
+                let new_content = lines.join("\n");
+                if let Err(e) = fs::write(file_path, new_content) {
+                    eprintln!("Failed to write {}: {}", file_path, e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to read {}: {}", file_path, e);
+            }
         // Strip GitBook hint tags and their content delimiters
         if trimmed.starts_with("{% hint")
             || trimmed.starts_with("{% endhint")
@@ -412,6 +726,14 @@ fn clean_markdown_for_terminal(markdown: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::Write;
+
+    use super::*;
+
+    fn write_file(path: &Path, contents: &str) {
+        let mut f = File::create(path).unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
     use super::*;
     use std::io::Write;
 
@@ -577,6 +899,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("budget.toml");
         let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "this is not valid toml = {{{{").unwrap();
         writeln!(file, "this is not valid toml = {{{{{{").unwrap();
         drop(file);
 

@@ -406,6 +406,32 @@ fn enclosing_loop<'tcx>(
     matches!(enclosing.kind, hir::ExprKind::Loop(..)).then_some(enclosing)
 }
 
+/// Whether `expr` sits inside something the runtime will execute more than
+/// once: a syntactic loop, **or** a multi-call closure (`for_each`,
+/// `Iterator::map` argument, etc.).
+///
+/// `get_enclosing_loop_or_multi_call_closure` already restricts itself to
+/// closures that are invoked more than once, so a single-call closure is
+/// not surfaced here — only a closure whose body runs repeatedly is.
+///
+/// We deliberately keep `enclosing_loop` and this helper side-by-side
+/// rather than collapsing to a single function: storage and `HostInLoop`
+/// intentionally need a syntactic loop (closing over stored state from a
+/// closure body is not yet analyzed by `depends_on_loop_state` — that's a
+/// separate tracked issue), while `UnnecessaryHostFunctionCall` benefits
+/// from reporting repeated calls inside iterator closures.
+fn enclosing_loop_or_closure<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    let enclosing = get_enclosing_loop_or_multi_call_closure(cx, expr)?;
+    matches!(
+        enclosing.kind,
+        hir::ExprKind::Loop(..) | hir::ExprKind::Closure(..)
+    )
+    .then_some(enclosing)
+}
+
 /// High-level cost category a lint belongs to. Surfaced by `cargo-cost-lint`
 /// to group warnings in the `--report` output and to label `budget.toml`
 /// rows under their category.
@@ -449,6 +475,11 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: LOOP_INVARIANT_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: UNBOUNDED_INPUT_LOOP,
         lint: SOROBAN_REDUNDANT_STORAGE_READ,
         category: LintCategory::StorageOperations,
     },
@@ -532,6 +563,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
         category: LintCategory::EntryLifecycle,
     },
+    LintMetadata {
+        lint: INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -566,6 +601,13 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REQUIRE_AUTH_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
+        UNNECESSARY_STRING_TO_BYTES,
+        STORAGE_WRITE_WITHOUT_READ,
+        INEFFICIENT_BYTES_CONCAT,
+        MAP_INSERT_IN_LOOP,
+        BYTES_APPEND_IN_LOOP,
+        SIGNATURE_VERIFICATION_IN_LOOP,
+        INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -589,6 +631,13 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
+    lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
+    lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
+    lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
+    lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
+    lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
 }
 
 /// Flags any Soroban storage accessor method call (including
@@ -2209,6 +2258,92 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
                     "authorization call inside a loop",
                     None,
                     "collect distinct addresses first and authorize each once before the loop",
+                );
+            }
+        }
+    }
+}
+
+// instance_storage_for_unbounded_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+    Warn,
+    "unbounded collection written to instance storage"
+}
+/// Late pass backing [`INSTANCE_STORAGE_FOR_UNBOUNDED_DATA`].
+pub struct InstanceStorageForUnboundedData;
+rustc_session::impl_lint_pass!(InstanceStorageForUnboundedData => [INSTANCE_STORAGE_FOR_UNBOUNDED_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for InstanceStorageForUnboundedData {
+    /// Flags `env.storage().instance().set(&key, &value)` where `value`'s own
+    /// type is directly one of the Soroban SDK's unbounded container types
+    /// ([`SOROBAN_CONTAINER_TYPES`]: `Vec`, `Map`, `Bytes`).
+    ///
+    /// Instance storage is loaded and rewritten as a single blob on every
+    /// contract invocation, so a growing collection stored there is paid for
+    /// by every call, not just the calls that touch it.
+    ///
+    /// # Where the bounded/unbounded line is drawn
+    ///
+    /// Only the terminal `set` op is matched (same rationale as
+    /// [`SorobanStorageInLoop`]: matching the intermediate accessor calls too
+    /// would produce multiple stacked warnings on one chained expression).
+    /// The receiver must resolve to `soroban_sdk::storage::Instance`
+    /// specifically — `Persistent`/`Temporary` are per-entry stores where an
+    /// unbounded value is the expected, correct shape, so they are out of
+    /// scope for this lint.
+    ///
+    /// The written value's type must resolve *directly* via ADT to `Vec`,
+    /// `Map`, or `Bytes` — this intentionally excludes scalars, `Address`,
+    /// fixed-size arrays, and plain "configuration" structs (even ones that
+    /// happen to embed a `Vec`/`Map`/`Bytes` field), since determining
+    /// whether a nested field is unbounded requires whole-program reasoning
+    /// this lint deliberately does not attempt. A value that is itself an SDK
+    /// collection type is unambiguously unbounded; nested cases are left
+    /// unflagged to keep false positives at zero.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
+            if path_segment.ident.name.as_str() != "set" || args.len() < 2 {
+                return;
+            }
+
+            let is_instance_storage = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+            {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Instance"])
+            } else {
+                false
+            };
+
+            if !is_instance_storage {
+                return;
+            }
+
+            let value_expr = &args[1];
+            let is_unbounded_container = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(value_expr).peel_refs().kind()
+            {
+                matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
+            } else {
+                false
+            };
+
+            if is_unbounded_container {
+                span_lint_and_help(
+                    cx,
+                    INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+                    expr.span,
+                    "unbounded collection written to instance storage",
+                    None,
+                    "instance storage is read and rewritten as a single blob on every \
+                     invocation of the contract, not just calls that touch this field, so a \
+                     growing Vec/Map/Bytes here means every future call pays for the whole \
+                     collection's current size and the fee climbs unnoticed across the \
+                     contract's life without showing up in any single-call test; persistent \
+                     storage, keyed per entry, is the structurally correct shape for unbounded \
+                     data",
                 );
             }
         }

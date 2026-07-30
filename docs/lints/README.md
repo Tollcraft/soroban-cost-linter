@@ -10,7 +10,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 ## Confidence / Impact Classification
 
-Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mitigation-strategy):
+Lints are classified per the [MVP roadmap](../../roadmap_mvp.md#3-false-positive-mitigation-strategy):
 
 | Classification | Default Level | Meaning |
 |---|---|---|
@@ -23,6 +23,9 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn`           | Multiple sequential reads of the same key  |
+| [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
+| [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
+| [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn`  | `Vec`/`Map`/`Bytes` values written to instance storage |
 
 ## CPU/Compute
 
