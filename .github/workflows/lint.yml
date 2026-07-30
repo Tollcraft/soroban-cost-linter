@@ -8,11 +8,15 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
@@ -23,6 +27,18 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
+      - name: Build corpus contracts
+        run: |
+          cargo build --manifest-path tests/corpus/contracts/token/Cargo.toml
+          cargo build --manifest-path tests/corpus/contracts/timelock/Cargo.toml
+          cargo build --manifest-path tests/corpus/contracts/swap/Cargo.toml
+      - name: Generate baseline (first run only)
+        run: |
+          if grep -q '"contracts": {}' tests/corpus/baseline.json; then
+            BLESS=1 cargo test --test real_world_corpus --workspace
+          fi
       - name: Run tests
         run: cargo test --workspace
+      - name: Check lint docs are up to date
+        run: cargo run -p generate-lint-docs -- --check
