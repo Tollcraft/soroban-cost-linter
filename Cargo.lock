@@ -480,6 +480,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "generate-lint-docs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "getopts"
 version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

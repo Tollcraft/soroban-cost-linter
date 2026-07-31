@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "soroban_cost_lints",
-    "cargo-cost-lint"
+    "cargo-cost-lint",
+    "tools/generate-lint-docs"
 ]
 exclude = [
     "soroban_cost_lints/test_fixtures/real_sdk",

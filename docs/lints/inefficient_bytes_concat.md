@@ -9,7 +9,11 @@ sidebar_position: 5
 | ---------------- | ---------- |
 | `warn`           | Memory     |
 
-## What It Catches
+## What it does
+
+Flags inefficient Bytes concatenation inside a loop using the `+` operator, which creates a new allocation on every iteration.
+
+## Why is this bad
 
 Using the `+` operator to concatenate `Bytes` values inside a loop creates a new allocation on every iteration, which is both CPU-expensive and wasteful of Soroban memory charges.
 
