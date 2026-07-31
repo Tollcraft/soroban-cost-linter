@@ -9,9 +9,13 @@ sidebar_position: 6
 | ---------------- | ------------ |
 | `warn`           | StorageOperations |
 
-## What It Catches
+## What it does
 
-Calling `Map::insert()` inside a loop incurs storage read/write costs on every iteration. If the same map is being modified repeatedly, the costs accumulate quickly.
+Detects `Map::insert()` calls inside loops that incur storage read/write costs on every iteration.
+
+## Why is this bad
+
+Calling `Map::insert()` inside a loop incurs storage read/write costs on every iteration. If the same map is being modified repeatedly, the costs accumulate quickly, consuming unnecessary CPU and memory budget.
 
 ## Example
 
@@ -46,3 +50,18 @@ fn populate(env: Env) {
 ## Fix
 
 Accumulate entries in a `Vec` or similar in-memory structure during the loop, then perform a single Map construction or batch insert after the loop.
+
+## Known limitations
+
+This lint only recognizes `Map::insert` calls sitting directly inside a
+syntactic `for`, `while`, or `loop` body (via the internal `enclosing_loop`
+helper). It does **not** flag a `Map::insert` call made inside a multi-call
+iterator closure such as `.for_each(|x| { map.insert(...) })` or an
+`.iter().map(...)` argument, even though that closure body runs once per
+element just like a loop and incurs the same repeated storage cost.
+
+This is a narrower scope than [`unnecessary_host_function_call`](unnecessary_host_function_call.md),
+which uses a closure-aware helper (`enclosing_loop_or_closure`) to also catch
+repeated host calls inside iterator closures. Extending `map_insert_in_loop`
+to cover the closure case is tracked as a possible follow-up rather than
+implemented here.

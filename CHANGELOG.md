@@ -10,16 +10,16 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
+- New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.
+- New lint `require_auth_in_loop` detecting `Address::require_auth` and `Address::require_auth_for_args` calls inside loop bodies (`for`, `while`, `loop`) and suggesting that distinct addresses be authorized once before the loop.
 - New lint `storage_write_without_read` detecting storage `.set()` calls where the same key is never subsequently read, flagging wasteful storage writes that drive up Soroban fees.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
+- New lint `instance_storage_for_unbounded_data` detecting `env.storage().instance().set(...)` calls where the written value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten as a single blob on every contract invocation regardless of which call touches it.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
+- New lint `formatted_panic_payload` detecting `format!(...)`, `panic!(...)` with formatting arguments, and `.expect(&format!(...))`, all of which pull `core::fmt` string-formatting machinery into a `#![no_std]` contract; the diagnostic points at `panic_with_error!` with a `#[contracterror]` enum as the cheap alternative. Skips `#[cfg(test)]` code.
 
-### Fixed
-
-- Confirmed that `src/module_17.rs` does not exist and the codebase contains no bitwise manipulation logic; issue #207 is invalid.
- <!-- grep -R -nE '<<|>>|&|\||\^|!' src -->
 ### Changed
 
 - `unnecessary_host_function_call` now covers every host accessor reachable from

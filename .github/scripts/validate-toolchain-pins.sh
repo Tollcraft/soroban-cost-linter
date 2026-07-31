@@ -43,7 +43,7 @@ check_nightly_in_file() {
 }
 
 check_nightly_in_file ".github/workflows/lint.yml"
-check_nightly_in_file "templates/github-action.yml"
+check_nightly_in_file "action.yml"
 check_nightly_in_file "docs/integration.md"
 
 # ---- Check clippy_utils git rev matches the nightly date ----
