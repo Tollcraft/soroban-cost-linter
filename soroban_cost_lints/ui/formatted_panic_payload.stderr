@@ -1,0 +1,35 @@
+warning: formatted panic payload pulls in string-formatting machinery
+  --> $DIR/formatted_panic_payload.rs:12:5
+   |
+LL |     format!("balance {a} below {b}") //~ WARNING formatted panic payload pulls in string-formatting machinery
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: formatted messages pull core::fmt into the contract (binary size on every deploy) and run formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost
+   = note: `#[warn(formatted_panic_payload)]` on by default
+
+warning: formatted panic payload pulls in string-formatting machinery
+  --> $DIR/formatted_panic_payload.rs:17:5
+   |
+LL |     format!("balance {} below {}", a, b) //~ WARNING formatted panic payload pulls in string-formatting machinery
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: formatted messages pull core::fmt into the contract (binary size on every deploy) and run formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost
+
+warning: formatted panic payload pulls in string-formatting machinery
+  --> $DIR/formatted_panic_payload.rs:23:5
+   |
+LL |     panic!("balance {} below {}", a, b); //~ WARNING formatted panic payload pulls in string-formatting machinery
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: formatted messages pull core::fmt into the contract (binary size on every deploy) and run formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost
+
+warning: formatted panic payload pulls in string-formatting machinery
+  --> $DIR/formatted_panic_payload.rs:28:5
+   |
+LL |     value.expect(&format!("missing {key}")) //~ WARNING formatted panic payload pulls in string-formatting machinery
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: formatted messages pull core::fmt into the contract (binary size on every deploy) and run formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost
+
+warning: 4 warnings emitted
+

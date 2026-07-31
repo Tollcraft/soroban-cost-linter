@@ -64,6 +64,10 @@ impl Config {
             flags.push(format!("{} {}", prefix, lint_name.to_lowercase()));
         }
         flags
+    }
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
 pub struct BudgetConfig {
     pub lints: Option<HashMap<String, String>>,
 }

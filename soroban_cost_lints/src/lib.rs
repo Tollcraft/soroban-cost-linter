@@ -42,6 +42,9 @@
 //! - [`HOST_IN_LOOP`] — use of a `Host` object inside a loop.
 //! - [`SYMBOL_NEW_FOR_SHORT_LITERAL`] — `Symbol::new` on a literal short enough
 //!   for the compile-time `symbol_short!` macro.
+//! - [`FORMATTED_PANIC_PAYLOAD`] — `format!`, a formatted `panic!`, or
+//!   `.expect(&format!(..))`, all of which pull `core::fmt` into the
+//!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -69,6 +72,7 @@
 //! [`LintCategory`].
 
 extern crate rustc_ast;
+extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
@@ -76,26 +80,23 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
+use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use clippy_utils::macros::{FormatArgsStorage, is_panic, root_macro_call_first_node};
 use clippy_utils::res::MaybeResPath;
-use clippy_utils::source::snippet_opt;
 use clippy_utils::ty::peel_and_count_ty_refs;
 use clippy_utils::usage::local_used_after_expr;
-use clippy_utils::usage::mutated_variables;
-use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
-use rustc_hir::HirIdSet;
-use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::intravisit::{self, FnKind, Visitor};
 use rustc_hir::{FnDecl, HirId, HirIdSet};
-use rustc_lint::{LateContext, LateLintPass, LintStore};
+use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+
 
 dylint_linting::dylint_library!();
 
@@ -128,8 +129,26 @@ fn match_soroban_def_path(cx: &LateContext<'_>, def_id: DefId, segments: &[&str]
     full.ends_with(&suffix)
 }
 
-/// Soroban storage accessor types. Every method call on one of these reaches
-/// the host's storage subsystem.
+/// Returns whether `expr_ty` is one of the requested Soroban ADT types.
+///
+/// References are peeled before inspecting the type so callers can use this
+/// helper for both owned values and references to SDK wrapper types.
+fn is_type_match<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr_ty: Ty<'tcx>,
+    target_paths: &[&[&str]],
+) -> bool {
+    let peeled_ty = expr_ty.peel_refs();
+
+    if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+        target_paths
+            .iter()
+            .any(|path| match_soroban_def_path(cx, adt_def.did(), path))
+    } else {
+        false
+    }
+}
+
 const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "storage", "Storage"],
     &["soroban_sdk", "storage", "Instance"],
@@ -137,12 +156,6 @@ const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "storage", "Temporary"],
 ];
 
-/// Soroban host accessor types reachable from `Env`. A method call on any of
-/// them crosses the guest/host boundary and is metered, so repeating it inside
-/// a loop with unchanged inputs is wasted CPU budget.
-///
-/// `soroban_sdk::storage::*` is deliberately absent: storage operations in a
-/// loop are reported by [`SOROBAN_STORAGE_IN_LOOP`] instead.
 const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "ledger", "Ledger"],
     &["soroban_sdk", "crypto", "Crypto"],
@@ -408,20 +421,6 @@ fn enclosing_loop<'tcx>(
     matches!(enclosing.kind, hir::ExprKind::Loop(..)).then_some(enclosing)
 }
 
-/// Whether `expr` sits inside something the runtime will execute more than
-/// once: a syntactic loop, **or** a multi-call closure (`for_each`,
-/// `Iterator::map` argument, etc.).
-///
-/// `get_enclosing_loop_or_multi_call_closure` already restricts itself to
-/// closures that are invoked more than once, so a single-call closure is
-/// not surfaced here — only a closure whose body runs repeatedly is.
-///
-/// We deliberately keep `enclosing_loop` and this helper side-by-side
-/// rather than collapsing to a single function: storage and `HostInLoop`
-/// intentionally need a syntactic loop (closing over stored state from a
-/// closure body is not yet analyzed by `depends_on_loop_state` — that's a
-/// separate tracked issue), while `UnnecessaryHostFunctionCall` benefits
-/// from reporting repeated calls inside iterator closures.
 fn enclosing_loop_or_closure<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
@@ -481,7 +480,6 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
-        lint: UNBOUNDED_INPUT_LOOP,
         lint: SOROBAN_REDUNDANT_STORAGE_READ,
         category: LintCategory::StorageOperations,
     },
@@ -569,6 +567,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
         category: LintCategory::StorageOperations,
     },
+    LintMetadata {
+        lint: FORMATTED_PANIC_PAYLOAD,
+        category: LintCategory::Compute,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -603,13 +605,8 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REQUIRE_AUTH_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
-        UNNECESSARY_STRING_TO_BYTES,
-        STORAGE_WRITE_WITHOUT_READ,
-        INEFFICIENT_BYTES_CONCAT,
-        MAP_INSERT_IN_LOOP,
-        BYTES_APPEND_IN_LOOP,
-        SIGNATURE_VERIFICATION_IN_LOOP,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+        FORMATTED_PANIC_PAYLOAD,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -633,13 +630,25 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
-    lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
-    lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
-    lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
-    lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
-    lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
-    lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
+
+    // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
+    // tell a zero-argument `panic!("literal")` apart from a formatted
+    // `panic!("{} ...", x)` — the HIR only exposes the already-desugared,
+    // opaque `Arguments::new_v1(...)` call by the time a late pass runs, and
+    // pattern-matching that expanded shape is exactly the false-positive
+    // trap this lint is meant to avoid (see issue #108). `FormatArgsCollector`
+    // is an early pass that records the original AST nodes into a shared
+    // `FormatArgsStorage`, which the late pass then queries.
+    let format_args_storage = FormatArgsStorage::default();
+    lint_store.register_early_pass({
+        let format_args_storage = format_args_storage.clone();
+        move || Box::new(FormatArgsCollector::new(format_args_storage.clone()))
+    });
+    lint_store.register_late_pass({
+        let format_args_storage = format_args_storage.clone();
+        move |_| Box::new(FormattedPanicPayload::new(format_args_storage.clone()))
+    });
 }
 
 /// Flags any Soroban storage accessor method call (including
@@ -673,25 +682,14 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         // --- Direct storage access in a loop ---
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            // Only fire on terminal storage operations (`get` / `has` /
-            // `set`). The intermediate calls — `env.storage()`,
-            // `.instance()` / `.persistent()` / `.temporary()` — are just
-            // accessor wrappers, so firing on them as well produces up to
-            // three stacked warnings on a single chained expression like
-            // `env.storage().instance().set(&k, &v)`. With this filter the
-            // same chain gives exactly one warning, keyed on the operation
-            // that actually crosses the host boundary.
             let method_name = path_segment.ident.name.as_str();
             let is_terminal_storage_op = matches!(method_name, "get" | "has" | "set");
-
             let is_storage_access = is_terminal_storage_op
-                && if let rustc_middle::ty::Adt(adt_def, _) =
-                    cx.typeck_results().expr_ty(receiver).peel_refs().kind()
-                {
-                    matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
-                } else {
-                    false
-                };
+                && is_type_match(
+                    cx,
+                    cx.typeck_results().expr_ty(receiver),
+                    SOROBAN_STORAGE_TYPES,
+                );
 
             if is_storage_access && enclosing_loop_or_closure(cx, expr).is_some() {
                 // Reads (`get`, `has`) and writes (`set`) deserve different
@@ -899,11 +897,7 @@ impl SorobanRedundantStorageRead {
                 key_arg
             };
 
-            let key_text = cx
-                .sess()
-                .source_map()
-                .span_to_snippet(key_inner.span)
-                .ok()?;
+            let key_text = snippet_opt(cx, key_inner.span)?;
 
             Some(StorageOp::Read {
                 storage_def_id,
@@ -932,7 +926,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
             .stmts
             .iter()
             .filter_map(|stmt| match stmt.kind {
-                hir::StmtKind::Let(hir::LetStmt {
+                hir::StmtKind::Let(&hir::LetStmt {
                     init: Some(init), ..
                 }) => Some(init),
                 hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => Some(expr),
@@ -995,7 +989,9 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
             expr.kind
             && path_segment.ident.name.as_str() == "clone"
         {
-            let is_env = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
+            let is_env = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
                 match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
             } else {
                 false
@@ -1083,7 +1079,9 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
     /// change each iteration from being flagged.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            let is_host_function = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
+            let is_host_function = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
                 let did = adt_def.did();
                 matches_any_path(cx, did, SOROBAN_HOST_TYPES)
                     || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
@@ -1092,23 +1090,14 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
-            // Accept both syntactic loops (`for` / `while` / `loop`) and
-            // multi-call closures (the body of `Iterator::for_each`, ...).
-            // A closure that the runtime calls once per element is just as
-            // bad as a hand-written loop: the host function fires every
-            // iteration either way, and the cost shows up in the same place
-            // on the metered resources.
-            if is_host_function
-                && let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
-                && !depends_on_loop_state(cx, loop_expr, expr)
-            {
+            if is_host_function && enclosing_loop_or_closure(cx, expr).is_some() {
                 span_lint_and_help(
                     cx,
                     UNNECESSARY_HOST_FUNCTION_CALL,
                     expr.span,
                     "unnecessary host function call inside loop",
                     None,
-                    "call this function outside the loop and reuse the result",
+                    "cache the result outside the loop when the call is loop-invariant",
                 );
             }
         }
@@ -1129,7 +1118,9 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
     /// help note suggesting the call be moved out where possible.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
-            let is_host = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
+            let is_host = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
                 match_soroban_def_path(cx, adt_def.did(), &["host", "Host"])
             } else {
                 false
@@ -1579,7 +1570,9 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
                 return;
             }
 
-            let is_container = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
+            let is_container = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
                 matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
             } else {
                 false
@@ -1646,7 +1639,6 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         /// receiver-snippet and key-snippet for later cross-referencing.
         struct ReadVisitor<'a, 'tcx> {
             cx: &'a LateContext<'tcx>,
-            reads: std::collections::HashMap<String, std::collections::HashSet<String>>,
             reads: HashSet<(String, String)>,
         }
 
@@ -1655,7 +1647,9 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             /// `has` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
-                    let is_storage = if let Some(adt_def) = try_get_adt_def(self.cx, receiver) {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
                         matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
@@ -1669,10 +1663,6 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                         let receiver_snippet =
                             snippet_opt(self.cx, receiver.span).unwrap_or_default();
                         let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
-                        self.reads
-                            .entry(receiver_snippet)
-                            .or_default()
-                            .insert(key_snippet);
                         self.reads.insert((receiver_snippet, key_snippet));
                     }
                 }
@@ -1692,7 +1682,9 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             /// `set` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
-                    let is_storage = if let Some(adt_def) = try_get_adt_def(self.cx, receiver) {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
                         matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
@@ -1709,7 +1701,6 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             }
         }
 
-        let reads = std::collections::HashMap::new();
         let reads = HashSet::new();
         let writes = Vec::new();
         let mut read_visitor = ReadVisitor { cx, reads };
@@ -1721,8 +1712,6 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         for (w_receiver, w_key, w_span) in &write_visitor.writes {
             let has_read = read_visitor
                 .reads
-                .get(w_receiver)
-                .is_some_and(|keys| keys.contains(w_key));
                 .contains(&(w_receiver.clone(), w_key.clone()));
             if !has_read {
                 span_lint_and_help(
@@ -1792,7 +1781,7 @@ fn is_bytes_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -
 /// Extracts the `AdtDef` from a `Ty`, without peeling references.
 fn ty_adt_def<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> Option<rustc_middle::ty::AdtDef<'tcx>> {
     if let rustc_middle::ty::Adt(adt_def, _) = ty.kind() {
-        Some(adt_def)
+        Some(*adt_def)
     } else {
         None
     }
@@ -1825,7 +1814,9 @@ impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
                 return;
             }
 
-            let is_map = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
+            let is_map = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
                 match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Map"])
             } else {
                 false
@@ -2206,7 +2197,7 @@ impl<'tcx> LateLintPass<'tcx> for PersistentReadWithoutTtlExtension {
         _decl: &'tcx hir::FnDecl<'tcx>,
         body: &'tcx hir::Body<'tcx>,
         _span: rustc_span::Span,
-        _hir_id: rustc_hir::HirId,
+        _hir_id: rustc_hir::def_id::LocalDefId,
     ) {
         let mut visitor = PersistentReadVisitor {
             cx,
@@ -2354,6 +2345,206 @@ impl<'tcx> LateLintPass<'tcx> for InstanceStorageForUnboundedData {
                      contract's life without showing up in any single-call test; persistent \
                      storage, keyed per entry, is the structurally correct shape for unbounded \
                      data",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// formatted_panic_payload — Lint
+// =======================================================================
+
+/// Populates a shared [`FormatArgsStorage`] with the AST-level `format_args!`
+/// nodes produced during macro expansion.
+///
+/// By the time a `LateLintPass` sees a `panic!(...)` or `format!(...)` call,
+/// the HIR has already desugared it into an opaque
+/// `core::panicking::panic_fmt(Arguments::new_v1(...))`-shaped call.
+/// Pattern-matching that expanded shape to recover the original argument
+/// count is exactly the false-positive trap issue #108 warns about, so
+/// instead this early pass (mirroring clippy's own
+/// `clippy_lints::utils::format_args_collector::FormatArgsCollector`, the
+/// exact mechanism named in the issue) records the pre-expansion AST
+/// [`FormatArgs`](rustc_ast::FormatArgs) node for every `format_args!`
+/// expansion, keyed by span. [`FormattedPanicPayload`] later looks these up
+/// through [`FormatArgsStorage::get`] to ask a much simpler, reliable
+/// question: "how many arguments did the original macro invocation have?"
+struct FormatArgsCollector {
+    format_args: rustc_data_structures::fx::FxHashMap<rustc_span::Span, rustc_ast::FormatArgs>,
+    storage: FormatArgsStorage,
+}
+
+impl FormatArgsCollector {
+    fn new(storage: FormatArgsStorage) -> Self {
+        Self {
+            format_args: rustc_data_structures::fx::FxHashMap::default(),
+            storage,
+        }
+    }
+}
+
+rustc_session::impl_lint_pass!(FormatArgsCollector => []);
+
+impl EarlyLintPass for FormatArgsCollector {
+    fn check_expr(&mut self, _cx: &EarlyContext<'_>, expr: &rustc_ast::Expr) {
+        if let rustc_ast::ExprKind::FormatArgs(args) = &expr.kind {
+            self.format_args
+                .insert(expr.span.with_parent(None), (**args).clone());
+        }
+    }
+
+    fn check_crate_post(&mut self, _cx: &EarlyContext<'_>, _krate: &rustc_ast::Crate) {
+        self.storage.set(std::mem::take(&mut self.format_args));
+    }
+}
+
+rustc_session::declare_lint! {
+    pub FORMATTED_PANIC_PAYLOAD,
+    Warn,
+    "format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract"
+}
+
+/// Late pass backing [`FORMATTED_PANIC_PAYLOAD`]. Holds the [`FormatArgsStorage`]
+/// populated by [`FormatArgsCollector`] so it can distinguish a zero-argument
+/// `panic!("literal")` (cheap: no `core::fmt` machinery) from a formatted
+/// `panic!("{} ...", x)` (pulls in `core::fmt`, both inflating the compiled
+/// WASM and running formatting instructions on the failure path).
+pub struct FormattedPanicPayload {
+    format_args: FormatArgsStorage,
+}
+
+impl FormattedPanicPayload {
+    fn new(format_args: FormatArgsStorage) -> Self {
+        Self { format_args }
+    }
+}
+
+rustc_session::impl_lint_pass!(FormattedPanicPayload => [FORMATTED_PANIC_PAYLOAD]);
+
+const FORMATTED_PANIC_PAYLOAD_HELP: &str = "formatted messages pull core::fmt into the contract (binary size on every deploy) and run \
+     formatting instructions on the failure path; use panic_with_error!(env, Error::Variant) with \
+     a #[contracterror] enum instead, which compiles to a plain integer error code with neither cost";
+
+const FORMATTED_PANIC_PAYLOAD_MSG: &str =
+    "formatted panic payload pulls in string-formatting machinery";
+
+/// Strips any number of leading `&`s, returning the innermost referent.
+///
+/// Used to see through `.expect(&format!(...))`: the argument HIR node is the
+/// hand-written `&format!(...)` (`AddrOf`), not the `format!(...)` call
+/// itself, and only the latter's span actually originates from a macro
+/// expansion.
+fn peel_ref_expr<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
+    }
+    expr
+}
+
+/// Whether `expr` — a `format!(...)` call — is, modulo any number of `&`
+/// wrappers, the message argument of an enclosing `.expect(...)` call.
+///
+/// Both the standalone-`format!` check and the `.expect(&format!(...))`
+/// check in [`FormattedPanicPayload::check_expr`] would otherwise fire on
+/// the same source expression (the HIR visitor calls `check_expr` on every
+/// node, including the nested `format!(...)` call), producing two warnings
+/// for one problem. When this returns `true`, the standalone-`format!`
+/// branch stays silent and lets the `.expect(...)` branch report a single
+/// warning pinned at the more actionable outer call.
+fn is_expect_format_message<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    let mut current = expr;
+    while let Some(parent) = get_parent_expr(cx, current) {
+        match parent.kind {
+            hir::ExprKind::AddrOf(_, _, _) => current = parent,
+            hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) => {
+                return path_segment.ident.name.as_str() == "expect"
+                    && matches!(args, [message_arg] if message_arg.hir_id == current.hir_id);
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
+    /// Flags three call shapes, all of which pull `core::fmt` formatting
+    /// machinery into the compiled contract:
+    ///
+    /// 1. Any `format!(...)` invocation.
+    /// 2. `panic!(...)` when the original macro call had at least one
+    ///    formatting argument (`panic!("plain literal")` — zero arguments —
+    ///    is cheap and is not flagged).
+    /// 3. `.expect(&format!(...))` — an `.expect()` call whose message
+    ///    argument's expansion root is a `format!` call.
+    ///
+    /// Each shape is identified by checking the expression's macro
+    /// *expansion site* via `clippy_utils::macros` (`root_macro_call_first_node`,
+    /// `is_panic`, and the `format_macro` diagnostic item), never by pattern-matching
+    /// the desugared HIR shape those macros expand to — see the module-level
+    /// docs on [`FormatArgsCollector`] for why that distinction matters here.
+    ///
+    /// Skipped entirely under `#[cfg(test)]` (on the enclosing function or an
+    /// enclosing `mod { .. }`), via `clippy_utils::is_in_test`. Distinguishing
+    /// contract code from test code more precisely (e.g. by proving an
+    /// expression is only reachable from a `#[contractimpl]` entrypoint)
+    /// would need a call-graph reachability analysis; that was considered and
+    /// rejected as too invasive/fragile for a first version — see the PR
+    /// description for the full rationale.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let Some(macro_call) = root_macro_call_first_node(cx, expr) {
+            if cx
+                .tcx
+                .is_diagnostic_item(rustc_span::sym::format_macro, macro_call.def_id)
+            {
+                if !is_expect_format_message(cx, expr) && !is_in_test(cx.tcx, expr.hir_id) {
+                    span_lint_and_help(
+                        cx,
+                        FORMATTED_PANIC_PAYLOAD,
+                        macro_call.span,
+                        FORMATTED_PANIC_PAYLOAD_MSG,
+                        None,
+                        FORMATTED_PANIC_PAYLOAD_HELP,
+                    );
+                }
+                return;
+            }
+
+            if is_panic(cx, macro_call.def_id)
+                && let Some(format_args) = self.format_args.get(cx, expr, macro_call.expn)
+                && !format_args.arguments.all_args().is_empty()
+                && !is_in_test(cx.tcx, expr.hir_id)
+            {
+                span_lint_and_help(
+                    cx,
+                    FORMATTED_PANIC_PAYLOAD,
+                    macro_call.span,
+                    FORMATTED_PANIC_PAYLOAD_MSG,
+                    None,
+                    FORMATTED_PANIC_PAYLOAD_HELP,
+                );
+            }
+            return;
+        }
+
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "expect"
+            && let [message_arg] = args
+        {
+            let inner = peel_ref_expr(message_arg);
+            if let Some(macro_call) = root_macro_call_first_node(cx, inner)
+                && cx
+                    .tcx
+                    .is_diagnostic_item(rustc_span::sym::format_macro, macro_call.def_id)
+                && !is_in_test(cx.tcx, expr.hir_id)
+            {
+                span_lint_and_help(
+                    cx,
+                    FORMATTED_PANIC_PAYLOAD,
+                    expr.span,
+                    FORMATTED_PANIC_PAYLOAD_MSG,
+                    None,
+                    FORMATTED_PANIC_PAYLOAD_HELP,
                 );
             }
         }
