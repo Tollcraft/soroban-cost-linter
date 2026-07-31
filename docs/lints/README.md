@@ -31,8 +31,10 @@ Lints are classified per the [MVP roadmap](../../roadmap_mvp.md#3-false-positive
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
 | [`host_in_loop`](host_in_loop.md)                                     | `warn`           | Host object usage inside loop bodies       |
+| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn`           | `ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls inside loops |
+| [`formatted_panic_payload`](formatted_panic_payload.md)               | `warn`           | `format!`, formatted `panic!`, and `.expect(&format!(..))` |
 
 ## Memory
 

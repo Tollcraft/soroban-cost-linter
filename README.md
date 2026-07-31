@@ -45,6 +45,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
 *   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
 *   **[`instance_storage_for_unbounded_data`](docs/lints/instance_storage_for_unbounded_data.md):** Flags `env.storage().instance().set(...)` calls where the value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten in full on every contract invocation.
+*   **[`formatted_panic_payload`](docs/lints/formatted_panic_payload.md):** Flags `format!`, a formatted `panic!`, or `.expect(&format!(..))`, all of which pull `core::fmt` into the contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
 
 ## How it Fits into Tollcraft
 
@@ -369,6 +370,7 @@ map_insert_in_loop = "warn"
 ```
 contract_call_in_loop = "warn"
 instance_storage_for_unbounded_data = "warn"
+formatted_panic_payload = "warn"
 
 Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
 

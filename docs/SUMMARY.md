@@ -27,6 +27,7 @@
   * [vec\_where\_slice\_could\_be\_used](lints/vec_where_slice_could_be_used.md)
   * [extend\_ttl\_in\_loop](lints/extend_ttl_in_loop.md)
   * [instance\_storage\_for\_unbounded\_data](lints/instance_storage_for_unbounded_data.md)
+  * [formatted\_panic\_payload](lints/formatted_panic_payload.md)
 
 ## Branding
 
