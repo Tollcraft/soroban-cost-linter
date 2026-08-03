@@ -2554,6 +2554,12 @@ impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
     }
 }
 
+// Linux-only. The checked-in `.stderr` fixtures are byte-compared against the
+// driver's output, and that output embeds host path separators -- `$DIR/x.rs`
+// on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
+// satisfy both. This never surfaced before because the Windows job failed at
+// checkout and never reached the test step.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
