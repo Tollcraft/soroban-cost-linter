@@ -34,6 +34,9 @@ jobs:
           cargo build --manifest-path tests/corpus/contracts/timelock/Cargo.toml
           cargo build --manifest-path tests/corpus/contracts/swap/Cargo.toml
       - name: Generate baseline (first run only)
+        # Explicit bash: the default shell on windows-latest is PowerShell,
+        # which cannot parse `if ...; then`.
+        shell: bash
         run: |
           if grep -q '"contracts": {}' tests/corpus/baseline.json; then
             BLESS=1 cargo test --test real_world_corpus --workspace

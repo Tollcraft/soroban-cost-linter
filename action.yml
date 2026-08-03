@@ -37,6 +37,13 @@ runs:
 
     - name: Build lint library
       shell: bash
+      # `dylint-link` wraps the real linker and renames the cdylib to the
+      # `lib<name>@<toolchain>.so` form that `cargo dylint --lib <name>`
+      # resolves. A plain `cargo build` emits `libsoroban_cost_lints.so` with
+      # no toolchain suffix, which is why this step previously produced a
+      # library that the "Run Cost Linter" step could not find.
+      env:
+        RUSTFLAGS: -C linker=dylint-link
       run: cargo build --release --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
 
     - name: Register lint library with dylint
