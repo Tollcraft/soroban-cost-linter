@@ -15,3 +15,4 @@ jobs:
         uses: ./
         with:
           working-directory: soroban_cost_lints/test_fixtures/real_sdk
+          config: budget.toml

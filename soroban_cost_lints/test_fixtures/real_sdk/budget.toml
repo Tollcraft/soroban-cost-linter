@@ -1,0 +1,8 @@
+# Config for the Dogfood workflow, which runs the composite action against this
+# fixture. The fixture deliberately contains every bad pattern the lints look
+# for, so `soroban_storage_in_loop` -- the one lint that is `Deny` by default --
+# would fail the build and the workflow could never demonstrate a successful
+# end-to-end run. Downgrading it to `warn` keeps every finding visible in the
+# log while letting the action exit 0.
+[lints]
+soroban_storage_in_loop = "warn"
