@@ -90,10 +90,37 @@ pub mod soroban_sdk {
         }
     }
 
-    pub struct Bytes;
-    impl Bytes {
-        pub fn push_back(&mut self, _val: u8) {}
-        pub fn append(&mut self, _other: &Bytes) {}
+    // Returned by `Env`'s accessors and matched by SOROBAN_HOST_TYPES in the
+    // lint source. Deleted by a merge while the accessors kept referencing them.
+    pub mod crypto {
+        pub struct Crypto;
+        impl Crypto {
+            pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn ed25519_verify(&self, _key: &[u8], _msg: &[u8], _sig: &[u8]) {}
+        }
+    }
+
+    pub mod prng {
+        pub struct Prng;
+        impl Prng {
+            pub fn u64_in_range(&self, _low: u64, _high: u64) -> u64 { 0 }
+        }
+    }
+
+    pub mod events {
+        pub struct Events;
+        impl Events {
+            pub fn publish<T, D>(&self, _topics: T, _data: D) {}
+        }
+    }
+
+    pub mod deploy {
+        pub struct Deployer;
+        impl Deployer {
+            pub fn with_current_contract(&self, _salt: [u8; 32]) -> Deployer { Deployer }
+            pub fn uploaded_wasm_hash(&self) -> [u8; 32] { [0; 32] }
+        }
     }
 
     pub mod host {
@@ -107,10 +134,13 @@ pub mod soroban_sdk {
 
     // Tuple struct so `Bytes::from(_s)` and `Bytes(buf)` (HEAD's ineffective_bytes_concat) still work.
     // Also has `append` to support upstream's bytes_append_in_loop fixtures.
+    // One tuple struct carrying every method the fixtures need. A merge left
+    // two separate `Bytes` definitions here, which stopped this file compiling.
     pub struct Bytes(pub std::vec::Vec<u8>);
     impl Bytes {
         pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
         pub fn append(&mut self, _other: &Bytes) {}
+        pub fn push_back(&mut self, _val: u8) {}
     }
     impl std::ops::Add for Bytes {
         type Output = Bytes;
@@ -156,10 +186,8 @@ pub mod soroban_sdk {
 }
 
 use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
-use soroban_sdk::{Env, Symbol, vec::Vec, map::Map};
 
 
-use soroban_sdk::Env;
 
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
@@ -244,12 +272,6 @@ fn allowed_storage_in_loop(env: Env) {
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
 #[allow(soroban_storage_in_loop)]
-fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
-    for (key, val) in pairs {
-        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
-    }
-}
-
 // =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================
@@ -555,6 +577,7 @@ fn allowed_signature_verification_in_loop(env: Env) {
 #[allow(excessive_vec_capacity)]
 fn bad_excessive_vec_capacity() {
     let _v = Vec::with_capacity(1_000_000); // Should Warn — wildly excessive capacity
+}
 fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     loop {
         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
@@ -604,7 +627,6 @@ fn allowed_persistent_read(env: Env) {
     let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
 }
 
-fn main() {}
 
 // =======================================================================
 // soroban_redundant_storage_read — Fixtures
@@ -641,7 +663,6 @@ fn good_set_resets_tracking(env: Env, key: i32) {
     let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
 }
 
-fn main() {}
 fn good_different_keys(env: Env, key1: i32, key2: i32) {
     let _a: Option<i32> = env.storage().instance().get(&key1);
     let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
@@ -656,3 +677,5 @@ fn allowed_sequential_read(env: Env, key: i32) {
     let _a: Option<i32> = env.storage().instance().get(&key);
     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
 }
+
+fn main() {}

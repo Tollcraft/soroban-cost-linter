@@ -85,7 +85,7 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
                         let raw = val.trim();
                         category = raw
                             .strip_prefix("LintCategory::")
-                            .unwrap_or(&raw)
+                            .unwrap_or(raw)
                             .to_string();
                     }
                 }

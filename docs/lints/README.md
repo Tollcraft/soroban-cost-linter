@@ -8,43 +8,47 @@
 See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.
 {% endhint %}
 
-## Confidence / Impact Classification
-
-Lints are classified per the [MVP roadmap](../../roadmap_mvp.md#3-false-positive-mitigation-strategy):
-
-| Classification | Default Level | Meaning |
-|---|---|---|
-| **High Confidence, High Impact** | `deny` | Pattern is unambiguous and always expensive. Fails CI by default. |
-| **Medium Impact / Context-Dependent** | `warn` | Pattern may be acceptable in small or bounded contexts. Does not block CI by default. |
-
 ## Storage Operations
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
-| [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn`           | Multiple sequential reads of the same key  |
-| [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
-| [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
-| [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn`  | `Vec`/`Map`/`Bytes` values written to instance storage |
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `deny` | storage operations inside a loop |
+| [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
+| [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
+| [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
+| [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |
 
 ## CPU/Compute
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
-| [`host_in_loop`](host_in_loop.md)                                     | `warn`           | Host object usage inside loop bodies       |
-| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn`           | `ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls inside loops |
-| [`formatted_panic_payload`](formatted_panic_payload.md)               | `warn`           | `format!`, formatted `panic!`, and `.expect(&format!(..))` |
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
+| [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
+| [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
+| [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
+| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
+| [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
+| [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
+| [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
 
 ## Memory
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
-| [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
-| [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
-| [`excessive_vec_capacity`](excessive_vec_capacity.md)                 | `warn`           | `Vec::with_capacity`/`.reserve`/`.reserve_exact` with a large, hard-coded literal |
-| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn`           | `soroban_sdk::Vec` by value where a native slice would suffice |
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
+| [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
+| [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
+| [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
+| [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
+| [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
+| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
+
+## Entry Lifecycle
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
+| [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
 
 ## Symbol Operations
 
@@ -52,16 +56,6 @@ Lints are classified per the [MVP roadmap](../../roadmap_mvp.md#3-false-positive
 | --- | --- | --- |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
 
-## Lint inventory schema
-
-The CLI can emit a versioned inventory of all registered lints via `cargo cost-lint --list-lints --format json`. The payload contains:
-
-- `version`: inventory schema version (`1.0`)
-- `schema`: the schema documentation URL
-- `lints`: an array of entries containing `name`, `default_level`, `description`, `category`, and `documentation_url`
-
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}
-
-<!-- ? -->

@@ -23,5 +23,14 @@ LL |     env.storage().instance().set(&3u32, &blob); // Should Warn
    |
    = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
 
-warning: 3 warnings emitted
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/instance_storage_for_unbounded_data.rs:117:34
+   |
+LL |     let _existing: Option<Vec> = env.storage().persistent().get(&7u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
+warning: 4 warnings emitted
 

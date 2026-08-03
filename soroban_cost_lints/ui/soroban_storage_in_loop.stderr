@@ -33,6 +33,15 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |
    = help: hoist this storage operation out of the loop
 
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/soroban_storage_in_loop.rs:58:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
 error: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:58:30
    |
@@ -137,6 +146,14 @@ LL |     env.storage().instance().set(&2, &2); // Good
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/soroban_storage_in_loop.rs:85:13
+   |
+LL |     let _ = env.storage().persistent().get::<i32, i32>(&1); // Good
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+
 warning: storage write without a corresponding read
   --> $DIR/soroban_storage_in_loop.rs:91:34
    |
@@ -217,5 +234,5 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |
    = help: hoist this storage operation out of the loop
 
-error: aborting due to 7 previous errors; 20 warnings emitted
+error: aborting due to 7 previous errors; 22 warnings emitted
 

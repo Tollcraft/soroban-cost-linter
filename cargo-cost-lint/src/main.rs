@@ -1,6 +1,10 @@
 mod config;
 mod error;
+// Declared but not yet wired into the CLI; see module_13.rs.
+#[allow(dead_code)]
 mod module_13;
+// Declared but not yet wired into the CLI; see module_15.rs.
+#[allow(dead_code)]
 mod module_15;
 
 use clap::{Parser, ValueEnum};
@@ -45,6 +49,13 @@ struct Cli {
 
     #[arg(long, help = "Emit the lint inventory and exit")]
     list_lints: bool,
+
+    #[arg(
+        long,
+        value_name = "LINT",
+        help = "Print the full documentation page for a lint and exit"
+    )]
+    explain: Option<String>,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
@@ -106,6 +117,14 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
 /// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
 /// (unknown lint names, invalid levels) is handled by
 /// `BudgetConfig::from_file_validated`, the single canonical config parser.
+// Not currently reached from `main()`, which still uses the inline
+// `validate_and_build_flags` path. `cargo-cost-lint` now carries two config
+// generations -- this one via `BudgetConfig::from_file_validated` (validates
+// lint names and levels) and the newer `config::Config::from_file_or_default`
+// (fallback defaults, no name validation). Both are tested; picking which one
+// ships is a behavioural decision for a maintainer, so this change leaves
+// `main()` as it found it rather than choosing silently.
+#[allow(dead_code)]
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
 
@@ -137,6 +156,7 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 /// actually wrote something wrong — are returned unchanged so the
 /// strict behaviour already covered by [`parse_budget_config`] and
 /// its existing tests is preserved.
+#[allow(dead_code)]
 fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     match parse_budget_config(path) {
         Ok(flags) => Ok(flags),
@@ -179,6 +199,11 @@ fn main() {
                 );
             }
         }
+        return;
+    }
+
+    if let Some(lint_name) = &cli.explain {
+        print_explanation(lint_name);
         return;
     }
 
@@ -731,7 +756,7 @@ mod tests {
     fn cli_default_values_when_no_flags() {
         let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
         assert_eq!(cli.config, None);
-        assert_eq!(cli.list_lints, false);
+        assert!(!cli.list_lints);
         assert_eq!(cli.format, OutputFormat::Text);
     }
 
@@ -746,7 +771,7 @@ mod tests {
     fn cli_parses_list_lints_flag() {
         let cli = Cli::try_parse_from(["cargo-cost-lint", "--list-lints"])
             .expect("parsing should succeed");
-        assert_eq!(cli.list_lints, true);
+        assert!(cli.list_lints);
         assert_eq!(cli.config, None);
         assert_eq!(cli.format, OutputFormat::Text);
     }
@@ -771,7 +796,7 @@ mod tests {
         .expect("parsing should succeed");
         assert_eq!(cli.config, Some("budget.toml".to_string()));
         assert_eq!(cli.format, OutputFormat::Json);
-        assert_eq!(cli.list_lints, true);
+        assert!(cli.list_lints);
     }
 
     #[test]
