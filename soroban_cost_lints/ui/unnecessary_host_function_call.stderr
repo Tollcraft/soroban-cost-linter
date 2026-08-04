@@ -4,7 +4,7 @@ warning: unnecessary host function call inside loop
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: unnecessary host function call inside loop
@@ -13,7 +13,7 @@ warning: unnecessary host function call inside loop
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
   --> $DIR/unnecessary_host_function_call.rs:42:20
@@ -21,7 +21,7 @@ warning: unnecessary host function call inside loop
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
   --> $DIR/unnecessary_host_function_call.rs:50:24
@@ -29,7 +29,7 @@ warning: unnecessary host function call inside loop
 LL |             let _seq = env.ledger().sequence(); // Should Warn
    |                        ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
   --> $DIR/unnecessary_host_function_call.rs:64:21
@@ -37,7 +37,7 @@ warning: unnecessary host function call inside loop
 LL |         let _seq1 = env.ledger().sequence(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
   --> $DIR/unnecessary_host_function_call.rs:65:21
@@ -45,7 +45,7 @@ warning: unnecessary host function call inside loop
 LL |         let _seq2 = env.ledger().sequence(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: call this function outside the loop and reuse the result
+   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: 6 warnings emitted
 

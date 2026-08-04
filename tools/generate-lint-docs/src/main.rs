@@ -85,7 +85,7 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
                         let raw = val.trim();
                         category = raw
                             .strip_prefix("LintCategory::")
-                            .unwrap_or(&raw)
+                            .unwrap_or(raw)
                             .to_string();
                     }
                 }
@@ -234,8 +234,12 @@ fn main() {
     let registry_json = generate_registry(&entries);
 
     if check_mode {
-        let current_readme = fs::read_to_string(&readme_path).unwrap_or_default();
-        let current_registry = fs::read_to_string(&registry_path).unwrap_or_default();
+        // Normalise line endings before comparing. On Windows, git checks these
+        // files out with CRLF while the generator emits LF, so a byte-for-byte
+        // comparison reports every generated file as stale on that host.
+        let normalise = |s: String| s.replace("\r\n", "\n");
+        let current_readme = normalise(fs::read_to_string(&readme_path).unwrap_or_default());
+        let current_registry = normalise(fs::read_to_string(&registry_path).unwrap_or_default());
 
         let mut exit_code = 0;
         if current_readme != readme {

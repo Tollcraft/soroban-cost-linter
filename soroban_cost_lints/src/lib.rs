@@ -80,23 +80,26 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use clippy_utils::macros::{FormatArgsStorage, is_panic, root_macro_call_first_node};
 use clippy_utils::res::MaybeResPath;
+use clippy_utils::source::snippet_opt;
 use clippy_utils::ty::peel_and_count_ty_refs;
 use clippy_utils::usage::local_used_after_expr;
+use clippy_utils::usage::mutated_variables;
+use clippy_utils::{get_parent_expr, is_in_test};
+use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
-use rustc_hir::{FnDecl, HirId, HirIdSet};
+use rustc_hir::{FnDecl, HirIdSet};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{Ty, TyCtxt};
 use rustc_span::def_id::DefId;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-
 
 dylint_linting::dylint_library!();
 
@@ -651,11 +654,11 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     });
 }
 
-/// Flags any Soroban storage accessor method call (including
-/// `Env::storage()`, which returns a `Storage` wrapper) that sits
-/// directly inside a loop body. Each iteration pays a separate storage
-/// cost, and the visible structural pattern almost always indicates an
-/// unintended per-iteration expense.
+// Flags any Soroban storage accessor method call (including
+// `Env::storage()`, which returns a `Storage` wrapper) that sits
+// directly inside a loop body. Each iteration pays a separate storage
+// cost, and the visible structural pattern almost always indicates an
+// unintended per-iteration expense.
 rustc_session::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
     Deny,
@@ -797,10 +800,10 @@ impl<'tcx> LateLintPass<'tcx> for LoopInvariantStorageAccess {
     }
 }
 
-/// Flags `.clone()` calls on a `soroban_sdk::Env` value. `Env` is a
-/// guest-side handle — cloning it produces no new host resource and
-/// merely wastes a few instructions, so the call is almost always either
-/// a typo or code cargo-culted from a non-Soroban codebase.
+// Flags `.clone()` calls on a `soroban_sdk::Env` value. `Env` is a
+// guest-side handle — cloning it produces no new host resource and
+// merely wastes a few instructions, so the call is almost always either
+// a typo or code cargo-culted from a non-Soroban codebase.
 rustc_session::declare_lint! {
     pub SOROBAN_INEFFICIENT_BYTES_CONCAT,
     Warn,
@@ -941,17 +944,18 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
                         storage_def_id,
                         key_text,
                     } => {
-                        if let Some((last_def_id, ref last_key)) = last_read {
-                            if last_def_id == storage_def_id && *last_key == key_text {
-                                span_lint_and_help(
-                                    cx,
-                                    SOROBAN_REDUNDANT_STORAGE_READ,
-                                    expr.span,
-                                    "redundant storage read: this key was already read without modification",
-                                    None,
-                                    "store the value from the first read and reuse it instead of reading again",
-                                );
-                            }
+                        if let Some((last_def_id, ref last_key)) = last_read
+                            && last_def_id == storage_def_id
+                            && *last_key == key_text
+                        {
+                            span_lint_and_help(
+                                cx,
+                                SOROBAN_REDUNDANT_STORAGE_READ,
+                                expr.span,
+                                "redundant storage read: this key was already read without modification",
+                                None,
+                                "store the value from the first read and reuse it instead of reading again",
+                            );
                         }
                         last_read = Some((storage_def_id, key_text));
                     }
@@ -985,8 +989,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     /// the `clone` method name and confirms the receiver type resolves to
     /// `soroban_sdk::Env` before emitting a help note.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        let receiver = if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) =
-            expr.kind
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
             && path_segment.ident.name.as_str() == "clone"
         {
             let is_env = if let Some(adt_def) =
@@ -1026,15 +1029,15 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 None,
                 "pass Env by reference or value instead of cloning",
             );
-        };
+        }
     }
 }
 
-/// Flags host accessor calls inside a loop whose result does not depend on
-/// per-iteration state and could be hoisted out. Each iteration pays the
-/// full cross-boundary cost; in aggregate this becomes the dominant
-/// expense of any contract that touches `ledger`, `crypto`, `events`, or
-/// `prng` inside a loop by mistake.
+// Flags host accessor calls inside a loop whose result does not depend on
+// per-iteration state and could be hoisted out. Each iteration pays the
+// full cross-boundary cost; in aggregate this becomes the dominant
+// expense of any contract that touches `ledger`, `crypto`, `events`, or
+// `prng` inside a loop by mistake.
 rustc_session::declare_lint! {
     pub UNNECESSARY_HOST_FUNCTION_CALL,
     Warn,
@@ -1044,9 +1047,9 @@ rustc_session::declare_lint! {
 pub struct UnnecessaryHostFunctionCall;
 rustc_session::impl_lint_pass!(UnnecessaryHostFunctionCall => [UNNECESSARY_HOST_FUNCTION_CALL]);
 
-/// Flags any construction of a `Host` value inside a loop. The `Host`
-/// handle is normally stashed in a contract-static — recreating it per
-/// iteration is almost always a leftover from refactoring.
+// Flags any construction of a `Host` value inside a loop. The `Host`
+// handle is normally stashed in a contract-static — recreating it per
+// iteration is almost always a leftover from refactoring.
 rustc_session::declare_lint! {
     pub HOST_IN_LOOP,
     Warn,
@@ -1228,10 +1231,10 @@ impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
 // symbol_new_for_short_literal — Lint
 // =======================================================================
 
-/// Flags `Symbol::new(&env, "literal")` calls whose literal satisfies the
-/// length and character constraints accepted by the `symbol_short!` macro.
-/// The macro lifts construction to compile time, eliminating both the
-/// per-call host invocation and the runtime string-validation cost.
+// Flags `Symbol::new(&env, "literal")` calls whose literal satisfies the
+// length and character constraints accepted by the `symbol_short!` macro.
+// The macro lifts construction to compile time, eliminating both the
+// per-call host invocation and the runtime string-validation cost.
 rustc_session::declare_lint! {
     pub SYMBOL_NEW_FOR_SHORT_LITERAL,
     Warn,
@@ -1537,11 +1540,11 @@ impl<'a, 'tcx> UnboundedLoopWalker<'a, 'tcx> {
 // bytes_append_in_loop — Lint
 // =======================================================================
 
-/// Flags repeated `.append`, `.push_back`, `.insert`, or
-/// `.extend_from_array` calls on a Soroban container (`Bytes`, `Vec`,
-/// `Map`) inside a loop. Each call reallocates host-side state, so the
-/// per-iteration cost rises with the iteration count and quickly becomes
-/// the dominant expense of the contract.
+// Flags repeated `.append`, `.push_back`, `.insert`, or
+// `.extend_from_array` calls on a Soroban container (`Bytes`, `Vec`,
+// `Map`) inside a loop. Each call reallocates host-side state, so the
+// per-iteration cost rises with the iteration count and quickly becomes
+// the dominant expense of the contract.
 rustc_session::declare_lint! {
     pub BYTES_APPEND_IN_LOOP,
     Warn,
@@ -2167,21 +2170,21 @@ impl<'tcx> Visitor<'tcx> for PersistentReadVisitor<'_, 'tcx> {
             let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
 
-            if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                if match_soroban_def_path(
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind()
+                && match_soroban_def_path(
                     self.cx,
                     adt_def.did(),
                     &["soroban_sdk", "storage", "Persistent"],
-                ) {
-                    match method_name {
-                        "get" | "has" => {
-                            self.reads.push(expr);
-                        }
-                        "extend_ttl" => {
-                            self.extend_ttl_found = true;
-                        }
-                        _ => {}
+                )
+            {
+                match method_name {
+                    "get" | "has" => {
+                        self.reads.push(expr);
                     }
+                    "extend_ttl" => {
+                        self.extend_ttl_found = true;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -2551,6 +2554,12 @@ impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
     }
 }
 
+// Linux-only. The checked-in `.stderr` fixtures are byte-compared against the
+// driver's output, and that output embeds host path separators -- `$DIR/x.rs`
+// on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
+// satisfy both. This never surfaced before because the Windows job failed at
+// checkout and never reached the test step.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");

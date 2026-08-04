@@ -7,10 +7,15 @@ use serde::Deserialize;
 use super::error::{LinterError, LinterResult};
 
 #[derive(Deserialize, Debug, Default, Clone)]
+// The newer config generation (fallback defaults, issue #211/#13). Not yet
+// wired into `main()`, which still uses the older validated path -- see the
+// note on `parse_budget_config` in main.rs.
+#[allow(dead_code)]
 pub struct Config {
     lints: Option<HashMap<String, String>>,
 }
 
+#[allow(dead_code)]
 impl Config {
     /// Reads and parses the budget.toml at `path`.
     ///
@@ -160,7 +165,7 @@ mod tests {
 soroban_storage_in_loop = "deny"
 "#,
         );
-        let config = Config::from_file_or_default(&path).unwrap();
+        let _config = Config::from_file_or_default(&path).unwrap();
         let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
         let lints = config.lints.expect("lints should be present");
         assert_eq!(
