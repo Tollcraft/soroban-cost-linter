@@ -2,6 +2,9 @@
 name = "generate-lint-docs"
 version = "0.1.0"
 edition = "2021"
+# Matches the sibling workspace crates and the repository LICENSE. Without it
+# cargo-deny reports this crate as unlicensed.
+license = "Apache-2.0"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

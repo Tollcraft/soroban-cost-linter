@@ -17,18 +17,18 @@ no-default-features = false
 # Security and maintenance checks via the RustSec Advisory Database
 # https://rustsec.org
 [advisories]
-# Deny known vulnerabilities — the core purpose of this check.
-vulnerability = "deny"
-# Deny crates flagged as unmaintained in the RustSec database.
-unmaintained = "deny"
-# Warn on unsound crates (but let CI pass). These are crates with unsound
-# API patterns that are not exploitable in the normal sense.
-unsound = "deny"
-# Warn on yanked crates. A yanked crate is a supply-chain risk.
+# Vulnerability, unsound and notice advisories no longer have configurable lint
+# levels — cargo-deny always errors on them, and the only way to accept one is
+# to list its ID in `ignore` below with a justification. The former
+# `vulnerability`/`unsound`/`notice` keys were removed from the schema, which is
+# why they are absent here.
+#
+# Which unmaintained crates to flag. "workspace" covers direct dependencies;
+# "all" additionally covers transitive ones, which pulls in advisories this
+# project cannot act on directly.
+unmaintained = "workspace"
+# A yanked crate is a supply-chain risk.
 yanked = "deny"
-# Ignore timeouts when fetching the advisory database; fail instead of silently
-# skipping security checks.
-notice = "warn"
 # Advisory IDs to ignore (none currently needed).
 ignore = [
     # Add entries like "RUSTSEC-2024-XXXX" with a comment explaining why the
@@ -40,11 +40,11 @@ ignore = [
 # The Rust ecosystem standard is MIT OR Apache-2.0 — copyleft licenses like
 # GPL/AGPL are rejected to avoid encumbering downstream users.
 [licenses]
-# Fail the check if a crate has no detectable license.
-unlicensed = "deny"
-# Explicitly deny copyleft licenses (GPL, AGPL, LGPL, MPL-2.0, etc.) that are
-# incompatible with the permissive Apache-2.0 ecosystem policy.
-copyleft = "deny"
+# The `allow` list is now exhaustive: anything not listed here is denied, and a
+# crate with no detectable license is denied too. That subsumes the former
+# `unlicensed` and `copyleft` keys, which were removed from the schema — GPL,
+# AGPL, LGPL and MPL-2.0 are rejected by virtue of not appearing below.
+#
 # Allow MIT and Apache-2.0 as well as permissive licenses that are
 # broadly compatible with the ecosystem standard.
 allow = [
@@ -52,8 +52,11 @@ allow = [
     "Apache-2.0",
     # Unicode-3.0 — required by unicode-ident (transitive dep of syn/proc-macro2)
     "Unicode-3.0",
-    # ISC — used by some crates (similar to MIT)
-    "ISC",
+    # Apache-2.0 WITH LLVM-exception — the license the Rust project itself uses,
+    # reached here through rustc_apfloat (transitive dep of the rustc/clippy
+    # internals). The LLVM exception only removes a restriction, so this is
+    # strictly more permissive than the plain Apache-2.0 already allowed above.
+    "Apache-2.0 WITH LLVM-exception",
 ]
 # The precedence for determining which license applies when multiple are detected.
 confidence-threshold = 0.8
