@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-test:
+  test:
     strategy:
       fail-fast: false
       matrix:
@@ -45,3 +45,20 @@ jobs:
         run: cargo test --workspace
       - name: Check lint docs are up to date
         run: cargo run -p generate-lint-docs -- --check
+
+  # Branch protection on `main` requires a status context named exactly
+  # `build-and-test`. The job above is a matrix, so it can only ever report
+  # `test (ubuntu-latest)` / `test (windows-latest)` — a bare name is never
+  # reported and every PR waits on it forever. This job supplies that context
+  # and stays correct if the matrix legs change.
+  build-and-test:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix result
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Matrix job 'test' reported: ${{ needs.test.result }}"
+            exit 1
+          fi
