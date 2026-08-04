@@ -53,10 +53,18 @@ If you prefer to set up the toolchain on your machine directly:
 2. Clone the repository and build:
 
    ```bash
-   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
    cd soroban-cost-linter
    cargo build
    ```
+
+   `--filter=blob:none` performs a *blobless* clone: you still get the complete
+   history and every branch, but file contents are fetched on demand rather than
+   up front. Build artefacts were committed to this repository early in its life
+   and later removed; the files are gone from the current tree, but they remain
+   in history and a full clone still downloads them. That is the difference
+   between a **252 MB** clone and a **1.1 MB** one. Plain `git clone` still
+   works if you prefer it.
 
 3. Run tests:
 
@@ -84,7 +92,7 @@ If you prefer to set up the toolchain on your machine directly:
 3. **Clone the repository and build:**
 
    ```powershell
-   git clone https://github.com/Tollcraft/soroban-cost-linter.git
+   git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
    cd soroban-cost-linter
    cargo build
    ```

@@ -27,7 +27,7 @@ If the pattern fails any of the above checks, discuss with the maintainers first
 cargo install cargo-dylint dylint-link --version "^6.0.1"
 
 # Clone the repository and enter it
-git clone https://github.com/Tollcraft/soroban-cost-linter.git
+git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
 cd soroban-cost-linter
 
 # Ensure you are on the develop branch (or the branch you will PR against)

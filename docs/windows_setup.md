@@ -71,7 +71,7 @@ Open the Ubuntu shell **from inside WSL2**, not from `/mnt/c/`:
 ```bash
 # ✅ Linux filesystem — fast, recommended
 cd ~
-git clone https://github.com/Tollcraft/soroban-cost-linter.git
+git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
 cd soroban-cost-linter
 cargo build
 ```
@@ -80,7 +80,7 @@ cargo build
 # ⚠️ Windows filesystem mounted at /mnt/c — works but is significantly slower
 #     and trips up scripts that translate CRLF↔LF.
 cd /mnt/c/Users/<you>/projects
-git clone https://github.com/Tollcraft/soroban-cost-linter.git
+git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
 cd soroban-cost-linter
 cargo build
 ```
@@ -226,7 +226,7 @@ $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 ### 4. Clone and build the linter
 
 ```powershell
-git clone https://github.com/Tollcraft/soroban-cost-linter.git
+git clone --filter=blob:none https://github.com/Tollcraft/soroban-cost-linter.git
 cd soroban-cost-linter
 cargo build
 ```

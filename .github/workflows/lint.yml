@@ -52,13 +52,40 @@ jobs:
       - name: Check lint docs are up to date
         run: cargo run -p generate-lint-docs -- --check
 
+  # Build artefacts were committed to this repository early on and later
+  # removed. They are gone from the tree but remain in history, which is why a
+  # full clone costs 252MB against a 1.1MB working tree. Nothing prevented that
+  # from happening, so this guards against a repeat.
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: No build artefacts committed
+        run: |
+          if tracked=$(git ls-files | grep -E '(^|/)target/'); then
+            echo "::error::Build output committed under a target/ directory:"
+            echo "$tracked"
+            exit 1
+          fi
+      - name: No large files committed
+        run: |
+          # The largest legitimate tracked file is ~108KB, so 5MB is generous.
+          large=$(git ls-files -z | xargs -0 du -k | awk '$1 > 5120 {print $1" KB\t"$2}')
+          if [ -n "$large" ]; then
+            echo "::error::Tracked files over 5MB. History is permanent, so these"
+            echo "::error::would inflate every clone forever even if deleted later:"
+            echo "$large"
+            exit 1
+          fi
+
   # Branch protection on `main` requires a status context named exactly
   # `build-and-test`. The job above is a matrix, so it can only ever report
   # `test (ubuntu-latest)` / `test (windows-latest)` — a bare name is never
   # reported and every PR waits on it forever. This job supplies that context
-  # and stays correct if the matrix legs change.
+  # and stays correct if the matrix legs change. Aggregating repo-hygiene here
+  # too keeps a single required context rather than adding a second one.
   build-and-test:
-    needs: test
+    needs: [test, repo-hygiene]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -66,5 +93,11 @@ jobs:
         run: |
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "Matrix job 'test' reported: ${{ needs.test.result }}"
+            exit 1
+          fi
+      - name: Check repo hygiene result
+        run: |
+          if [ "${{ needs.repo-hygiene.result }}" != "success" ]; then
+            echo "Job 'repo-hygiene' reported: ${{ needs.repo-hygiene.result }}"
             exit 1
           fi
