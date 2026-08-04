@@ -3,6 +3,9 @@ node_modules/
 package-lock.json
 tests/corpus/contracts/*/target
 tests/corpus/contracts/*/Cargo.lock
+# Single target directory shared by every corpus contract, so the Soroban SDK
+# is compiled once rather than once per contract. See real_world_corpus.rs.
+tests/corpus/.shared-target
 tests/cli_integration_workspace/target/
 # Build output from the dylint test fixtures. These were committed by mistake;
 # their nested `dylint/target/.../incremental/...` paths run to ~220 characters,

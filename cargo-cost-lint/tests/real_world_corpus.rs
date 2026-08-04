@@ -56,6 +56,16 @@ fn baseline_path() -> PathBuf {
     corpus_dir().join("baseline.json")
 }
 
+/// Every corpus contract is an independent cargo workspace depending on the
+/// same `soroban-sdk`, so left alone each one compiles that dependency tree
+/// into its own `target/` — nine near-identical builds, none of them shared and
+/// none of them covered by the CI cache, which only holds the root `target/`.
+/// Pointing every contract build and its dylint pass at one directory compiles
+/// the SDK once and leaves a single directory to cache.
+fn shared_target_dir() -> PathBuf {
+    corpus_dir().join(".shared-target")
+}
+
 /// Run `cargo-cost-lint --format json` in the given contract directory.
 fn run_lints_on_contract(contract_dir: &Path) -> Vec<Finding> {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
@@ -67,6 +77,7 @@ fn run_lints_on_contract(contract_dir: &Path) -> Vec<Finding> {
         .arg("json")
         .current_dir(contract_dir)
         .env("DYLINT_LIBRARY_PATH", &target_dir)
+        .env("CARGO_TARGET_DIR", shared_target_dir())
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
@@ -148,6 +159,7 @@ fn collect_and_report(contract_dir: &Path) -> (String, Vec<Finding>) {
     let build_status = Command::new(cargo)
         .arg("build")
         .current_dir(contract_dir)
+        .env("CARGO_TARGET_DIR", shared_target_dir())
         .status()
         .expect("Failed to build contract");
 

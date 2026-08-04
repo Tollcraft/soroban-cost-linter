@@ -22,17 +22,23 @@ jobs:
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Pin the cache identity. The default key embeds the job name, so
+          # renaming this job silently discards every existing cache entry.
+          shared-key: cost-linter
+          # rust-cache only covers the root `target/` by default; the corpus
+          # contracts build outside it into the shared directory below.
+          cache-directories: tests/corpus/.shared-target
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
-      - name: Build corpus contracts
-        run: |
-          cargo build --manifest-path tests/corpus/contracts/token/Cargo.toml
-          cargo build --manifest-path tests/corpus/contracts/timelock/Cargo.toml
-          cargo build --manifest-path tests/corpus/contracts/swap/Cargo.toml
+        # Upstream ships prebuilt binaries for Linux only, so cargo-binstall
+        # would not help windows-latest, where this step is slowest. What makes
+        # it fast is rust-cache restoring ~/.cargo/bin, which the pinned
+        # shared-key above keeps stable.
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
       - name: Generate baseline (first run only)
         # Explicit bash: the default shell on windows-latest is PowerShell,
         # which cannot parse `if ...; then`.
