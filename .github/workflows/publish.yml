@@ -15,36 +15,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up Rust
-        uses: actions/setup-rust@v2
+      # `actions/setup-rust` does not exist, so this job failed here on every
+      # run. Use the same action and pin as the Lint workflow. The toolchain
+      # must match `rust-toolchain` at the repository root — that file takes
+      # precedence over anything requested here, so a mismatch would silently
+      # install one toolchain and build with another.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          rust-version: stable
-          cache: true
+          toolchain: nightly-2026-04-16
+          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cost-linter
+
+      # `cargo-cost-lint` is a workspace member, so its artifacts land in the
+      # workspace-root `target/`, not `cargo-cost-lint/target/`. Build by
+      # package name to make the output location unambiguous.
       - name: Build binary
-        run: |
-          cd cargo-cost-lint
-          cargo build --release
+        run: cargo build --release --package cargo-cost-lint
 
-      - name: Determine tag name
-        id: tag
-        run: echo "::set-output name=tag_name::${GITHUB_REF#refs/tags/}"
-
-      - name: Create Release
+      - name: Create release and upload binary
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.tag.outputs.tag_name }}
-          name: ${{ steps.tag.outputs.tag_name }}
+          # `github.ref_name` is already the tag name for a tag push. The step
+          # this replaces used `::set-output`, which GitHub has disabled, so the
+          # tag name resolved to an empty string.
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
           draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload binary asset
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.tag.outputs.tag_name }}
-          files: cargo-cost-lint/target/release/cargo-cost-lint
+          # Treat any tag carrying a pre-release suffix (v1.2.3-rc1, and test
+          # tags such as v0.0.0-ci-test) as a pre-release, so it is never
+          # presented as the latest stable release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: target/release/cargo-cost-lint
+          # Without this the action reports success while uploading nothing,
+          # which is how v0.1.0 came to be published with no assets.
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
