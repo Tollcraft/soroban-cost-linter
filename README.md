@@ -246,3 +246,6 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 
 
 <!-- [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert). -->
+## Security / cargo-deny
+
+CI runs `cargo deny` using `deny.toml` to enforce dependency license and advisory policy. See `deny.toml` for the active rules; update that file when adjusting allowed licenses.

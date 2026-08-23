@@ -1,0 +1,9 @@
+fix: address #438
+
+docs: explain the cargo-deny policy the security job enforces
+
+- update README.md
+
+Fixes #438
+
+Signed-off-by: Vedant Madane <6527493+VedantMadane@users.noreply.github.com>
