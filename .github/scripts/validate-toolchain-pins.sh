@@ -31,20 +31,27 @@ check_nightly_in_file() {
     echo "::warning file=$file::No nightly version found in $file (expected ${CANONICAL_NIGHTLY})"
     return
   fi
+  local FAILED_LOCAL=0
   while IFS= read -r found; do
     if [ "$found" != "$CANONICAL_NIGHTLY" ]; then
       echo "::error file=$file::Mismatch in ${file}: found '${found}' but expected '${CANONICAL_NIGHTLY}'. Edit ${file} to use the canonical version."
       FAILED=1
+      FAILED_LOCAL=1
     fi
   done <<< "$matches"
-  if [ "$FAILED" -eq 0 ]; then
+  if [ "$FAILED_LOCAL" -eq 0 ]; then
     echo "OK: ${file} matches canonical nightly"
   fi
 }
 
 check_nightly_in_file ".github/workflows/lint.yml"
+check_nightly_in_file ".github/workflows/publish.yml"
 check_nightly_in_file "action.yml"
 check_nightly_in_file "docs/integration.md"
+check_nightly_in_file "templates/github-action.yml"
+check_nightly_in_file "CONTRIBUTING.md"
+check_nightly_in_file "README.md"
+check_nightly_in_file "docs/windows_setup.md"
 
 # ---- Check clippy_utils git rev matches the nightly date ----
 CLIPPY_REV=$(sed -n 's/.*rev = "\([a-f0-9]\{40\}\)".*/\1/p' soroban_cost_lints/Cargo.toml)

@@ -15,6 +15,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - name: Validate toolchain pins (Linux)
+        if: runner.os == 'Linux'
+        run: bash .github/scripts/validate-toolchain-pins.sh
+      - name: Validate toolchain pins (Windows)
+        if: runner.os == 'Windows'
+        run: .\.github\scripts\validate-toolchain-pins.ps1
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
