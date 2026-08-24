@@ -7,7 +7,7 @@ mod module_13;
 #[allow(dead_code)]
 mod module_15;
 
-use clap::{Parser, ValueEnum};
+use clap::{ArgGroup, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -43,6 +43,11 @@ struct LintFinding {
 #[command(name = "cargo-cost-lint")]
 #[command(version)]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
+#[command(group(
+    ArgGroup::new("verbosity")
+        .args(["quiet", "verbose"])
+        .multiple(false)
+))]
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
@@ -59,6 +64,15 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(long, help = "Suppress informational and warning output")]
+    quiet: bool,
+
+    #[arg(
+        long,
+        help = "Show diagnostic detail: config path, lint flags, spawned command"
+    )]
+    verbose: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -207,10 +221,16 @@ fn main() {
         return;
     }
 
+    let quiet = cli.quiet;
+    let verbose = cli.verbose;
     let mut lint_flags = Vec::new();
+    let mut resolved_config_path: Option<PathBuf> = None;
 
     if let Some(ref path) = resolve_config(cli.config.as_deref()) {
-        eprintln!("Using config: {}", path.display());
+        resolved_config_path = Some(path.clone());
+        if !quiet {
+            eprintln!("Using config: {}", path.display());
+        }
         if let Ok(config_str) = fs::read_to_string(path) {
             if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
                 match validate_and_build_flags(&config) {
@@ -221,11 +241,15 @@ fn main() {
                     }
                 }
             } else {
-                eprintln!("Warning: Failed to parse {}", path.display());
+                if !quiet {
+                    eprintln!("Warning: Failed to parse {}", path.display());
+                }
             }
         }
     } else {
-        eprintln!("Warning: budget.toml not found, using default lint levels.");
+        if !quiet {
+            eprintln!("Warning: budget.toml not found, using default lint levels.");
+        }
     }
 
     let mut cmd = Command::new("cargo");
@@ -233,15 +257,30 @@ fn main() {
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
 
+    let mut rustflags_value = String::new();
     if !lint_flags.is_empty() {
-        let mut rustflags = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
+        rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
-            if !rustflags.is_empty() {
-                rustflags.push(' ');
+            if !rustflags_value.is_empty() {
+                rustflags_value.push(' ');
             }
-            rustflags.push_str(&flag);
+            rustflags_value.push_str(&flag);
         }
-        cmd.env("DYLINT_RUSTFLAGS", rustflags);
+        cmd.env("DYLINT_RUSTFLAGS", &rustflags_value);
+    }
+
+    if verbose {
+        if let Some(ref p) = resolved_config_path {
+            eprintln!("[verbose] config: {}", p.display());
+        } else {
+            eprintln!("[verbose] config: (none — using default lint levels)");
+        }
+        if !rustflags_value.is_empty() {
+            eprintln!("[verbose] DYLINT_RUSTFLAGS: {}", rustflags_value);
+        } else {
+            eprintln!("[verbose] DYLINT_RUSTFLAGS: (empty)");
+        }
+        eprintln!("[verbose] command: {:?}", cmd);
     }
 
     if cli.format == OutputFormat::Json {
@@ -803,5 +842,37 @@ mod tests {
     fn cli_unknown_flag_returns_error() {
         let result = Cli::try_parse_from(["cargo-cost-lint", "--unknown-flag"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_parses_quiet_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--quiet"]).expect("parsing should succeed");
+        assert!(cli.quiet);
+        assert!(!cli.verbose);
+    }
+
+    #[test]
+    fn cli_parses_verbose_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--verbose"]).expect("parsing should succeed");
+        assert!(cli.verbose);
+        assert!(!cli.quiet);
+    }
+
+    #[test]
+    fn cli_quiet_and_verbose_are_mutually_exclusive() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--quiet", "--verbose"]);
+        assert!(
+            result.is_err(),
+            "--quiet and --verbose should not be allowed together"
+        );
+    }
+
+    #[test]
+    fn cli_quiet_default_is_false() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert!(!cli.quiet);
+        assert!(!cli.verbose);
     }
 }

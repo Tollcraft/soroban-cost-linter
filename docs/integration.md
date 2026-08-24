@@ -117,6 +117,32 @@ Rustc resolves the effective lint level in this order (highest priority first):
 
 A `deny` in `budget.toml` raises the level from `warn` (the default) to `deny`. An `#[allow]` attribute on a function body suppresses a `warn`-level lint for that function just as it normally would — but a `deny` in `budget.toml` will cause that same function to fail, because `#[allow]` cannot override `-D`. Conversely, `allow` in budget.toml suppresses the lint everywhere, even overriding `#[deny]` in source code.
 
+## Verbosity Control
+
+The wrapper has two flags for controlling how much non-finding output it prints.
+
+| Flag | Behaviour |
+|------|----------|
+| `--quiet` | Suppresses informational messages and warnings (config loaded, budget.toml missing, parse failures). Lint findings and hard errors are never suppressed. |
+| `--verbose` | Prints diagnostic detail to stderr: the resolved `budget.toml` path, the `DYLINT_RUSTFLAGS` values, and the full `cargo dylint` command line. |
+
+The two flags are mutually exclusive — clap rejects `--quiet --verbose` on the same command line. Neither flag changes the exit code or the lint findings.
+
+In JSON mode (`--format json`), both flags keep stdout as clean NDJSON. All diagnostic output goes to stderr.
+
+**Examples:**
+
+```bash
+# Silent run — only lint findings appear
+cargo cost-lint --quiet
+
+# Diagnostic run — see exactly what the tool is doing
+cargo cost-lint --verbose
+
+# JSON + verbose — clean JSON on stdout, diagnostics on stderr
+cargo cost-lint --format json --verbose > results.json
+```
+
 ## Editor / IDE Integration
 
 `soroban-cost-linter` can surface lint warnings directly in your editor through **rust-analyzer**'s check override mechanism. This works in any editor that supports rust-analyzer (VS Code, Zed, Helix, Neovim, etc.).
