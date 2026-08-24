@@ -49,6 +49,59 @@ body:
         // Refactored code or valid usage
     validations:
       required: true
+  - type: markdown
+    attributes:
+      value: |
+        ### Scope and Clippy Overlap
+        Please review [docs/scope_boundary.md](https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/scope_boundary.md) before answering these questions.
+  - type: input
+    id: clippy_lint
+    attributes:
+      label: "Which Clippy lint already catches this? (Or state that there is none)"
+      placeholder: "e.g., clippy::redundant_clone, or 'none'"
+    validations:
+      required: true
+  - type: dropdown
+    id: soroban_harm
+    attributes:
+      label: "Does the Soroban cost model make the pattern more harmful than in general Rust?"
+      options:
+        - "Yes"
+        - "No"
+        - "N/A"
+    validations:
+      required: true
+  - type: dropdown
+    id: clippy_orthogonal
+    attributes:
+      label: "Is the Clippy lint's trigger condition orthogonal to cost?"
+      options:
+        - "Yes"
+        - "No"
+        - "N/A"
+    validations:
+      required: true
+  - type: dropdown
+    id: actionable_guidance
+    attributes:
+      label: "Does the Soroban lint give actionable, Soroban-specific guidance that Clippy cannot?"
+      options:
+        - "Yes"
+        - "No"
+        - "N/A"
+    validations:
+      required: true
+  - type: dropdown
+    id: resource_dimension
+    attributes:
+      label: "Which resource dimension does the pattern affect?"
+      options:
+        - "CPU"
+        - "Ledger accesses"
+        - "I/O bytes"
+        - "Memory"
+    validations:
+      required: true
   - type: dropdown
     id: default_severity
     attributes:
