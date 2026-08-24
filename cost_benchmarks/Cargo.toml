@@ -8,3 +8,5 @@ description = "Cost measurement harness for soroban-cost-linter lints. Run via `
 
 [dependencies]
 soroban-sdk = "26"
+
+[workspace]
