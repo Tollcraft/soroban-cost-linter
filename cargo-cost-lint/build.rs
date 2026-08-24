@@ -77,11 +77,14 @@ fn parse_register_lints(content: &str) -> Result<Vec<String>> {
 /// level, and one-line description.
 ///
 /// Returns metadata for lints in the order they appear in source.
-fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
+fn parse_declare_lints(content: &str) -> Result<Vec<LintMeta>> {
     let mut results = Vec::new();
     let mut remaining = content;
+    let mut offset = 0;
 
     while let Some(start) = remaining.find("declare_lint! {") {
+        let absolute_start = offset + start;
+        let line_number = content[..absolute_start].lines().count() + 1;
         let after_start = &remaining[start + "declare_lint! {".len()..];
 
         // Find matching closing brace, respecting nested braces.
@@ -100,8 +103,10 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
         }
 
         if end_offset == 0 {
-            // Bail: malformed declare_lint!
-            break;
+            return Err(Error::Parse(format!(
+                "malformed declare_lint! block starting at line {}",
+                line_number
+            )));
         }
 
         let block = &after_start[..end_offset];
@@ -132,12 +137,19 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
                 level,
                 description,
             });
+        } else {
+            return Err(Error::Parse(format!(
+                "declare_lint! block at line {} is missing fields (found {} lines, expected at least 3)",
+                line_number, lines.len()
+            )));
         }
 
-        remaining = &after_start[end_offset + 1..];
+        let advance = start + "declare_lint! {".len() + end_offset + 1;
+        remaining = &remaining[advance..];
+        offset += advance;
     }
 
-    results
+    Ok(results)
 }
 
 /// Wraps `s` in the shortest raw string literal (`r"..."`, `r#"..."#`, ...)
@@ -168,10 +180,11 @@ fn main() {
 fn run() -> Result<()> {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
 
-    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs")?;
+    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs")
+        .map_err(|e| Error::Parse(format!("Failed to read ../soroban_cost_lints/src/lib.rs: {}", e)))?;
 
     let names = parse_register_lints(&content)?;
-    let declared = parse_declare_lints(&content);
+    let declared = parse_declare_lints(&content)?;
 
     // Build a name→metadata lookup from the declare_lint! blocks.
     let metadata_by_name: HashMap<&str, &LintMeta> =
@@ -180,28 +193,24 @@ fn run() -> Result<()> {
     // Derive LINT_INFO in the same order as register_lints, so the two
     // lists can never drift. If a lint is in register_lints but missing
     // a declare_lint! block, we panic at build time.
-    let ordered: Vec<&LintMeta> = names
-        .iter()
-        .map(|name| {
-            metadata_by_name
-                .get(name.as_str())
-                .copied()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "lint '{}' found in register_lints but not in any declare_lint! block",
-                        name
-                    )
-                })
-        })
-        .collect();
+    let mut ordered: Vec<&LintMeta> = Vec::new();
+    for name in &names {
+        let meta = metadata_by_name.get(name.as_str()).copied().ok_or_else(|| {
+            Error::Parse(format!(
+                "lint '{}' found in register_lints but not in any declare_lint! block",
+                name
+            ))
+        })?;
+        ordered.push(meta);
+    }
 
     // Cross-check: every declare_lint! must also appear in register_lints.
     for meta in &declared {
         if !names.contains(&meta.name) {
-            panic!(
+            return Err(Error::Parse(format!(
                 "lint '{}' has a declare_lint! block but is not in register_lints",
                 meta.name
-            );
+            )));
         }
     }
 
@@ -209,15 +218,14 @@ fn run() -> Result<()> {
     let docs_dir = "../docs/lints";
     for name in &names {
         let doc_path = format!("{}/{}.md", docs_dir, name);
-        assert!(
-            Path::new(&doc_path).exists(),
-            "lint '{}' is registered but has no doc file at '{}'. \
-             Create a documentation page at docs/lints/{}.md to explain \
-             what the lint does, why it is expensive, and how to fix it.",
-            name,
-            doc_path,
-            name
-        );
+        if !Path::new(&doc_path).exists() {
+            return Err(Error::Parse(format!(
+                "lint '{}' is registered but has no doc file at '{}'. \
+                 Create a documentation page at docs/lints/{}.md to explain \
+                 what the lint does, why it is expensive, and how to fix it.",
+                name, doc_path, name
+            )));
+        }
     }
 
     // --- Read each doc file and embed as raw string literals ---
@@ -225,7 +233,7 @@ fn run() -> Result<()> {
     for name in &names {
         let doc_path = format!("{}/{}.md", docs_dir, name);
         let doc_content = fs::read_to_string(&doc_path)
-            .unwrap_or_else(|e| panic!("Failed to read doc file '{}': {}", doc_path, e));
+            .map_err(|e| Error::Parse(format!("Failed to read doc file '{}': {}", doc_path, e)))?;
         // Notify cargo to re-run build.rs when any doc file changes
         println!("cargo:rerun-if-changed={}", doc_path);
         explanations.push((name.clone(), doc_content));
@@ -235,8 +243,11 @@ fn run() -> Result<()> {
     let mut search_from = 0usize;
     while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
         let absolute_start = search_from + start;
+        let line_number = content[..absolute_start].lines().count() + 1;
         let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').expect("Could not parse declare_lint block");
+        let end = after.find('}').ok_or_else(|| {
+            Error::Parse(format!("Could not parse declare_lint block starting at line {}", line_number))
+        })?;
         let block = &after[..end];
         // Filter out comment lines (///, //) and blank lines before splitting
         // by comma, so that doc-commented declare_lint! blocks parse correctly.
@@ -252,6 +263,11 @@ fn run() -> Result<()> {
             let default_level = parts[1].to_ascii_lowercase();
             let description = parts[2].trim().trim_matches('"').to_string();
             declarations.push((lint_name.to_string(), default_level, description));
+        } else {
+            return Err(Error::Parse(format!(
+                "declare_lint block at line {} is missing fields",
+                line_number
+            )));
         }
         search_from = absolute_start + 1;
     }
@@ -268,16 +284,16 @@ fn run() -> Result<()> {
                     continue;
                 }
                 if let Some(lint_part) = entry.split("lint:").nth(1) {
-                    let lint_name = lint_part.split(',').next().unwrap().trim();
+                    let lint_name = lint_part.split(',').next().ok_or_else(|| Error::Parse("Failed to parse lint name in LINT_METADATA".into()))?.trim();
                     if let Some(category_part) = entry.split("category:").nth(1) {
                         let category = category_part
                             .split(',')
                             .next()
-                            .unwrap()
+                            .ok_or_else(|| Error::Parse(format!("Failed to parse category for lint '{}'", lint_name)))?
                             .trim()
                             .split("::")
                             .last()
-                            .unwrap();
+                            .ok_or_else(|| Error::Parse(format!("Failed to parse category string for lint '{}'", lint_name)))?;
                         category_map.insert(lint_name.to_lowercase(), category.to_string());
                     }
                 }
@@ -299,7 +315,7 @@ fn run() -> Result<()> {
     }
     names_out.push_str("];\n");
     fs::write(&names_path, names_out)
-        .map_err(|e| Error::Parse(format!("Failed to write lint_names.rs: {}", e)))?;
+        .map_err(|e| Error::Parse(format!("Failed to write {}: {}", names_path.display(), e)))?;
 
     let mut metadata_out = String::new();
     metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");
@@ -356,7 +372,7 @@ fn run() -> Result<()> {
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");
     fs::write(&metadata_path, metadata_out)
-        .map_err(|e| Error::Parse(format!("Failed to write lint_metadata.rs: {}", e)))?;
+        .map_err(|e| Error::Parse(format!("Failed to write {}: {}", metadata_path.display(), e)))?;
 
     // Emit LintInfo/LINT_INFO for --list-lints (included by main.rs).
     let mut info_out = String::new();
@@ -375,7 +391,7 @@ fn run() -> Result<()> {
     }
     info_out.push_str("];\n");
     fs::write(&info_path, info_out)
-        .map_err(|e| Error::Parse(format!("Failed to write lint_info.rs: {}", e)))?;
+        .map_err(|e| Error::Parse(format!("Failed to write {}: {}", info_path.display(), e)))?;
 
     // --- Write lint_explanations.rs with embedded doc content as raw string literals ---
     let mut explanations_out = String::new();
@@ -393,7 +409,7 @@ fn run() -> Result<()> {
     }
     explanations_out.push_str("];\n");
     fs::write(&explanations_path, explanations_out)
-        .map_err(|e| Error::Parse(format!("Failed to write lint_explanations.rs: {}", e)))?;
+        .map_err(|e| Error::Parse(format!("Failed to write {}: {}", explanations_path.display(), e)))?;
 
     Ok(())
 }
