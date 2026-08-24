@@ -260,4 +260,3 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 
 
 <!-- [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert). -->
-Fixing issue 460

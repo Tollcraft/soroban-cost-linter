@@ -406,9 +406,41 @@ fn depends_on_loop_state<'tcx>(
     let mut read = LocalReadCollector::default();
     read.visit_expr(call);
 
-    read.reads
-        .iter()
-        .any(|hir_id| bound.bindings.contains(hir_id) || mutated.contains(hir_id))
+    // Issue #460: tighten invariance analysis.
+    // If the storage argument uses any non-local function call or method call (other than the storage call itself),
+    // we conservatively assume it might be variant.
+    struct ImpureCollector {
+        impure: bool,
+    }
+    impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for ImpureCollector {
+        fn visit_expr(&mut self, ex: &'tcx hir::Expr<'tcx>) {
+            match ex.kind {
+                hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
+                    self.impure = true;
+                }
+                _ => {}
+            }
+            rustc_hir::intravisit::walk_expr(self, ex);
+        }
+    }
+    // We only check the arguments for impurity, because the call itself is a MethodCall.
+    let mut impure = false;
+    if let hir::ExprKind::MethodCall(_, _, args, _) = call.kind {
+        for arg in args {
+            let mut collector = ImpureCollector { impure: false };
+            rustc_hir::intravisit::Visitor::visit_expr(&mut collector, arg);
+            if collector.impure {
+                impure = true;
+                break;
+            }
+        }
+    }
+
+    impure
+        || read
+            .reads
+            .iter()
+            .any(|hir_id| bound.bindings.contains(hir_id) || mutated.contains(hir_id))
 }
 
 /// Whether `expr` sits directly inside a loop body, returning that loop.
