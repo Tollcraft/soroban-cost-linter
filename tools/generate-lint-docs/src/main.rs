@@ -268,3 +268,555 @@ fn main() {
         println!("✅ Wrote {:?}", registry_path);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    // ------------------------------------------------------------------
+    // Fixture strings — kept deliberately simple so tests survive lint
+    // additions. Tests use fixture strings, not the real lib.rs.
+    // ------------------------------------------------------------------
+
+    const SINGLE_LINT: &str = r#"
+        rustc_session::declare_lint! {
+            pub SOROBAN_STORAGE_IN_LOOP,
+            Deny,
+            "storage operations inside a loop"
+        }
+    "#;
+
+    const TWO_LINTS: &str = r#"
+        rustc_session::declare_lint! {
+            pub SOROBAN_STORAGE_IN_LOOP,
+            Deny,
+            "storage operations inside a loop"
+        }
+
+        rustc_session::declare_lint! {
+            pub REDUNDANT_ENV_CLONE,
+            Warn,
+            "redundant clone on Env object"
+        }
+    "#;
+
+    const LINT_WITH_MULTILINE_DESC: &str = r#"
+        rustc_session::declare_lint! {
+            pub MY_LINT,
+            Warn,
+            "a lint with a
+multiline description"
+        }
+    "#;
+
+    const LINT_WITH_ATTRIBUTE: &str = r#"
+        /// This is a doc comment
+        #[allow(unused)]
+        rustc_session::declare_lint! {
+            pub MY_LINT,
+            Warn,
+            "some description"
+        }
+    "#;
+
+    const LINT_UNUSUAL_WHITESPACE: &str = r#"
+        rustc_session::declare_lint! {
+
+
+
+            pub MY_LINT,
+
+
+
+            Warn,
+
+
+
+            "some description"
+        }
+    "#;
+
+    const LINT_DESC_WITH_QUOTES: &str = r#"
+        rustc_session::declare_lint! {
+            pub MY_LINT,
+            Warn,
+            "a lint that mentions `backticks` and \"quotes\" in its description"
+        }
+    "#;
+
+    const EMPTY_INPUT: &str = "";
+
+    const NO_DECLARE_LINT: &str = r#"
+        // Just some regular code
+        fn main() {}
+    "#;
+
+    const MALFORMED_NO_CLOSE: &str = r#"
+        rustc_session::declare_lint! {
+            not_a_pub_line,
+            Warn,
+            "description"
+        }
+    "#;
+
+    const NON_PUB_NAME: &str = r#"
+        rustc_session::declare_lint! {
+            not_pub,
+            Warn,
+            "should be skipped"
+        }
+    "#;
+
+    // ------------------------------------------------------------------
+    // parse_lib_rs tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parse_single_lint_extracts_name_level_description() {
+        let entries = parse_lib_rs(SINGLE_LINT);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name_snake, "SOROBAN_STORAGE_IN_LOOP");
+        assert_eq!(entries[0].name_doc, "soroban_storage_in_loop");
+        assert_eq!(entries[0].level, "Deny");
+        assert_eq!(entries[0].description, "storage operations inside a loop");
+        assert!(entries[0].category.is_none());
+    }
+
+    #[test]
+    fn parse_two_lints() {
+        let entries = parse_lib_rs(TWO_LINTS);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name_snake, "SOROBAN_STORAGE_IN_LOOP");
+        assert_eq!(entries[1].name_snake, "REDUNDANT_ENV_CLONE");
+        assert_eq!(entries[1].level, "Warn");
+    }
+
+    #[test]
+    fn parse_deny_level() {
+        let entries = parse_lib_rs(SINGLE_LINT);
+        assert_eq!(entries[0].level, "Deny");
+    }
+
+    #[test]
+    fn parse_warn_level() {
+        let entries = parse_lib_rs(TWO_LINTS);
+        assert_eq!(entries[1].level, "Warn");
+    }
+
+    #[test]
+    fn parse_multiline_description() {
+        let entries = parse_lib_rs(LINT_WITH_MULTILINE_DESC);
+        assert_eq!(entries.len(), 1);
+        // The parser reads one line for the description; the raw string has a literal
+        // newline inside the quotes, so the parser captures only the first line.
+        assert_eq!(entries[0].description, "a lint with a");
+    }
+
+    #[test]
+    fn parse_description_with_quotes_and_backticks() {
+        let entries = parse_lib_rs(LINT_DESC_WITH_QUOTES);
+        assert_eq!(entries.len(), 1);
+        // The description should contain the literal backtick and quote characters
+        assert!(entries[0].description.contains("backticks"));
+        assert!(entries[0].description.contains("quotes"));
+    }
+
+    #[test]
+    fn parse_attribute_between_doc_comment_and_macro() {
+        let entries = parse_lib_rs(LINT_WITH_ATTRIBUTE);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name_snake, "MY_LINT");
+        assert_eq!(entries[0].description, "some description");
+    }
+
+    #[test]
+    fn parse_unusual_whitespace() {
+        // Extra blank lines between fields — rustfmt may produce these.
+        let entries = parse_lib_rs(LINT_UNUSUAL_WHITESPACE);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name_snake, "MY_LINT");
+        assert_eq!(entries[0].level, "Warn");
+        assert_eq!(entries[0].description, "some description");
+    }
+
+    #[test]
+    fn parse_empty_input_returns_empty() {
+        let entries = parse_lib_rs(EMPTY_INPUT);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_no_declare_lint_returns_empty() {
+        let entries = parse_lib_rs(NO_DECLARE_LINT);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_non_pub_name_is_skipped() {
+        let entries = parse_lib_rs(NON_PUB_NAME);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_malformed_input_does_not_panic() {
+        // A non-pub name should not panic — it just produces no entries.
+        let result = std::panic::catch_unwind(|| parse_lib_rs(MALFORMED_NO_CLOSE));
+        assert!(result.is_ok(), "parse_lib_rs panicked on malformed input");
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 0);
+    }
+
+    #[test]
+    fn parse_with_lint_metadata_block() {
+        let input = format!(
+            "{}\n\n{}",
+            TWO_LINTS,
+            r#"
+                pub const LINT_METADATA: &[LintMetadata] = &[
+                    LintMetadata {
+                        lint: SOROBAN_STORAGE_IN_LOOP,
+                        category: LintCategory::StorageOperations,
+                    },
+                    LintMetadata {
+                        lint: REDUNDANT_ENV_CLONE,
+                        category: LintCategory::Memory,
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].category.as_deref(), Some("StorageOperations"));
+        assert_eq!(entries[1].category.as_deref(), Some("Memory"));
+    }
+
+    // ------------------------------------------------------------------
+    // generate_readme tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn generate_readme_empty_entries() {
+        let md = generate_readme(&[]);
+        assert!(md.starts_with("# Lint Reference"));
+        assert!(md.contains("DO NOT EDIT THIS FILE BY HAND"));
+        assert!(md.contains("{% hint style=\"info\" %}"));
+    }
+
+    #[test]
+    fn generate_readme_single_lint_in_other_category() {
+        let entries = parse_lib_rs(SINGLE_LINT);
+        // SOROBAN_STORAGE_IN_LOOP has no metadata block, so category is None -> "Other"
+        let md = generate_readme(&entries);
+        assert!(md.contains("## Other"));
+        assert!(md.contains("`soroban_storage_in_loop`"));
+        assert!(md.contains("`deny`"));
+        assert!(md.contains("storage operations inside a loop"));
+    }
+
+    #[test]
+    fn generate_readme_categorized_lint() {
+        let input = format!(
+            "{}\n\n{}",
+            SINGLE_LINT,
+            r#"
+                pub const LINT_METADATA: &[LintMetadata] = &[
+                    LintMetadata {
+                        lint: SOROBAN_STORAGE_IN_LOOP,
+                        category: LintCategory::StorageOperations,
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        let md = generate_readme(&entries);
+        assert!(md.contains("## Storage Operations"));
+        assert!(!md.contains("## Other"));
+    }
+
+    #[test]
+    fn generate_readme_multiple_categories_ordered() {
+        let input = format!(
+            "{}\n\n{}",
+            TWO_LINTS,
+            r#"
+                pub const LINT_METADATA: &[LintMetadata] = &[
+                    LintMetadata {
+                        lint: SOROBAN_STORAGE_IN_LOOP,
+                        category: LintCategory::StorageOperations,
+                    },
+                    LintMetadata {
+                        lint: REDUNDANT_ENV_CLONE,
+                        category: LintCategory::Memory,
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        let md = generate_readme(&entries);
+        // StorageOperations should appear before Memory
+        let storage_pos = md.find("## Storage Operations").unwrap();
+        let memory_pos = md.find("## Memory").unwrap();
+        assert!(storage_pos < memory_pos);
+    }
+
+    // ------------------------------------------------------------------
+    // generate_registry tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn generate_registry_empty() {
+        let json = generate_registry(&[]);
+        assert_eq!(json, "[]");
+    }
+
+    #[test]
+    fn generate_registry_single_lint() {
+        let entries = parse_lib_rs(SINGLE_LINT);
+        let json = generate_registry(&entries);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_array());
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["name"], "soroban_storage_in_loop");
+        assert_eq!(arr[0]["default_level"], "deny");
+        assert_eq!(arr[0]["description"], "storage operations inside a loop");
+        assert_eq!(arr[0]["category"], "Other");
+        assert_eq!(arr[0]["docs_path"], "docs/lints/soroban_storage_in_loop.md");
+    }
+
+    #[test]
+    fn generate_registry_with_category() {
+        let input = format!(
+            "{}\n\n{}",
+            SINGLE_LINT,
+            r#"
+                pub const LINT_METADATA: &[LintMetadata] = &[
+                    LintMetadata {
+                        lint: SOROBAN_STORAGE_IN_LOOP,
+                        category: LintCategory::StorageOperations,
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        let json = generate_registry(&entries);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr[0]["category"], "StorageOperations");
+    }
+
+    #[test]
+    fn generate_registry_two_lints() {
+        let entries = parse_lib_rs(TWO_LINTS);
+        let json = generate_registry(&entries);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["name"], "soroban_storage_in_loop");
+        assert_eq!(arr[1]["name"], "redundant_env_clone");
+    }
+
+    // ------------------------------------------------------------------
+    // Golden-file tests — compare generated output against the real files
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn golden_readme_matches_actual_file() {
+        let ws = workspace_root();
+        let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+            .expect("Failed to read lib.rs — run from workspace root");
+        let entries = parse_lib_rs(&content);
+        let generated = generate_readme(&entries);
+        let actual = fs::read_to_string(ws.join("docs/lints/README.md"))
+            .expect("Failed to read docs/lints/README.md");
+        let actual = actual.replace("\r\n", "\n");
+        assert_eq!(
+            generated, actual,
+            "docs/lints/README.md is stale — regenerate with `cargo run -p generate-lint-docs`"
+        );
+    }
+
+    #[test]
+    fn golden_registry_matches_actual_file() {
+        let ws = workspace_root();
+        let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+            .expect("Failed to read lib.rs — run from workspace root");
+        let entries = parse_lib_rs(&content);
+        let generated = generate_registry(&entries);
+        let actual = fs::read_to_string(ws.join("docs/lints/lint-registry.json"))
+            .expect("Failed to read docs/lints/lint-registry.json");
+        let actual = actual.replace("\r\n", "\n");
+        assert_eq!(generated, actual, "docs/lints/lint-registry.json is stale — regenerate with `cargo run -p generate-lint-docs`");
+    }
+
+    // ------------------------------------------------------------------
+    // --check mode integration tests (subprocess)
+    // ------------------------------------------------------------------
+
+    fn workspace_root() -> PathBuf {
+        // When tests run, cwd is the crate directory (tools/generate-lint-docs).
+        // The workspace root is two levels up.
+        PathBuf::from("../..")
+            .canonicalize()
+            .expect("Failed to resolve workspace root")
+    }
+
+    fn find_binary() -> PathBuf {
+        let ws = workspace_root();
+        // cargo puts binaries in target/debug/.
+        let path = ws.join("target/debug/generate-lint-docs");
+        if path.exists() {
+            return path;
+        }
+        // Fallback: try to build it first.
+        let status = Command::new("cargo")
+            .args(["build", "-p", "generate-lint-docs"])
+            .current_dir(&ws)
+            .status()
+            .expect("Failed to run cargo build");
+        assert!(status.success(), "cargo build -p generate-lint-docs failed");
+        ws.join("target/debug/generate-lint-docs")
+    }
+
+    #[test]
+    fn check_mode_passes_when_files_match() {
+        let bin = find_binary();
+        let ws = workspace_root();
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", ws.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            status.success(),
+            "--check should pass when generated files are up to date"
+        );
+    }
+
+    #[test]
+    fn check_mode_fails_when_readme_is_stale() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Replicate the workspace layout the binary expects.
+        let fake_lib = root.join("soroban_cost_lints/src/lib.rs");
+        fs::create_dir_all(fake_lib.parent().unwrap()).unwrap();
+        fs::write(&fake_lib, SINGLE_LINT).unwrap();
+
+        let readme_path = root.join("docs/lints/README.md");
+        fs::create_dir_all(readme_path.parent().unwrap()).unwrap();
+        fs::write(&readme_path, "STALE CONTENT").unwrap();
+
+        let registry_path = root.join("docs/lints/lint-registry.json");
+        // Write the correct registry so only README is stale.
+        let entries = parse_lib_rs(SINGLE_LINT);
+        let correct_registry = generate_registry(&entries);
+        fs::write(&registry_path, &correct_registry).unwrap();
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when README is stale"
+        );
+    }
+
+    #[test]
+    fn check_mode_fails_when_registry_is_stale() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let fake_lib = root.join("soroban_cost_lints/src/lib.rs");
+        fs::create_dir_all(fake_lib.parent().unwrap()).unwrap();
+        fs::write(&fake_lib, SINGLE_LINT).unwrap();
+
+        let readme_path = root.join("docs/lints/README.md");
+        fs::create_dir_all(readme_path.parent().unwrap()).unwrap();
+        let entries = parse_lib_rs(SINGLE_LINT);
+        let correct_readme = generate_readme(&entries);
+        fs::write(&readme_path, &correct_readme).unwrap();
+
+        let registry_path = root.join("docs/lints/lint-registry.json");
+        fs::write(&registry_path, "STALE CONTENT").unwrap();
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when registry is stale"
+        );
+    }
+
+    #[test]
+    fn check_mode_passes_when_both_files_match() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        let fake_lib = root.join("soroban_cost_lints/src/lib.rs");
+        fs::create_dir_all(fake_lib.parent().unwrap()).unwrap();
+        fs::write(&fake_lib, SINGLE_LINT).unwrap();
+
+        let entries = parse_lib_rs(SINGLE_LINT);
+
+        let readme_path = root.join("docs/lints/README.md");
+        fs::create_dir_all(readme_path.parent().unwrap()).unwrap();
+        fs::write(&readme_path, generate_readme(&entries)).unwrap();
+
+        let registry_path = root.join("docs/lints/lint-registry.json");
+        fs::write(&registry_path, generate_registry(&entries)).unwrap();
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            status.success(),
+            "--check should pass when both files match"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Edge case: empty registry on parse failure must not silently pass --check
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn empty_registry_on_malformed_input_does_not_match_correct_file() {
+        // If the parser silently returns 0 entries for malformed input,
+        // the generated registry would be "[]".  Verify that this does NOT
+        // match the real (non-empty) lint-registry.json.
+        let entries = parse_lib_rs(MALFORMED_NO_CLOSE);
+        assert!(
+            entries.is_empty(),
+            "malformed input should produce no entries"
+        );
+        let generated_json = generate_registry(&entries);
+        assert_eq!(generated_json, "[]");
+
+        // The real registry is not empty.
+        let ws = workspace_root();
+        let real_json = fs::read_to_string(ws.join("docs/lints/lint-registry.json"))
+            .expect("Failed to read docs/lints/lint-registry.json");
+        let real_json = real_json.replace("\r\n", "\n");
+        assert_ne!(generated_json, real_json,
+            "A parse failure that produces an empty registry must NOT match the real file — that would silently wipe documentation");
+    }
+
+    #[test]
+    fn non_pub_input_produces_empty_output_not_matching_real_file() {
+        let entries = parse_lib_rs(NON_PUB_NAME);
+        assert!(entries.is_empty());
+        let generated_json = generate_registry(&entries);
+        let ws = workspace_root();
+        let real_json = fs::read_to_string(ws.join("docs/lints/lint-registry.json"))
+            .expect("Failed to read docs/lints/lint-registry.json");
+        let real_json = real_json.replace("\r\n", "\n");
+        assert_ne!(generated_json, real_json);
+    }
+}
