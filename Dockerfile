@@ -23,10 +23,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     ca-certificates \
     git \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
+# ── user setup ──────────────────────────────────────────────────────────────
+RUN groupadd --gid 1000 dev && \
+    useradd --uid 1000 --gid 1000 -m -s /bin/bash dev && \
+    echo "dev ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/dev && \
+    chmod 0440 /etc/sudoers.d/dev
+
+USER dev
+ENV HOME=/home/dev
+
 # ── toolchain pin (single source of truth: rust-toolchain) ──────────────────
-COPY rust-toolchain /tmp/rust-toolchain
+COPY --chown=dev:dev rust-toolchain /tmp/rust-toolchain
 
 RUN NIGHTLY=$(sed -n 's/^channel = "\(nightly-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)"$/\1/p' /tmp/rust-toolchain) && \
     if [ -z "${NIGHTLY}" ]; then echo "ERROR: could not parse nightly from rust-toolchain" >&2; exit 1; fi && \
@@ -37,11 +47,11 @@ RUN NIGHTLY=$(sed -n 's/^channel = "\(nightly-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)
     rustup component add rustc-dev llvm-tools-preview rustfmt clippy && \
     cargo install cargo-dylint dylint-link --version "^6.0.1" && \
     # ── reduce image size ────────────────────────────────────────────────
-    rm -rf /root/.cargo/registry/cache \
-           /root/.cargo/registry/src \
-           /root/.cargo/git/checkouts && \
+    rm -rf ${HOME}/.cargo/registry/cache \
+           ${HOME}/.cargo/registry/src \
+           ${HOME}/.cargo/git/checkouts && \
     rm /tmp/rust-toolchain
 
 # ── runtime environment ─────────────────────────────────────────────────────
-ENV PATH="/root/.cargo/bin:${PATH}"
+ENV PATH="${HOME}/.cargo/bin:${PATH}"
 WORKDIR /workspace
