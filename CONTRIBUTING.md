@@ -161,6 +161,24 @@ All PRs are checked by CI (Linux and Windows), and these checks must pass before
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
+### 4.1 Security and Policy Checks (`cargo-deny`)
+
+This project uses `cargo-deny` in CI (via `.github/workflows/security.yml`) to enforce policies on dependencies. The policy is defined in `deny.toml`. Note that the CI job runs only when manifests (`Cargo.toml`), the lockfile (`Cargo.lock`), or the workflow file change.
+
+**What the policy enforces:**
+- **Licenses:** Only `MIT`, `Apache-2.0`, `Unicode-3.0`, and `Apache-2.0 WITH LLVM-exception` are allowed. Copyleft licenses (like GPL/AGPL) are rejected.
+- **Advisories:** Vulnerabilities, unsoundness, and notice advisories from the RustSec database will cause the check to fail. Unmaintained crates in the workspace are also flagged.
+- **Bans:** Multiple versions of the same crate will trigger a warning.
+
+**Exceptions:**
+If you need an exception (e.g., to ignore a specific advisory or allow a license for a specific crate), you can propose adding it to `deny.toml`. Any such exception must include a comment explaining why it is safe for this project and under what condition it can be removed.
+
+**Running locally:**
+Run the check locally before pushing to catch policy violations early:
+```bash
+cargo deny check
+```
+
 ### 5. Upgrading the Nightly Toolchain
 
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files, the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`, and the container image.

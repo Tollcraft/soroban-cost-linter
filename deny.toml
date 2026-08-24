@@ -51,11 +51,13 @@ allow = [
     "MIT",
     "Apache-2.0",
     # Unicode-3.0 — required by unicode-ident (transitive dep of syn/proc-macro2)
+    # This can be removed if the dependency on unicode-ident is dropped.
     "Unicode-3.0",
     # Apache-2.0 WITH LLVM-exception — the license the Rust project itself uses,
     # reached here through rustc_apfloat (transitive dep of the rustc/clippy
     # internals). The LLVM exception only removes a restriction, so this is
     # strictly more permissive than the plain Apache-2.0 already allowed above.
+    # This can be removed if the dependency on rustc_apfloat is dropped.
     "Apache-2.0 WITH LLVM-exception",
 ]
 # The precedence for determining which license applies when multiple are detected.
@@ -64,6 +66,8 @@ exceptions = [
     # clippy_utils — from a pinned git rev of rust-clippy; it follows the same
     # dual MIT/Apache-2.0 license as the Rust project, but the license file may
     # not be detectable by cargo-deny from a git source.
+    # This can be removed if clippy_utils is published to crates.io and consumed
+    # from there instead of a git repo, or if we stop depending on it.
     { name = "clippy_utils", allow = ["MIT", "Apache-2.0"] },
 ]
 
@@ -77,6 +81,8 @@ unknown-git = "deny"
 # LFS sources are not used.
 allow-git = [
     # clippy_utils pinned from rust-clippy repository
+    # This can be removed if clippy_utils is published to crates.io and consumed
+    # from there instead of a git repo, or if we stop depending on it.
     "https://github.com/rust-lang/rust-clippy",
 ]
 
