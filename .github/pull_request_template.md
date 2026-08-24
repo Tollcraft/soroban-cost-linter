@@ -10,10 +10,12 @@ Closes #
 
 ## How Has This Been Tested?
 <!-- Please describe in detail how you tested your changes. -->
-- [ ] Added/Updated tests
-- [ ] Passed `cargo test`
-- [ ] Passed `cargo clippy`
-- [ ] Formatted with `cargo fmt`
+- [ ] Passed `cargo fmt --all -- --check`
+- [ ] Passed `cargo clippy --workspace --all-targets -- -D warnings`
+- [ ] Passed `cargo test --workspace`
+- [ ] _If you added or changed a lint:_ Regenerated UI fixtures with `UPDATE_EXPECT=1 cargo test --workspace` and reviewed every changed `.stderr` file
+- [ ] _If you added or changed a lint:_ Regenerated baseline with `BLESS=1 cargo test --test real_world_corpus --workspace`
+- [ ] _If you added or changed a lint:_ Added a CHANGELOG.md entry under the `[Unreleased]` section
 
 ## Types of changes
 <!-- What types of changes does your code introduce? -->
