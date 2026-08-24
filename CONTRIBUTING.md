@@ -163,6 +163,8 @@ Follow the patterns already used in the codebase: `soroban_cost_lints` uses edit
 
 ### 5. Upgrading the Nightly Toolchain
 
+> **Note**: If you use a local AI assistant, please ensure its configuration files (e.g., `opencode.json`, `package.json`) are not committed to the repository.
+
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files, the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`, and the container image.
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across multiple files. Upgrading is a multi-step, order-dependent process. The complete procedure—including identification of the matching `clippy_utils` revision, common breakages, and how to verify success—is documented in the [Nightly Upgrade Runbook](./docs/NIGHTLY_UPGRADE_RUNBOOK.md).
 

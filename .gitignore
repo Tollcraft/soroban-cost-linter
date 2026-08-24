@@ -13,4 +13,4 @@ tests/cli_integration_workspace/target/
 # outright on windows-latest before any build step runs.
 soroban_cost_lints/test_fixtures/*/target/
 *.rcgu.o
-/module.rs
+/module.rsopencode.json
