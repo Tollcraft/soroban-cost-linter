@@ -43,7 +43,7 @@ All lints are listed in `soroban_cost_lints/src/lib.rs` inside the `LINT_METADAT
 ```rust
 ("my_new_lint", LintMetadata {
     name: "my_new_lint",
-    category: Category::Compute, // choose StorageOperations, Compute, Memory, or EntryLifecycle
+    category: LintCategory::Compute, // pick one of the five LintCategory values — see docs/lint_categories.md
     default_level: LintLevel::Warn,
     description: "Detects ...",
 })

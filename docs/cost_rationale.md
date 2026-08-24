@@ -109,7 +109,7 @@ Raw Rust test estimates are **unreliable** for budget decisions — they can mis
 
 ## Per-Lint Resource Summary
 
-Each lint in this repository targets a specific resource dimension:
+Each lint in this repository targets a specific resource dimension. Every lint is assigned to one of the five [lint categories](lint_categories.md), and the table below shows the resource each one targets:
 
 | Lint | Primary resource targeted | Why it matters |
 |---|---|---|

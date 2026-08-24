@@ -5,6 +5,7 @@
 ## Concepts
 
 * [Cost Rationale](cost_rationale.md)
+* [Lint Categories](lint_categories.md)
 
 ## Guides
 

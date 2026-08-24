@@ -7,7 +7,7 @@ This guide explains how to add a custom Dylint lint to `soroban-cost-linter`. It
 A lint in this repository should identify a structural Soroban cost problem: something that is expensive because of the shape of the code, rather than because of a particular runtime input. Before writing code:
 
 1. Read the [scope boundary](docs/scope_boundary.md) to make sure the proposed lint belongs in this project and does not duplicate a Clippy lint.
-2. Choose the relevant cost category: `StorageOperations`, `Compute`, `Memory`, or `EntryLifecycle`.
+2. Choose the relevant [lint category](docs/lint_categories.md) for the pattern — every lint is assigned one of the five `LintCategory` values defined in `soroban_cost_lints/src/lib.rs`.
 3. Search the existing lints for similar traversal and matching logic.
 4. Decide whether the pattern is easiest to recognize in the AST or HIR.
 

@@ -44,6 +44,11 @@ and this project adheres to Semantic Versioning.
 - Split the `soroban_storage_in_loop` lint page into a `Writes (set)` and
   `Reads (get, has)` section, each with its own suggested-fix hint that lines
   up with the diagnostic help text.
+- Added `docs/lint_categories.md` documenting the five `LintCategory` values
+  (`StorageOperations`, `Compute`, `Memory`, `EntryLifecycle`,
+  `SymbolOperations`), the metered Soroban resource each maps to, and how to
+  pick a category for a new lint. The contributing and lint-authoring guides
+  now link to it instead of carrying an incomplete inline list.
 
 ## [0.1.1]
 
