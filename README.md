@@ -135,9 +135,12 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 |------|-------------|
 | `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
 | `--format <text\|json>` | Output format (default: `text`) |
+| `--color <auto\|always\|never>` | Colour preference forwarded to `cargo dylint` (default: `auto`). Honours `NO_COLOR` env var. |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--version` | Print the crate version and exit |
+
+The `--color` flag controls rustc's coloured diagnostics. The `NO_COLOR` environment variable (any non-empty value) disables colour when `--color` is not explicitly set. JSON mode is unaffected — it already pipes stdout and emits no colour.
 
 ### Running the linter
 

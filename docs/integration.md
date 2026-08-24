@@ -117,6 +117,33 @@ Rustc resolves the effective lint level in this order (highest priority first):
 
 A `deny` in `budget.toml` raises the level from `warn` (the default) to `deny`. An `#[allow]` attribute on a function body suppresses a `warn`-level lint for that function just as it normally would — but a `deny` in `budget.toml` will cause that same function to fail, because `#[allow]` cannot override `-D`. Conversely, `allow` in budget.toml suppresses the lint everywhere, even overriding `#[deny]` in source code.
 
+## Colour Control
+
+`soroban-cost-lint` does not colour anything itself, but in text mode it spawns `cargo dylint` with inherited stdio, so rustc's coloured diagnostics come straight through. The wrapper provides a `--color` flag and honours the `NO_COLOR` convention to control this.
+
+| Flag | Behaviour |
+|------|----------|
+| `--color auto` (default) | Colour when stdout is a terminal, none when redirected or piped |
+| `--color always` | Always emit colour, even when piped |
+| `--color never` | Never emit colour |
+
+The `NO_COLOR` environment variable (set to any non-empty value, per [no-color.org](https://no-color.org/)) disables colour when `--color` is not explicitly passed. The explicit `--color` flag always takes precedence.
+
+**Examples:**
+
+```bash
+# Default — colour in terminal, none when piped
+cargo cost-lint | less -R
+
+# Force colour off (useful for CI logs)
+NO_COLOR=1 cargo cost-lint
+
+# Force colour on (useful for debugging)
+cargo cost-lint --color always
+```
+
+In JSON mode (`--format json`), colour is never emitted — stdout is already piped and contains only NDJSON.
+
 ## Editor / IDE Integration
 
 `soroban-cost-linter` can surface lint warnings directly in your editor through **rust-analyzer**'s check override mechanism. This works in any editor that supports rust-analyzer (VS Code, Zed, Helix, Neovim, etc.).

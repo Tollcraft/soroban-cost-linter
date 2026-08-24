@@ -20,6 +20,13 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
+
 #[derive(Serialize, Debug)]
 struct Span {
     line_start: usize,
@@ -59,6 +66,14 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = ColorChoice::Auto,
+        help = "Colour preference forwarded to cargo dylint (default: auto)"
+    )]
+    color: ColorChoice,
 }
 
 #[derive(Deserialize, Debug)]
@@ -243,6 +258,25 @@ fn main() {
         }
         cmd.env("DYLINT_RUSTFLAGS", rustflags);
     }
+
+    // Determine colour preference: explicit --color flag wins, then
+    // NO_COLOR env var (any non-empty value = no colour), then auto.
+    let color_arg = match cli.color {
+        ColorChoice::Auto => {
+            if std::env::var("NO_COLOR")
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+            {
+                "never"
+            } else {
+                "auto"
+            }
+        }
+        ColorChoice::Always => "always",
+        ColorChoice::Never => "never",
+    };
+    cmd.arg("--color");
+    cmd.arg(color_arg);
 
     if cli.format == OutputFormat::Json {
         cmd.arg("--");
@@ -803,5 +837,25 @@ mod tests {
     fn cli_unknown_flag_returns_error() {
         let result = Cli::try_parse_from(["cargo-cost-lint", "--unknown-flag"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_color_default_is_auto() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn cli_parses_color_always() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "always"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Always);
+    }
+
+    #[test]
+    fn cli_parses_color_never() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "never"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Never);
     }
 }
