@@ -17,8 +17,19 @@ and this project adheres to Semantic Versioning.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
 - New lint `instance_storage_for_unbounded_data` detecting `env.storage().instance().set(...)` calls where the written value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten as a single blob on every contract invocation regardless of which call touches it.
-- `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
 - New lint `formatted_panic_payload` detecting `format!(...)`, `panic!(...)` with formatting arguments, and `.expect(&format!(...))`, all of which pull `core::fmt` string-formatting machinery into a `#![no_std]` contract; the diagnostic points at `panic_with_error!` with a `#[contracterror]` enum as the cheap alternative. Skips `#[cfg(test)]` code.
+- New lint `loop_invariant_storage_access` detecting storage operations inside loops whose operands are provably loop-invariant, so the access can be hoisted out of the loop.
+- New lint `soroban_redundant_storage_read` detecting multiple sequential reads of the same storage key without an intervening modification.
+- New lint `soroban_inefficient_bytes_concat` detecting inefficient `Bytes` concatenation inside loop bodies.
+- New lint `host_in_loop` detecting use of a `Host` object inside a loop.
+- New lint `contract_call_in_loop` detecting cross-contract invocation inside loop bodies, where each call pays VM instantiation and dispatch overhead.
+- New lint `unbounded_input_loop` detecting loop bounds derived from untrusted input with a storage write in the body, flagging caller-controlled storage write amplification.
+- New lint `storage_key_construction_in_loop` detecting storage keys constructed inside a loop body where they could be hoisted.
+- New lint `vec_where_slice_could_be_used` detecting `soroban_sdk::Vec` passed by value where a native Rust slice would suffice.
+- New lint `extend_ttl_in_loop` detecting `extend_ttl` calls inside loop bodies, which pay a metered host call and rent per iteration.
+- New lint `linear_scan_in_loop` detecting linear scans over collections inside loops, which turn O(n) work into O(n²).
+- New lint `persistent_read_without_ttl_extension` detecting reads of persistent storage without a TTL extension, avoiding the archival cost cliff.
+- New lint `unnecessary_string_to_bytes` detecting unnecessary `String` to `Bytes` conversions.
 
 ### Changed
 
@@ -38,9 +49,10 @@ and this project adheres to Semantic Versioning.
   keyed on the terminal `.get` / `.has` / `.set`. Intermediate accessor calls
   no longer contribute separate diagnostics.
 - Documented the `--config <PATH>` flag of `cargo cost-lint` in `README.md` and
-  `docs/integration.md`. The flag is the only supported way today to apply a
-  `budget.toml`; with it omitted, no config is loaded and every lint runs at
-  its declared default level (`warn`).
+  `docs/integration.md`. A `budget.toml` in the directory the tool is run from
+  is picked up automatically; `--config <PATH>` points it at a config
+  elsewhere. The tool does not walk up to a workspace-root `budget.toml`; when
+  no config is found, every lint runs at its declared default level.
 - Split the `soroban_storage_in_loop` lint page into a `Writes (set)` and
   `Reads (get, has)` section, each with its own suggested-fix hint that lines
   up with the diagnostic help text.
