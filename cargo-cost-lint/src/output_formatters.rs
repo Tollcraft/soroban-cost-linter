@@ -135,11 +135,16 @@ pub fn handle_finding<W: Write>(
     finding: &LintFinding,
     findings_acc: &mut Vec<LintFinding>,
     writer: &mut W,
-) -> io::Result<bool> {
+) -> crate::error::LinterResult<bool> {
     // Store the finding for later SARIF generation.
     findings_acc.push(finding.clone());
     if cli.format == OutputFormat::Json {
-        let json_str = serde_json::to_string(finding).unwrap();
+        // LintFinding only contains Strings and usizes, so it cannot fail to serialise.
+        // However, we still return an error instead of unwrapping to avoid panicking
+        // mid-stream if the type definition changes in the future, which would leave
+        // partial NDJSON on stdout that might be misinterpreted as complete.
+        let json_str = serde_json::to_string(finding)
+            .map_err(|e| crate::error::LinterError::Other(format!("Failed to serialise finding '{}': {}", finding.name, e)))?;
         writeln!(writer, "{}", json_str)?;
         return Ok(true);
     }
@@ -158,7 +163,7 @@ pub fn handle_finding<W: Write>(
 pub fn emit_sarif<W: Write>(
     findings: &[LintFinding],
     writer: &mut W,
-) -> io::Result<()> {
+) -> crate::error::LinterResult<()> {
     let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
     let mut rules: Vec<serde_json::Value> = Vec::new();
     let mut seen_rules: HashSet<String> = HashSet::new();
@@ -198,6 +203,19 @@ pub fn emit_sarif<W: Write>(
         });
     }
 
+    // SarifResult and SarifReport only contain standard types that cannot fail to serialise.
+    // We map the error and return it instead of unwrapping to guarantee the linter exits
+    // gracefully if these types are ever changed to include fallible data structures.
+    let results: Result<Vec<serde_json::Value>, crate::error::LinterError> = sarif_results
+        .iter()
+        .map(|r| {
+            serde_json::to_value(r).map_err(|e| {
+                crate::error::LinterError::Other(format!("Failed to serialise SARIF result for rule '{}': {}", r.rule_id, e))
+            })
+        })
+        .collect();
+    let results = results?;
+
     let sarif = SarifReport {
         schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
         version: "2.1.0".to_string(),
@@ -206,9 +224,10 @@ pub fn emit_sarif<W: Write>(
             version: package_version.to_string(),
             information_uri: Some("https://github.com/Tollcraft/soroban-cost-linter".to_string()),
             rules,
-        }}, results: sarif_results.iter().map(|r| serde_json::to_value(r).unwrap()).collect() }],
+        }}, results }],
     };
-    let sarif_json = serde_json::to_string_pretty(&sarif).unwrap();
+    let sarif_json = serde_json::to_string_pretty(&sarif)
+        .map_err(|e| crate::error::LinterError::Other(format!("Failed to serialise SARIF report: {}", e)))?;
     writeln!(writer, "{}", sarif_json)?;
     Ok(())
 }
