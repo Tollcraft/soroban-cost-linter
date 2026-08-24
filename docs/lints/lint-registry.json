@@ -1,7 +1,7 @@
 [
   {
     "category": "StorageOperations",
-    "default_level": "deny",
+    "default_level": "warn",
     "description": "storage operations inside a loop",
     "docs_path": "docs/lints/soroban_storage_in_loop.md",
     "name": "soroban_storage_in_loop"

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1785762136 with 83 findings across 9 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1785762136 with 84 findings across 9 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "contracts": {
     "storage_iter_closure": {
       "total": 3,
@@ -27,7 +27,7 @@
       ]
     },
     "storage_iter_good": {
-      "total": 2,
+      "total": 3,
       "true_positives": [],
       "false_positives": [
         {
@@ -35,6 +35,12 @@
           "file": "src/lib.rs",
           "line": 12,
           "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 10,
+          "message": "storage operation inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",

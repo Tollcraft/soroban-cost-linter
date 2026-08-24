@@ -661,7 +661,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
 // unintended per-iteration expense.
 rustc_session::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
-    Deny,
+    Warn,
     "storage operations inside a loop"
 }
 /// Concrete pass that fires [`SOROBAN_STORAGE_IN_LOOP`].

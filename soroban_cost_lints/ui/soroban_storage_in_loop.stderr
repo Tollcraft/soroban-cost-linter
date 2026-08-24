@@ -7,7 +7,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: consider reading the value before writing or using `.has()` to check existence
    = note: `#[warn(storage_write_without_read)]` on by default
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:51:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
@@ -42,7 +42,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
    = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:58:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
@@ -66,7 +66,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    |
    = help: hoist this storage operation out of the loop
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:65:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
@@ -98,7 +98,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    |
    = help: hoist this storage operation out of the loop
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:74:13
    |
 LL |             env.storage().instance().has(&i); // Should Warn
@@ -162,7 +162,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:91:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
@@ -178,7 +178,7 @@ LL |         env.storage().instance().set(x, &1); // Should Warn
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:98:9
    |
 LL |         env.storage().instance().set(x, &1); // Should Warn
@@ -194,7 +194,7 @@ LL |         env.storage().instance().set(x, &acc); // Should Warn
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:105:9
    |
 LL |         env.storage().instance().set(x, &acc); // Should Warn
@@ -234,5 +234,5 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |
    = help: hoist this storage operation out of the loop
 
-error: aborting due to 7 previous errors; 22 warnings emitted
 
+warning: 29 warnings emitted

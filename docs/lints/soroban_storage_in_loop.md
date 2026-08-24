@@ -1,6 +1,6 @@
 # `soroban_storage_in_loop`
 
-**Default Severity:** `deny` (High Confidence, High Impact)
+**Default Severity:** `warn`
 
 **Target Resource:** [Storage — ledger entry accesses and ledger I/O bytes](../cost_rationale.md#per-lint-resource-summary)
 
@@ -66,3 +66,9 @@ for _ in 0..10 {
 {% hint style="success" %}
 **For reads** (`get` / `has`), the "buffer mutations" advice does not apply — reads cannot be accumulated. Hoist a loop-invariant read out of the loop (issue it once, bind to a local, reuse) where possible. A read keyed by the loop variable is typically unavoidable; in that case consider pre-fetching a `Vec`/`Map` of keys up front if the read itself dominates the cost.
 {% endhint %}
+
+## Known False Positives (Patterns Deliberately Flagged)
+This lint uses an AST-based analysis and does not follow control flow across function boundaries. Therefore, it will report warnings for the following patterns that might be safe or unavoidable, which are treated as baselined false positives:
+- Storage reads keyed by loop variables that cannot be pre-fetched or batched natively.
+- Storage writes nested deeply inside iterations where accumulating in memory would hit limits earlier.
+If you hit an edge case where it is cheaper to write iteratively than to allocate a large host `Vec`, you can safely `#[allow(soroban_cost_lints::soroban_storage_in_loop)]`.

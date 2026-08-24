@@ -12,7 +12,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `deny` | storage operations inside a loop |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `warn` | storage operations inside a loop |
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
