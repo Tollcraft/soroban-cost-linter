@@ -1,5 +1,6 @@
 mod config;
 mod error;
+use error::{LinterError, LinterResult};
 // Declared but not yet wired into the CLI; see module_13.rs.
 #[allow(dead_code)]
 mod module_13;
@@ -289,9 +290,18 @@ fn main() {
         cmd.stdout(Stdio::piped());
     }
 
-    let mut child = cmd
-        .spawn()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let msg = if err.kind() == std::io::ErrorKind::NotFound {
+                "Failed to execute cargo dylint. Is cargo-dylint installed? Install with: cargo install cargo-dylint dylint-link".to_string()
+            } else {
+                format!("Failed to execute cargo dylint: {err}")
+            };
+            eprintln!("error: {msg}");
+            std::process::exit(1);
+        }
+    };
 
     if cli.format == OutputFormat::Json {
         let stdout = child.stdout.take().expect("Failed to capture stdout");
