@@ -263,3 +263,11 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 Fixing issue 463
 
 Fixing issue 463
+
+## Development Container Image
+A pre-built development container image containing the pinned nightly Rust toolchain, `cargo-dylint`, and `dylint-link` is published automatically for this project.
+You can pull it from the GitHub Container Registry:
+```bash
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
+```
+This image does NOT contain the linter itself; it is an environment for building and testing the linter. Mount your source code into `/workspace` to use it.
