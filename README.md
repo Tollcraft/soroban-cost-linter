@@ -103,6 +103,16 @@ cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/
 
 > **Why is the nightly required?** The lint library links against `rustc_private`, which is only available on nightly compilers. A different nightly version may produce linker errors due to ABI mismatches.
 
+### Verifying a downloaded binary
+
+Each release includes a `SHA256SUMS` file. After downloading both the binary and the checksums file, run:
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
+
 ## Quick Start
 
 1. Complete the [Prerequisites](#prerequisites) (nightly toolchain + Dylint).

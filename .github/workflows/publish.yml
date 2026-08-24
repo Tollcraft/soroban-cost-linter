@@ -37,6 +37,11 @@ jobs:
       - name: Build binary
         run: cargo build --release --package cargo-cost-lint
 
+      # Generate a checksum of the exact artefact that gets uploaded, so
+      # downloaders can run `sha256sum -c SHA256SUMS` to verify integrity.
+      - name: Generate SHA256SUMS
+        run: sha256sum target/release/cargo-cost-lint > SHA256SUMS
+
       - name: Create release and upload binary
         uses: softprops/action-gh-release@v3
         with:
@@ -51,7 +56,9 @@ jobs:
           # tags such as v0.0.0-ci-test) as a pre-release, so it is never
           # presented as the latest stable release.
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: target/release/cargo-cost-lint
+          files: |
+            target/release/cargo-cost-lint
+            SHA256SUMS
           # Without this the action reports success while uploading nothing,
           # which is how v0.1.0 came to be published with no assets.
           fail_on_unmatched_files: true
