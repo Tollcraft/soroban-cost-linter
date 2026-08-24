@@ -10,11 +10,13 @@ use super::error::{LinterError, LinterResult};
 // The newer config generation (fallback defaults, issue #211/#13). Not yet
 // wired into `main()`, which still uses the older validated path -- see the
 // note on `parse_budget_config` in main.rs.
+// Kept: scaffolding for newer config generation
 #[allow(dead_code)]
 pub struct Config {
     lints: Option<HashMap<String, String>>,
 }
 
+// Kept: part of the newer config generation
 #[allow(dead_code)]
 impl Config {
     /// Reads and parses the budget.toml at `path`.

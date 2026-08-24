@@ -1340,26 +1340,6 @@ impl<'tcx> Visitor<'tcx> for ParamHirIdCollector {
     }
 }
 
-/// Whether `expr` is a clamping method call (`.min(CONST)` or
-/// `.clamp(_, CONST)` where the constant is a literal).
-#[allow(dead_code)]
-fn is_clamped_by_constant(_cx: &LateContext<'_>, expr: &hir::Expr<'_>) -> bool {
-    if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind {
-        let name = path_segment.ident.name.as_str();
-        match name {
-            "min" => args
-                .first()
-                .is_some_and(|a| matches!(a.kind, hir::ExprKind::Lit(_))),
-            "clamp" => {
-                args.len() >= 2 && matches!(args[args.len() - 1].kind, hir::ExprKind::Lit(_))
-            }
-            _ => false,
-        }
-    } else {
-        false
-    }
-}
-
 impl<'tcx> LateLintPass<'tcx> for UnboundedInputLoop {
     /// Visits each named function, collecting parameter `HirId`s and walking
     /// the body for loops whose bound references a function parameter and

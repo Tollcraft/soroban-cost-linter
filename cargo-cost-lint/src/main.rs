@@ -1,9 +1,11 @@
 mod config;
 mod error;
 // Declared but not yet wired into the CLI; see module_13.rs.
+// Kept: scaffolding awaiting maintainer decision
 #[allow(dead_code)]
 mod module_13;
 // Declared but not yet wired into the CLI; see module_15.rs.
+// Kept: scaffolding awaiting maintainer decision
 #[allow(dead_code)]
 mod module_15;
 
@@ -138,6 +140,7 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
 // (fallback defaults, no name validation). Both are tested; picking which one
 // ships is a behavioural decision for a maintainer, so this change leaves
 // `main()` as it found it rather than choosing silently.
+// Kept: scaffolding for future feature implementations
 #[allow(dead_code)]
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
@@ -170,6 +173,7 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 /// actually wrote something wrong — are returned unchanged so the
 /// strict behaviour already covered by [`parse_budget_config`] and
 /// its existing tests is preserved.
+// Kept: scaffolding for future feature implementations
 #[allow(dead_code)]
 fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     match parse_budget_config(path) {

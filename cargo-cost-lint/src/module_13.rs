@@ -6,7 +6,6 @@ use std::path::Path;
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct BudgetConfig {
     #[serde(default)]
-    #[allow(dead_code)]
     pub lints: HashMap<String, String>,
 }
 
