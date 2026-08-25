@@ -1,0 +1,27 @@
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:61:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:61:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:61:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: 3 warnings emitted
+

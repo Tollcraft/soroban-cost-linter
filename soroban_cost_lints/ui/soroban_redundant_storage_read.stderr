@@ -1,0 +1,11 @@
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/soroban_redundant_storage_read.rs:59:26
+   |
+LL |     let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+   = note: `#[warn(soroban_redundant_storage_read)]` on by default
+
+warning: 1 warning emitted
+
