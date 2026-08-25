@@ -14,3 +14,8 @@ tests/cli_integration_workspace/target/
 soroban_cost_lints/test_fixtures/*/target/
 *.rcgu.o
 /module.rs
+# Local AI assistant configuration
+node_modules/
+package.json
+package-lock.json
+opencode.json

@@ -167,8 +167,9 @@ fn main() {
 
 fn run() -> Result<()> {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
+    println!("cargo:rerun-if-changed=../docs/lints");
 
-    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs")?;
+    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs").map_err(|e| Error::Parse(format!("Failed to read source file ../soroban_cost_lints/src/lib.rs: {}", e)))?;
 
     let names = parse_register_lints(&content)?;
     let declared = parse_declare_lints(&content);
@@ -225,7 +226,7 @@ fn run() -> Result<()> {
     for name in &names {
         let doc_path = format!("{}/{}.md", docs_dir, name);
         let doc_content = fs::read_to_string(&doc_path)
-            .unwrap_or_else(|e| panic!("Failed to read doc file '{}': {}", doc_path, e));
+            .unwrap_or_else(|e| panic!("Failed to read doc file '{}': expected it to be readable, got {}", doc_path, e));
         // Notify cargo to re-run build.rs when any doc file changes
         println!("cargo:rerun-if-changed={}", doc_path);
         explanations.push((name.clone(), doc_content));
@@ -236,7 +237,10 @@ fn run() -> Result<()> {
     while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
         let absolute_start = search_from + start;
         let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').expect("Could not parse declare_lint block");
+        let end = after.find('}').unwrap_or_else(|| {
+            let line_number = content[..absolute_start].lines().count() + 1;
+            panic!("Could not parse declare_lint! block at line {}. Expected a closing '}}'", line_number);
+        });
         let block = &after[..end];
         // Filter out comment lines (///, //) and blank lines before splitting
         // by comma, so that doc-commented declare_lint! blocks parse correctly.
@@ -268,16 +272,16 @@ fn run() -> Result<()> {
                     continue;
                 }
                 if let Some(lint_part) = entry.split("lint:").nth(1) {
-                    let lint_name = lint_part.split(',').next().unwrap().trim();
+                    let lint_name = lint_part.split(',').next().unwrap_or_else(|| panic!("Could not parse lint_name in LINT_METADATA entry: {}", entry)).trim();
                     if let Some(category_part) = entry.split("category:").nth(1) {
                         let category = category_part
                             .split(',')
                             .next()
-                            .unwrap()
+                            .unwrap_or_else(|| panic!("Could not parse category_part in LINT_METADATA entry: {}", entry))
                             .trim()
                             .split("::")
                             .last()
-                            .unwrap();
+                            .unwrap_or_else(|| panic!("Could not extract category name from: {}", category_part));
                         category_map.insert(lint_name.to_lowercase(), category.to_string());
                     }
                 }

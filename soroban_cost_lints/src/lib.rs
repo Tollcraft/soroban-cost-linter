@@ -258,11 +258,12 @@ fn callee_contains_soroban_op<'tcx>(
 
     visited.push(def_id);
 
-    let local_def_id = def_id.expect_local();
-    let body_id = tcx
-        .hir_node_by_def_id(local_def_id)
-        .body_id()
-        .expect("callee has no body");
+    let Some(local_def_id) = def_id.as_local() else {
+        return false;
+    };
+    let Some(body_id) = tcx.hir_node_by_def_id(local_def_id).body_id() else {
+        return false;
+    };
     let body = tcx.hir_body(body_id);
     let typeck = tcx.typeck(local_def_id);
 
