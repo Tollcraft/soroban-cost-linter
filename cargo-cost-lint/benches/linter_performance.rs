@@ -88,21 +88,24 @@ fn ensure_lint_library(target_dir: &Path) {
     }
 
     let lint_dir = workspace_root().join("soroban_cost_lints");
-    let status = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+    let mut command = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    command
         .arg("build")
         .current_dir(lint_dir)
         .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    if target_dir.ends_with("release") {
+        command.arg("--release");
+    }
+
+    let status = command
         .status()
         .expect("failed to build soroban_cost_lints before benchmarking");
     assert!(
         status.success(),
         "failed to build soroban_cost_lints before benchmarking"
     );
-
-    // The wrapper and the lint library must use the same target directory.
-    // This environment variable is applied by run_linter for every case.
-    let _ = target_dir;
 }
 
 fn iteration_count() -> usize {
@@ -141,7 +144,10 @@ fn percentile(sorted_samples: &[Duration], percentile: usize) -> Duration {
     sorted_samples[index]
 }
 
-#[test]
+fn main() {
+    linter_performance();
+}
+
 fn linter_performance() {
     let target_dir = profile_target_dir();
     let linter = ensure_linter_built(&target_dir);

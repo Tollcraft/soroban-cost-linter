@@ -31,6 +31,4 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          # Scan all workspace members with all features enabled.
-          arguments: "--all-features"
           log-level: warn

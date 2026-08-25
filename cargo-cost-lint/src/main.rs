@@ -1,45 +1,18 @@
+#[allow(dead_code)]
+mod budget_config;
 mod config;
 mod error;
-// Declared but not yet wired into the CLI; see module_13.rs.
-// Kept: scaffolding awaiting maintainer decision
 #[allow(dead_code)]
-mod module_13;
-// Declared but not yet wired into the CLI; see module_15.rs.
-// Kept: scaffolding awaiting maintainer decision
-#[allow(dead_code)]
-mod module_15;
+mod lint_name_set;
+mod output_formatters;
 
-use clap::{ArgGroup, Parser, ValueEnum};
+use clap::{ArgGroup, Parser};
+use output_formatters::{LintFinding, OutputFormat, Span};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
-
-#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(Serialize, Debug)]
-struct Span {
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
-}
-
-#[derive(Serialize, Debug)]
-struct LintFinding {
-    name: String,
-    level: String,
-    file: String,
-    span: Span,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    help: Option<String>,
-}
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
@@ -391,6 +364,7 @@ fn main() {
                                         span: span_obj,
                                         message: msg_text.to_string(),
                                         help: help_text,
+                                        suggestion: None,
                                     };
 
                                     if let Ok(json_str) = serde_json::to_string(&finding) {

@@ -1,9 +1,9 @@
-// src/output_formatters.rs
+#![allow(dead_code)]
+
 use clap::ValueEnum;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::io::{self, Write};
+use std::collections::HashSet;
+use std::io::Write;
 
 /// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
@@ -143,8 +143,12 @@ pub fn handle_finding<W: Write>(
         // However, we still return an error instead of unwrapping to avoid panicking
         // mid-stream if the type definition changes in the future, which would leave
         // partial NDJSON on stdout that might be misinterpreted as complete.
-        let json_str = serde_json::to_string(finding)
-            .map_err(|e| crate::error::LinterError::Other(format!("Failed to serialise finding '{}': {}", finding.name, e)))?;
+        let json_str = serde_json::to_string(finding).map_err(|e| {
+            crate::error::LinterError::Other(format!(
+                "Failed to serialise finding '{}': {}",
+                finding.name, e
+            ))
+        })?;
         writeln!(writer, "{}", json_str)?;
         return Ok(true);
     }
@@ -193,10 +197,14 @@ pub fn emit_sarif<W: Write>(
         sarif_results.push(SarifResult {
             rule_id: finding.name.clone(),
             level: level.to_string(),
-            message: SarifMessage { text: finding.message.clone() },
+            message: SarifMessage {
+                text: finding.message.clone(),
+            },
             locations: vec![SarifLocation {
                 physical_location: SarifPhysicalLocation {
-                    artifact_location: SarifArtifactLocation { uri: finding.file.clone() },
+                    artifact_location: SarifArtifactLocation {
+                        uri: finding.file.clone(),
+                    },
                     region,
                 },
             }],
@@ -210,7 +218,10 @@ pub fn emit_sarif<W: Write>(
         .iter()
         .map(|r| {
             serde_json::to_value(r).map_err(|e| {
-                crate::error::LinterError::Other(format!("Failed to serialise SARIF result for rule '{}': {}", r.rule_id, e))
+                crate::error::LinterError::Other(format!(
+                    "Failed to serialise SARIF result for rule '{}': {}",
+                    r.rule_id, e
+                ))
             })
         })
         .collect();
@@ -219,15 +230,23 @@ pub fn emit_sarif<W: Write>(
     let sarif = SarifReport {
         schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
         version: "2.1.0".to_string(),
-        runs: vec![SarifRun { tool: SarifTool { driver: SarifToolDriver {
-            name: "cargo-cost-lint".to_string(),
-            version: package_version.to_string(),
-            information_uri: Some("https://github.com/Tollcraft/soroban-cost-linter".to_string()),
-            rules,
-        }}, results }],
+        runs: vec![SarifRun {
+            tool: SarifTool {
+                driver: SarifToolDriver {
+                    name: "cargo-cost-lint".to_string(),
+                    version: package_version.to_string(),
+                    information_uri: Some(
+                        "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
+                    ),
+                    rules,
+                },
+            },
+            results,
+        }],
     };
-    let sarif_json = serde_json::to_string_pretty(&sarif)
-        .map_err(|e| crate::error::LinterError::Other(format!("Failed to serialise SARIF report: {}", e)))?;
+    let sarif_json = serde_json::to_string_pretty(&sarif).map_err(|e| {
+        crate::error::LinterError::Other(format!("Failed to serialise SARIF report: {}", e))
+    })?;
     writeln!(writer, "{}", sarif_json)?;
     Ok(())
 }

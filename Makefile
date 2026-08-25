@@ -1,4 +1,4 @@
-.PHONY: fmt lint test doc check
+.PHONY: fmt lint test bench doc check
 
 fmt:
 	cargo fmt --all
@@ -8,6 +8,9 @@ lint:
 
 test:
 	cargo test --workspace
+
+bench:
+	cargo bench -p cargo-cost-lint
 
 doc:
 	cargo doc --no-deps --open

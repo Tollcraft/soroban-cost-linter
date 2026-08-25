@@ -9,8 +9,9 @@
 # CI uses EmbarkStudios/cargo-deny-action@v2 in .github/workflows/security.yml
 
 [graph]
-# If a crate has an unlicensed dependency, the check will fail.
-all-features = false
+# Scan all workspace members with all features enabled to ensure local runs
+# match CI dependency auditing.
+all-features = true
 no-default-features = false
 
 # ------------------------------------ Advisories ------------------------------------
