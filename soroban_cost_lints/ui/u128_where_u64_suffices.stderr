@@ -1,0 +1,10 @@
+warning: 128-bit arithmetic where 64 bits would do
+  --> $DIR/u128_where_u64_suffices.rs:7:13
+   |
+LL |     let y = (x as u128) + 5u128;
+   |             ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: wasm32 is a 32-bit target; 128-bit operations are significantly more expensive. Since both operands fit in 64 bits, consider performing this operation in `u64`/`i64` and casting the result to 128-bit only if necessary.
+   = note: `-W u128-where-u64-suffices` implied by `-W warnings`
+
+warning: 1 warning emitted
