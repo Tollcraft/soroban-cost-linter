@@ -1687,7 +1687,11 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
 
                     let method_name = path_segment.ident.name.as_str();
                     if is_storage
-                        && (method_name == "get" || method_name == "has")
+                        && (method_name == "get"
+                            || method_name == "try_get"
+                            || method_name == "has"
+                            || method_name == "remove"
+                            || method_name == "update")
                         && !args.is_empty()
                     {
                         let receiver_snippet =
@@ -1801,8 +1805,10 @@ impl<'tcx> LateLintPass<'tcx> for InefficientBytesConcat {
 }
 
 fn is_bytes_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    if let Some(adt_def) = ty_adt_def(ty) {
+    let peeled = ty.peel_refs();
+    if let Some(adt_def) = ty_adt_def(peeled) {
         match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Bytes"])
+            || match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "bytes", "Bytes"])
     } else {
         false
     }
