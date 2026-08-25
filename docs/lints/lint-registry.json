@@ -159,5 +159,12 @@
     "description": "format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract",
     "docs_path": "docs/lints/formatted_panic_payload.md",
     "name": "formatted_panic_payload"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "unbounded recursion driven by caller-supplied input",
+    "docs_path": "docs/lints/unbounded_recursion.md",
+    "name": "unbounded_recursion"
   }
 ]

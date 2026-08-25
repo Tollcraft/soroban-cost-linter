@@ -30,6 +30,7 @@ and this project adheres to Semantic Versioning.
 - New lint `linear_scan_in_loop` detecting linear scans over collections inside loops, which turn O(n) work into O(n²).
 - New lint `persistent_read_without_ttl_extension` detecting reads of persistent storage without a TTL extension, avoiding the archival cost cliff.
 - New lint `unnecessary_string_to_bytes` detecting unnecessary `String` to `Bytes` conversions.
+- New lint `unbounded_recursion` detecting direct and mutual recursion whose depth is driven by caller-supplied input (e.g. recursion over a caller-supplied `Vec`/`&[T]` length), reporting the full call cycle (`process -> process_child -> process`).
 
 ### Changed
 

@@ -93,10 +93,11 @@ use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
-use rustc_hir::{FnDecl, HirIdSet};
+use rustc_hir::{FnDecl, HirId, HirIdSet};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
-use rustc_middle::ty::{Ty, TyCtxt};
-use rustc_span::def_id::DefId;
+use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_span::DesugaringKind;
+use rustc_span::def_id::{DefId, LocalDefId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -528,6 +529,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: UNBOUNDED_RECURSION,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: HOST_IN_LOOP,
         category: LintCategory::Compute,
     },
@@ -623,6 +628,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         SOROBAN_REDUNDANT_STORAGE_READ,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
+        UNBOUNDED_RECURSION,
         HOST_IN_LOOP,
         CONTRACT_CALL_IN_LOOP,
         LOOP_INVARIANT_STORAGE_ACCESS,
@@ -648,6 +654,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
+    lint_store.register_late_pass(|_| Box::new(UnboundedRecursion::default()));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -2576,6 +2583,317 @@ impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
 
 // Linux-only. The checked-in `.stderr` fixtures are byte-compared against the
 // driver's output, and that output embeds host path separators -- `$DIR/x.rs`
+// =======================================================================
+// unbounded_recursion — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub UNBOUNDED_RECURSION,
+    Warn,
+    "unbounded recursion driven by caller-supplied input"
+}
+
+#[derive(Default)]
+pub struct UnboundedRecursion {
+    /// Call graph edges collected while walking every function body:
+    /// `(caller_def_id, call_expr_hir_id, callee_def_id)`.
+    edges: Vec<(DefId, HirId, DefId)>,
+}
+
+rustc_session::impl_lint_pass!(UnboundedRecursion => [UNBOUNDED_RECURSION]);
+
+impl<'tcx> LateLintPass<'tcx> for UnboundedRecursion {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        kind: FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        def_id: LocalDefId,
+    ) {
+        // Only analyze free functions and methods. Recursion through closures,
+        // trait objects and function pointers is out of scope: the call target
+        // cannot be resolved to a single local `DefId`, so it is never recorded
+        // as an edge and therefore never forms a cycle we would report.
+        if !matches!(kind, FnKind::ItemFn(..) | FnKind::Method(..)) {
+            return;
+        }
+
+        let mut collector = FnCallCollector {
+            cx,
+            caller: def_id.to_def_id(),
+            edges: &mut self.edges,
+        };
+        collector.visit_body(body);
+    }
+
+    fn check_crate_post(&mut self, cx: &LateContext<'tcx>) {
+        analyze_recursion(cx, &self.edges);
+    }
+}
+
+/// Walks a single function body and records `(caller, call_site, callee)` edges
+/// for every call whose target resolves to a local function definition.
+struct FnCallCollector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    caller: DefId,
+    edges: &'a mut Vec<(DefId, HirId, DefId)>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for FnCallCollector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        match expr.kind {
+            hir::ExprKind::Call(callee, _args) => {
+                if let hir::ExprKind::Path(qpath) = callee.kind
+                    && let Some(callee_id) = self.cx.qpath_res(&qpath, callee.hir_id).opt_def_id()
+                    && callee_id.is_local()
+                {
+                    self.edges.push((self.caller, expr.hir_id, callee_id));
+                }
+            }
+            hir::ExprKind::MethodCall(..) => {
+                if let Some(callee_id) = self.cx.typeck_results().type_dependent_def_id(expr.hir_id)
+                    && callee_id.is_local()
+                {
+                    self.edges.push((self.caller, expr.hir_id, callee_id));
+                }
+            }
+            // Recursion through closures is out of scope; do not look inside them.
+            hir::ExprKind::Closure(..) => return,
+            _ => {}
+        }
+        intravisit::walk_expr(self, expr);
+    }
+
+    // Nested items are separate definitions; do not attribute their calls to the
+    // enclosing function.
+    fn visit_item(&mut self, _item: &'tcx hir::Item<'tcx>) {}
+}
+
+/// Verdict for a single recursive call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Boundedness {
+    /// Recursion depth is demonstrably caller-controlled -> report.
+    Unbounded,
+    /// Recursion depth is provably fixed at compile time -> stay silent.
+    Bounded,
+    /// Could not prove either way -> stay silent.
+    Unknown,
+}
+
+/// Verdict for a single argument passed at a recursive call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArgB {
+    Unbounded,
+    Const,
+    Unknown,
+}
+
+fn analyze_recursion(cx: &LateContext<'_>, edges: &[(DefId, HirId, DefId)]) {
+    // Adjacency list: caller -> callees.
+    let mut adj: HashMap<DefId, Vec<DefId>> = HashMap::new();
+    for (caller, _hir, callee) in edges {
+        adj.entry(*caller).or_default().push(*callee);
+    }
+
+    for &(caller, call_hir, callee) in edges {
+        // Only edges that close a cycle back to the caller are recursion.
+        if !can_reach(&adj, callee, caller) {
+            continue;
+        }
+        // `typeck_results()` is only valid inside a body, so fetch the
+        // typeck results for the function that owns this call site.
+        let owner = cx.tcx.hir_enclosing_body_owner(call_hir);
+        let tyck = cx.tcx.typeck(owner);
+        if call_boundedness(cx, tyck, cx.tcx.hir_expect_expr(call_hir)) == Boundedness::Unbounded {
+            let cycle = find_cycle(&adj, caller, callee, caller);
+            let names: Vec<String> = cycle
+                .iter()
+                .map(|d| cx.tcx.item_name(*d).to_string())
+                .collect();
+            let cycle_str = names.join(" -> ");
+            span_lint_and_help(
+                cx,
+                UNBOUNDED_RECURSION,
+                cx.tcx.hir_expect_expr(call_hir).span,
+                "unbounded recursion in contract function",
+                None,
+                format!(
+                    "recursion depth is driven by caller input (e.g. over a caller-supplied Vec/&[T] length). Bound the depth or rewrite as an iterative loop. Cycle: {cycle_str}"
+                ),
+            );
+        }
+    }
+}
+
+/// Returns `true` if there is a non-trivial path from `from` to `to` in `adj`.
+fn can_reach(adj: &HashMap<DefId, Vec<DefId>>, from: DefId, to: DefId) -> bool {
+    let mut stack: Vec<DefId> = adj.get(&from).cloned().unwrap_or_default();
+    let mut seen: HashSet<DefId> = HashSet::new();
+    while let Some(cur) = stack.pop() {
+        if cur == to {
+            return true;
+        }
+        if seen.insert(cur)
+            && let Some(next) = adj.get(&cur)
+        {
+            stack.extend(next.iter().copied());
+        }
+    }
+    false
+}
+
+/// Builds one representative cycle path `start -> ... -> target`, entering
+/// through `first` (a direct successor of `start` that reaches `target`).
+fn find_cycle(
+    adj: &HashMap<DefId, Vec<DefId>>,
+    start: DefId,
+    first: DefId,
+    target: DefId,
+) -> Vec<DefId> {
+    let mut path = vec![start];
+
+    fn go(
+        cur: DefId,
+        adj: &HashMap<DefId, Vec<DefId>>,
+        target: DefId,
+        path: &mut Vec<DefId>,
+    ) -> bool {
+        path.push(cur);
+        if cur == target {
+            return true;
+        }
+        if let Some(next) = adj.get(&cur) {
+            for n in next {
+                if *n == target {
+                    path.push(*n);
+                    return true;
+                }
+                if !path.contains(n) && go(*n, adj, target, path) {
+                    return true;
+                }
+            }
+        }
+        path.pop();
+        false
+    }
+
+    if go(first, adj, target, &mut path) {
+        path
+    } else {
+        vec![start, target]
+    }
+}
+
+fn call_boundedness<'tcx>(
+    cx: &LateContext<'tcx>,
+    tyck: &ty::TypeckResults<'tcx>,
+    call: &'tcx hir::Expr<'tcx>,
+) -> Boundedness {
+    let mut args: Vec<&'tcx hir::Expr<'tcx>> = Vec::new();
+    match call.kind {
+        hir::ExprKind::Call(_, a) => args.extend(a.iter()),
+        hir::ExprKind::MethodCall(_, recv, a, _) => {
+            args.push(recv);
+            args.extend(a.iter());
+        }
+        _ => return Boundedness::Unknown,
+    }
+
+    let mut any_unbounded = false;
+    let mut all_const = !args.is_empty();
+
+    for arg in &args {
+        match arg_boundedness(cx, tyck, arg) {
+            ArgB::Unbounded => any_unbounded = true,
+            ArgB::Const => {}
+            ArgB::Unknown => all_const = false,
+        }
+    }
+
+    if any_unbounded {
+        Boundedness::Unbounded
+    } else if all_const {
+        Boundedness::Bounded
+    } else {
+        Boundedness::Unknown
+    }
+}
+
+fn arg_boundedness<'tcx>(
+    cx: &LateContext<'tcx>,
+    tyck: &ty::TypeckResults<'tcx>,
+    arg: &'tcx hir::Expr<'tcx>,
+) -> ArgB {
+    // A caller-supplied collection (Vec/String/&[T]/...) threaded into the
+    // recursive call with no structural progress is caller-controlled depth.
+    if let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = arg.kind
+        && matches!(path.res, hir::def::Res::Local(_))
+    {
+        let ty = tyck.expr_ty(arg).peel_refs();
+        match ty.kind() {
+            ty::TyKind::Slice(_) => return ArgB::Unbounded,
+            ty::TyKind::Adt(adt, _) => {
+                let name = cx.tcx.item_name(adt.did()).to_string();
+                if matches!(name.as_str(), "Vec" | "String" | "VecDeque" | "LinkedList") {
+                    return ArgB::Unbounded;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Slicing / tail consumption of caller data: `x[..]`, `x[1..]`, `&x[1..]`,
+    // `x.to_vec()` on a slice, `x.pop()`, `x.split_first()`, ...
+    if is_slicing(arg) {
+        return ArgB::Unbounded;
+    }
+
+    if is_const_expr(arg) {
+        return ArgB::Const;
+    }
+
+    ArgB::Unknown
+}
+
+fn is_slicing<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+    match expr.kind {
+        hir::ExprKind::Index(_, idx, _) => is_range(idx),
+        hir::ExprKind::AddrOf(_, _, inner) => is_slicing(inner),
+        hir::ExprKind::MethodCall(seg, _recv, _args, _) => matches!(
+            seg.ident.name.as_str(),
+            "to_vec"
+                | "to_string"
+                | "pop"
+                | "split_first"
+                | "split_last"
+                | "split_off"
+                | "drain"
+                | "remove"
+        ),
+        _ => false,
+    }
+}
+
+fn is_range<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+    // Range literals desugar to `Range*` struct constructors, so detect them by
+    // their desugaring span rather than a dedicated `ExprKind` variant.
+    expr.span.is_desugaring(DesugaringKind::RangeExpr)
+}
+
+fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+    match expr.kind {
+        hir::ExprKind::Lit(_) => true,
+        hir::ExprKind::Array(elems) => elems.iter().all(|e| is_const_expr(e)),
+        hir::ExprKind::Unary(_, e) => is_const_expr(e),
+        hir::ExprKind::Binary(_, a, b) => is_const_expr(a) && is_const_expr(b),
+        hir::ExprKind::AddrOf(_, _, e) => is_const_expr(e),
+        hir::ExprKind::Tup(elems) => elems.iter().all(|e| is_const_expr(e)),
+        _ => false,
+    }
+}
+
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
 // satisfy both. This never surfaced before because the Windows job failed at
 // checkout and never reached the test step.

@@ -30,6 +30,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
 | [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
+| [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 
 ## Memory
 

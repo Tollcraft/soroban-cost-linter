@@ -42,6 +42,18 @@ This lint fires when `Symbol::new(&env, literal)` is called with a short literal
 - The literal is constructed dynamically (non-literal argument) — the lint already handles this.
 - The macro `symbol_short!` is unavailable in your environment (e.g., an older SDK version).
 
+### `unbounded_recursion`
+
+This lint flags a recursive call cycle (direct or mutual) whose depth is driven by
+caller-supplied input — a caller-supplied `Vec`/`&[T]` length, a tail slice, or a
+slicing/`to_vec` operation on caller data. False positives and accepted gaps:
+
+- **Structurally-bounded recursion reported as unbounded:** a collection consumed by a method *not* in the recognized tail set (e.g. a custom `fn rest(&self) -> Self` returning a strict sub-slice) may not be recognized as progress. Prefer `#[allow(unbounded_recursion)]` for such intentional, provably-bounded cases.
+- **Constant-argument "infinite-looking" recursion:** `fn f(n: u32) { if n == 0 { return; } f(3); }` passes a constant argument, so the lint treats it as bounded and stays silent even though `n` never decreases. The lint keys off the *argument shape*, not the actual termination proof, to stay sound and simple.
+- **Plain integer parameters threaded through the recursion:** `fn process(n: u32) { if n == 0 { return; } process(n - 1); }` is structurally a countdown, but the *initial* value of `n` is caller-supplied, so the depth is not provably constant. The lint treats it as *unknown* and stays silent.
+- **Recursion through trait objects, function pointers, or closures:** the call target cannot be resolved to a single local `DefId`, so these calls are never recorded as graph edges and never form a cycle the lint reports.
+- **Recursion whose bound the analysis cannot determine:** generics, complex control flow, or arguments that are neither a constant nor a caller-supplied collection with a tail operation are all left alone.
+
 ## Suppression Methods
 
 You have three layers of suppression, each suited to a different scope.
