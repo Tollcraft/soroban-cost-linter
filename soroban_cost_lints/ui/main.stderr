@@ -40,14 +40,14 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/main.rs:242:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
-   = note: `#[deny(soroban_storage_in_loop)]` on by default
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: loop-invariant storage operation inside a loop
   --> $DIR/main.rs:242:9
@@ -74,7 +74,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
    = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/main.rs:249:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
@@ -98,7 +98,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    |
    = help: hoist this storage operation out of the loop
 
-error: storage operation inside a loop
+warning: storage operation inside a loop
   --> $DIR/main.rs:256:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
@@ -422,5 +422,4 @@ LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Wa
    |
    = help: store the value from the first read and reuse it instead of reading again
 
-error: aborting due to 3 previous errors; 49 warnings emitted
-
+warning: 52 warnings emitted
