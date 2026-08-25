@@ -612,6 +612,11 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: FORMATTED_PANIC_PAYLOAD,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        name: "u128_where_u64_suffices",
+        category: LintCategory::Compute,
+        rationale: "wasm32 is a 32-bit target. A `u64` operation already compiles to several instructions; a `u128` operation compiles to several times more, since the runtime synthesises 128-bit arithmetic from 32-bit primitives.",
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -674,6 +679,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
+    lint_store.register_late_pass(|_| Box::new(U128WhereU64Suffices));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -2593,6 +2599,18 @@ rustc_session::declare_lint! {
     "unbounded recursion driven by caller-supplied input"
 }
 
+declare_lint! {
+    /// **What it does:** Checks for 128-bit arithmetic operations where 64-bit would suffice.
+    ///
+    /// **Why is this bad?** wasm32 is a 32-bit target. A `u64` operation already compiles to several instructions; a `u128` operation compiles to several times more, since the runtime synthesises 128-bit arithmetic from 32-bit primitives.
+    ///
+    /// **Known problems:** None.
+    pub U128_WHERE_U64_SUFFICES,
+    Warn,
+    "128-bit arithmetic where 64 bits would do"
+}
+
+
 #[derive(Default)]
 pub struct UnboundedRecursion {
     /// Call graph edges collected while walking every function body:
@@ -2949,4 +2967,47 @@ fn storage_write_without_read_lookup_benchmark() {
     eprintln!(
         "storage_write_without_read_lookup/{N}x{N}: hashset={hashset_elapsed:?} vec_scan={vec_elapsed:?}"
     );
+}
+
+pub struct U128WhereU64Suffices;
+
+impl<'tcx> LateLintPass<'tcx> for U128WhereU64Suffices {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::Binary(op, left, right) = expr.kind {
+            let ty = cx.typeck_results().expr_ty(expr);
+            if matches!(ty.kind(), ty::Uint(ty::UintTy::U128) | ty::Int(ty::IntTy::I128)) {
+                if is_provably_64_bit(cx, left) && is_provably_64_bit(cx, right) {
+                    span_lint_and_help(
+                        cx,
+                        U128_WHERE_U64_SUFFICES,
+                        expr.span,
+                        "128-bit arithmetic where 64 bits would do",
+                        None,
+                        "wasm32 is a 32-bit target; 128-bit operations are significantly more expensive. Since both operands fit in 64 bits, consider performing this operation in `u64`/`i64` and casting the result to 128-bit only if necessary.",
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn is_provably_64_bit<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    let expr = expr.peel_blocks();
+    match expr.kind {
+        hir::ExprKind::Lit(lit) => {
+            if let LitKind::Int(val, _) = lit.node {
+                return val <= u64::MAX as u128;
+            }
+            false
+        },
+        hir::ExprKind::Cast(inner, _) => {
+            let inner_ty = cx.typeck_results().expr_ty(inner);
+            matches!(
+                inner_ty.kind(),
+                ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32 | ty::UintTy::U64) |
+                ty::Int(ty::IntTy::I8 | ty::IntTy::I16 | ty::IntTy::I32 | ty::IntTy::I64)
+            )
+        },
+        _ => false
+    }
 }
