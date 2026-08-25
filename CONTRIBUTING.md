@@ -98,7 +98,7 @@ If you prefer to set up the toolchain on your machine directly:
     This runs `fmt`, `lint`, and `test` in sequence. See the [`Makefile`](./Makefile) for all available targets.
 
 ### 3. Adding a New Lint
-- Read the [Scope: Clippy vs. soroban-cost-linter](../docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
+- Read the [Scope: Clippy vs. soroban-cost-linter](./docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
 - Find a structural anti-pattern in Soroban that is input-independent and costly, and that is **not** already covered by a Clippy lint with the same cost-relevant semantics.
 - Assign the lint to one of the five [lint categories](docs/lint_categories.md) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
 - Write a failing test case in the `ui` tests directory.
@@ -161,6 +161,24 @@ All PRs are checked by CI (Linux and Windows), and these checks must pass before
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
+### 4.1 Security and Policy Checks (`cargo-deny`)
+
+This project uses `cargo-deny` in CI (via `.github/workflows/security.yml`) to enforce policies on dependencies. The policy is defined in `deny.toml`. Note that the CI job runs only when manifests (`Cargo.toml`), the lockfile (`Cargo.lock`), or the workflow file change.
+
+**What the policy enforces:**
+- **Licenses:** Only `MIT`, `Apache-2.0`, `Unicode-3.0`, and `Apache-2.0 WITH LLVM-exception` are allowed. Copyleft licenses (like GPL/AGPL) are rejected.
+- **Advisories:** Vulnerabilities, unsoundness, and notice advisories from the RustSec database will cause the check to fail. Unmaintained crates in the workspace are also flagged.
+- **Bans:** Multiple versions of the same crate will trigger a warning.
+
+**Exceptions:**
+If you need an exception (e.g., to ignore a specific advisory or allow a license for a specific crate), you can propose adding it to `deny.toml`. Any such exception must include a comment explaining why it is safe for this project and under what condition it can be removed.
+
+**Running locally:**
+Run the check locally before pushing to catch policy violations early:
+```bash
+cargo deny check
+```
+
 ### 5. Upgrading the Nightly Toolchain
 
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across four files, the `clippy_utils` git rev in `soroban_cost_lints/Cargo.toml`, and the container image.
@@ -168,7 +186,7 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 
 **TL;DR:** The critical relationship is between the nightly channel in `rust-toolchain` and the `clippy_utils` git revision in `soroban_cost_lints/Cargo.toml`. See the runbook for guidance on finding the matching revision from the `rust-lang/rust-clippy` repository's `rustup` branch.
 
-1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-05-01`).
+1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-04-16`).
 2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `rustup` branch on that date, and update the `rev` field in `soroban_cost_lints/Cargo.toml`.
 3. Update `.github/workflows/lint.yml`, `action.yml` (the `toolchain` input default), and `docs/integration.md` with the new nightly date.
 4. Run the drift guard to confirm everything agrees:

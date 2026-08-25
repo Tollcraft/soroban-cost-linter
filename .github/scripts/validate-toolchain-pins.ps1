@@ -36,21 +36,28 @@ function Check-NightlyInFile {
         return
     }
 
+    $localFailed = $false
     foreach ($found in $matches) {
         if ($found -ne $canonicalNightly) {
             Write-Error "::error file=$file::Mismatch in ${file}: found '${found}' but expected '${canonicalNightly}'. Edit ${file} to use the canonical version."
             $script:failed = $true
+            $localFailed = $true
         }
     }
 
-    if (-not $script:failed) {
+    if (-not $localFailed) {
         Write-Host "OK: $file matches canonical nightly"
     }
 }
 
 Check-NightlyInFile ".github/workflows/lint.yml"
-Check-NightlyInFile "templates/github-action.yml"
+Check-NightlyInFile ".github/workflows/publish.yml"
+Check-NightlyInFile "action.yml"
 Check-NightlyInFile "docs/integration.md"
+Check-NightlyInFile "templates/github-action.yml"
+Check-NightlyInFile "CONTRIBUTING.md"
+Check-NightlyInFile "README.md"
+Check-NightlyInFile "docs/windows_setup.md"
 
 # ---- Check clippy_utils git rev matches the nightly date ----
 $cargoToml = Get-Content -Raw "soroban_cost_lints/Cargo.toml"

@@ -127,7 +127,7 @@ cargo test --test ui_my_new_lint
 1. **Add an entry to the lint catalog** (`docs/lint_catalog.md`):
 
 ```markdown
-| `my_new_lint` | warn | Detects ... | [Link](lints/my_new_lint.md) |
+| `my_new_lint` | warn | Detects ... | `lints/my_new_lint.md` |
 ```
 
 2. **Create a lint reference page** (`docs/lints/my_new_lint.md`):

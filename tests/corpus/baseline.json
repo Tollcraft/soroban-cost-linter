@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1787652270 with 72 findings across 9 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1787652652 with 64 findings across 9 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "contracts": {
     "storage_iter_closure": {
       "total": 3,
@@ -147,33 +147,9 @@
       ]
     },
     "swap": {
-      "total": 15,
+      "total": 11,
       "true_positives": [],
       "false_positives": [
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 16,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 17,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
@@ -243,7 +219,7 @@
       ]
     },
     "timelock": {
-      "total": 18,
+      "total": 17,
       "true_positives": [
         {
           "lint_name": "redundant_env_clone",
@@ -277,12 +253,6 @@
         }
       ],
       "false_positives": [
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "storage write without a corresponding read"
-        },
         {
           "lint_name": "instance_storage_for_unbounded_data",
           "file": "src/lib.rs",
@@ -358,7 +328,7 @@
       ]
     },
     "token": {
-      "total": 21,
+      "total": 18,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -374,24 +344,6 @@
         }
       ],
       "false_positives": [
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 16,
-          "message": "storage write without a corresponding read"
-        },
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",

@@ -1,0 +1,11 @@
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read.rs:46:30
+   |
+LL |     env.storage().instance().set(&1, &2); // Should Warn
+   |                              ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+   = note: `#[warn(storage_write_without_read)]` on by default
+
+warning: 1 warning emitted
+
