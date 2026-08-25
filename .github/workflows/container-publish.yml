@@ -37,3 +37,32 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Smoke-test the published container image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}-dev:latest"
+          docker pull $IMAGE
+          
+          # The container is a development environment, so we mount the repository to build and run the linter
+          # against the smoke_test fixture.
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace $IMAGE bash -c "
+            set -e
+            cargo build --release -p cargo-cost-lint -p soroban_cost_lints
+            
+            # Run the linter against the smoke test fixture
+            # We expect a failure because of the 'deny' lint
+            if target/release/cargo-cost-lint --config test_fixtures/smoke_test/budget.toml test_fixtures/smoke_test > output.txt 2>&1; then
+              echo 'Smoke test failed: expected linter to fail but it succeeded'
+              cat output.txt
+              exit 1
+            fi
+            
+            echo 'Linter output:'
+            cat output.txt
+            
+            if ! grep -q 'soroban_storage_in_loop' output.txt; then
+              echo 'Smoke test failed: missing expected finding soroban_storage_in_loop'
+              exit 1
+            fi
+            
+            echo 'Smoke test passed successfully!'
+          "
