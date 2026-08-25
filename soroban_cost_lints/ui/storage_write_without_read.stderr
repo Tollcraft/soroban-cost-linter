@@ -8,3 +8,4 @@ LL |     env.storage().instance().set(&1, &2); // Should Warn
    = note: `#[warn(storage_write_without_read)]` on by default
 
 warning: 1 warning emitted
+
