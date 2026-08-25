@@ -144,3 +144,6 @@ When you suppress a lint, verify that the suppression works correctly:
 | Per-site | `#[allow(lint_name)]` | Intentional patterns at specific call sites |
 | Per-file | `.lintignore` | Generated code, vendored deps, entire files |
 | Per-workspace | `budget.toml` `"allow"` | Project-wide decisions (use sparingly) |
+
+## u128_where_u64_suffices
+None known.
