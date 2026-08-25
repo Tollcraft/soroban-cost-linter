@@ -244,4 +244,65 @@ soroban_storage_in_loop = "deny"
         assert_eq!(flags.len(), 1);
         assert!(flags.contains(&"-D valid_lint".to_string()));
     }
+
+    #[test]
+    fn from_file_validated_ignores_unknown_sections() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(
+            &path,
+            r#"network = "testnet"
+source = "alice"
+
+[margin]
+cpu_margin    = 1.50
+memory_margin = 1.25
+read_margin   = 2.00
+write_margin  = 3.00
+
+[scenarios.full_workflow]
+package = "amm-pool-contract"
+functions = ["deposit", "swap", "withdraw"]
+
+[functions.do_expensive_work]
+args = ["--n", "10000"]
+cpu_limit = 5000000
+read_limit = 5000
+write_limit = 1000
+
+[lints]
+soroban_storage_in_loop = "deny"
+"#,
+        );
+        let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
+        let lints = config.lints.expect("lints should be present");
+        assert_eq!(
+            lints.get("soroban_storage_in_loop").map(|s| s.as_str()),
+            Some("deny")
+        );
+    }
+
+    #[test]
+    fn from_file_validated_works_without_lints_section() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(
+            &path,
+            r#"network = "testnet"
+source = "alice"
+
+[margin]
+cpu_margin    = 1.50
+memory_margin = 1.25
+read_margin   = 2.00
+write_margin  = 3.00
+
+[scenarios.full_workflow]
+package = "amm-pool-contract"
+functions = ["deposit", "swap", "withdraw"]
+"#,
+        );
+        let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
+        assert!(config.lints.is_none());
+    }
 }

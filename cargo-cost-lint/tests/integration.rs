@@ -192,3 +192,57 @@ fn test_json_output() {
         "Expected to find 'soroban_redundant_storage_read' lint, but it was not present"
     );
 }
+
+#[test]
+fn test_shared_budget_toml_parsing() {
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // 1. Both sections
+    let dir = tempdir().unwrap();
+    let budget_path = dir.path().join("budget.toml");
+    let mut f = File::create(&budget_path).unwrap();
+    f.write_all(b"network = \"testnet\"\n[margin]\ncpu_margin = 1.50\n[lints]\nsoroban_storage_in_loop = \"warn\"\n").unwrap();
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint failed with mixed budget.toml"
+    );
+    let stderr_str = String::from_utf8(output.stderr).unwrap();
+    // It should ignore unknown sections without warning or error about them
+    assert!(
+        !stderr_str.contains("Error: Failed to parse"),
+        "Should not fail to parse"
+    );
+
+    // 2. Only budget-assert sections
+    let dir2 = tempdir().unwrap();
+    let budget_path2 = dir2.path().join("budget.toml");
+    let mut f2 = File::create(&budget_path2).unwrap();
+    f2.write_all(b"network = \"testnet\"\n[margin]\ncpu_margin = 1.50\n[scenarios.workflow]\npackage=\"pkg\"\n").unwrap();
+
+    let output2 = Command::new(bin_path)
+        .arg("--list-lints")
+        .current_dir(dir2.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output2.status.success(),
+        "cargo-cost-lint failed with only budget-assert sections"
+    );
+    let stderr_str2 = String::from_utf8(output2.stderr).unwrap();
+    assert!(
+        !stderr_str2.contains("Error: Failed to parse"),
+        "Should not fail to parse without lints section"
+    );
+}
