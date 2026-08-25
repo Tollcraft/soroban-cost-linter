@@ -1616,8 +1616,15 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         _: &'tcx hir::FnDecl<'tcx>,
         body: &'tcx hir::Body<'tcx>,
         _: rustc_span::Span,
-        _: rustc_hir::def_id::LocalDefId,
+        def_id: rustc_hir::def_id::LocalDefId,
     ) {
+        let fn_name = cx.tcx.opt_item_name(def_id.to_def_id());
+        if let Some(name) = fn_name {
+            let name_str = name.as_str();
+            if name_str.contains("init") || name_str.contains("set_admin") {
+                return;
+            }
+        }
         /// Collects storage-read method calls (`get`, `has`) keyed by
         /// receiver-snippet and key-snippet for later cross-referencing.
         struct ReadVisitor<'a, 'tcx> {
