@@ -235,3 +235,4 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    = help: hoist this storage operation out of the loop
 
 warning: 29 warnings emitted
+

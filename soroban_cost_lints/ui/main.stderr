@@ -423,3 +423,4 @@ LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Wa
    = help: store the value from the first read and reuse it instead of reading again
 
 warning: 52 warnings emitted
+
