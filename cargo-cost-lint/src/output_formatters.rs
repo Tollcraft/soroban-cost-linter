@@ -252,3 +252,103 @@ pub fn emit_sarif<W: Write>(
 }
 
 // The suggestion extraction and fix‑application logic remain in the main crate.
+
+/// Print a summary of the findings at the end of a run.
+pub fn emit_summary<W: Write>(
+    cli: &crate::Cli,
+    findings: &[LintFinding],
+    writer: &mut W,
+) -> crate::error::LinterResult<()> {
+    if cli.format != OutputFormat::Text {
+        return Ok(());
+    }
+
+    if findings.is_empty() {
+        writeln!(writer, "\nCost lint successful: 0 findings")?;
+        return Ok(());
+    }
+
+    let mut severity_counts = std::collections::HashMap::new();
+    let mut lint_counts = std::collections::HashMap::new();
+
+    for finding in findings {
+        *severity_counts.entry(finding.level.clone()).or_insert(0) += 1;
+        *lint_counts.entry(finding.name.clone()).or_insert(0) += 1;
+    }
+
+    writeln!(writer, "\n--- Cost Lint Summary ---")?;
+    writeln!(writer, "Total findings: {}", findings.len())?;
+
+    writeln!(writer, "\nBy severity:")?;
+    let mut severities: Vec<_> = severity_counts.into_iter().collect();
+    severities.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    for (severity, count) in severities {
+        writeln!(writer, "  {}: {}", severity, count)?;
+    }
+
+    writeln!(writer, "\nBy lint:")?;
+    let mut lints: Vec<_> = lint_counts.into_iter().collect();
+    lints.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    for (lint, count) in lints {
+        writeln!(writer, "  {}: {}", lint, count)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_cli(format: OutputFormat) -> crate::Cli {
+        crate::Cli {
+            config: None,
+            list_lints: false,
+            explain: None,
+            format,
+            quiet: false,
+            verbose: false,
+        }
+    }
+
+    #[test]
+    fn test_emit_summary_zero_findings() {
+        let cli = dummy_cli(OutputFormat::Text);
+        let mut out = Vec::new();
+        emit_summary(&cli, &[], &mut out).unwrap();
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("Cost lint successful: 0 findings"));
+    }
+
+    #[test]
+    fn test_emit_summary_populated() {
+        let cli = dummy_cli(OutputFormat::Text);
+        let mut out = Vec::new();
+        let findings = vec![
+            LintFinding {
+                name: "lint_a".to_string(),
+                level: "warning".to_string(),
+                file: "src/lib.rs".to_string(),
+                span: Span { line_start: 1, line_end: 1, column_start: 1, column_end: 1 },
+                message: "msg".to_string(),
+                help: None,
+                suggestion: None,
+            },
+            LintFinding {
+                name: "lint_a".to_string(),
+                level: "warning".to_string(),
+                file: "src/lib.rs".to_string(),
+                span: Span { line_start: 2, line_end: 2, column_start: 1, column_end: 1 },
+                message: "msg".to_string(),
+                help: None,
+                suggestion: None,
+            },
+            LintFinding {
+                name: "lint_b".to_string(),
+                level: "error".to_string(),
+                file: "src/lib.rs".to_string(),
+                span: Span { line_start: 3, line_end: 3, column_start: 1, column_end: 1 },
+                message: "msg".to_string(),
+                help: None,
+                suggestion: None,
+            },
