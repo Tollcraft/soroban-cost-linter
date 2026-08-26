@@ -1,5 +1,8 @@
 # MVP Roadmap: `soroban-cost-linter`
 
+> **Note**: This is a historical document from early project planning and does not reflect current architecture or guidance.
+
+
 This document details the roadmap for developing a functional MVP of `soroban-cost-linter`, designed to statically catch input-independent, structurally expensive patterns in Soroban smart contracts.
 
 ---
