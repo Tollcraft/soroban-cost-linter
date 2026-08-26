@@ -120,13 +120,6 @@ fn test_json_output() {
         fixture_dir
     );
 
-    // Find the workspace target directory dynamically based on the binary path
-    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
-    target_dir.pop(); // Remove the binary name
-    if target_dir.ends_with("deps") {
-        target_dir.pop(); // Pop "deps" to reach the profile directory (e.g., target/debug)
-    }
-
     // Build the soroban_cost_lints cdylib first from its own directory so it picks up .cargo/config.toml
     let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     lint_dir.pop();
@@ -134,19 +127,33 @@ fn test_json_output() {
 
     let status = Command::new(env!("CARGO"))
         .arg("build")
-        .arg("--target-dir")
-        .arg(&target_dir)
         .current_dir(&lint_dir)
         .status()
         .expect("Failed to build soroban_cost_lints");
     assert!(status.success(), "Failed to build soroban_cost_lints");
+
+    // Determine where the lint cdylib was built.  `cargo build` above
+    // honours CARGO_TARGET_DIR when set (e.g. by cargo-llvm-cov) and
+    // falls back to the workspace default `<root>/target/` otherwise.
+    // We must point DYLINT_LIBRARY_PATH to the same profile directory
+    // so cargo-dylint can find the library.
+    let lib_dir = match std::env::var("CARGO_TARGET_DIR") {
+        Ok(dir) => PathBuf::from(dir).join("debug"),
+        Err(_) => {
+            let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            d.pop(); // workspace root
+            d.push("target");
+            d.push("debug");
+            d
+        }
+    };
 
     // Run the built wrapper binary in the fixture directory with --format json
     let output = Command::new(bin_path)
         .arg("--format")
         .arg("json")
         .current_dir(fixture_dir)
-        .env("DYLINT_LIBRARY_PATH", target_dir)
+        .env("DYLINT_LIBRARY_PATH", &lib_dir)
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
