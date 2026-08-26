@@ -122,7 +122,10 @@ fn test_json_output() {
 
     // Find the workspace target directory dynamically based on the binary path
     let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
-    target_dir.pop(); // Remove the binary name, leaving the profile directory (e.g., target/debug)
+    target_dir.pop(); // Remove the binary name
+    if target_dir.ends_with("deps") {
+        target_dir.pop(); // Pop "deps" to reach the profile directory (e.g., target/debug)
+    }
 
     // Build the soroban_cost_lints cdylib first from its own directory so it picks up .cargo/config.toml
     let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
