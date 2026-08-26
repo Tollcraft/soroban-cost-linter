@@ -1,5 +1,6 @@
 #[allow(dead_code)]
 mod budget_config;
+pub mod cache;
 mod config;
 mod error;
 #[allow(dead_code)]
@@ -87,6 +88,12 @@ struct Cli {
 
     #[arg(long = "workspace", help = "Lint all packages in the workspace")]
     workspace: bool,
+
+    #[arg(long = "no-cache", help = "Bypass the lint result cache for this run")]
+    no_cache: bool,
+
+    #[arg(long = "clear-cache", help = "Clear the lint result cache and exit")]
+    clear_cache: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -370,6 +377,24 @@ fn main() {
         }
     };
 
+    if cli.clear_cache {
+        let cache_dir = cache::get_cache_dir(None);
+        match cache::clear_cache(&cache_dir) {
+            Ok(count) => {
+                println!(
+                    "Cleared {} cached lint result(s) at {}",
+                    count,
+                    cache_dir.display()
+                );
+                return;
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    }
+
     if cli.list_lints {
         if cli.format == OutputFormat::Json {
             println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
@@ -448,6 +473,41 @@ fn main() {
         Vec::new()
     };
 
+    let cache_dir = cache::get_cache_dir(None);
+    let cache_key_hash = if !cli.no_cache {
+        let source_hash = cache::compute_source_hash(Path::new("."))
+            .unwrap_or_else(|_| "unknown-source".to_string());
+        let toolchain = cache::get_toolchain_version();
+        let key = cache::CacheKey {
+            linter_version: env!("CARGO_PKG_VERSION").to_string(),
+            toolchain,
+            lint_flags: lint_flags.clone(),
+            package_args: package_args.clone(),
+            output_format: format!("{:?}", cli.format),
+            source_hash,
+        };
+        Some(key.compute_hash())
+    } else {
+        None
+    };
+
+    if let Some(ref key_hash) = cache_key_hash {
+        if let Some(cached_entry) = cache::load_cache_entry(&cache_dir, key_hash) {
+            if verbose {
+                eprintln!("[verbose] Cache hit for key {}", key_hash);
+            }
+            if !cached_entry.stdout.is_empty() {
+                print!("{}", cached_entry.stdout);
+            }
+            if !cached_entry.stderr.is_empty() {
+                eprint!("{}", cached_entry.stderr);
+            }
+            exit(cached_entry.exit_code);
+        } else if verbose {
+            eprintln!("[verbose] Cache miss for key {}", key_hash);
+        }
+    }
+
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
     cmd.arg("--lib");
@@ -470,7 +530,6 @@ fn main() {
 
     if cli.format != OutputFormat::Text {
         cargo_args.push("--message-format=json".to_string());
-        cmd.stdout(Stdio::piped());
     }
 
     if !cargo_args.is_empty() {
@@ -494,15 +553,17 @@ fn main() {
         eprintln!("[verbose] command: {:?}", cmd);
     }
 
-    let mut child = cmd
-        .spawn()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
-
     if cli.format != OutputFormat::Text {
+        cmd.stdout(Stdio::piped());
+        let mut child = cmd
+            .spawn()
+            .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         let reader = BufReader::new(stdout);
         let mut highest_exit_code = 0;
         let mut sarif_findings = Vec::new();
+        let mut recorded_stdout = String::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
@@ -600,13 +661,21 @@ fn main() {
                                         OutputFormat::Json => {
                                             if let Ok(json_str) = serde_json::to_string(&finding) {
                                                 println!("{}", json_str);
+                                                recorded_stdout.push_str(&json_str);
+                                                recorded_stdout.push('\n');
                                             }
                                         }
                                         OutputFormat::Github => {
-                                            let _ = output_formatters::emit_github_annotation(
-                                                &finding,
-                                                &mut std::io::stdout(),
-                                            );
+                                            let mut buf = Vec::new();
+                                            if output_formatters::emit_github_annotation(
+                                                &finding, &mut buf,
+                                            )
+                                            .is_ok()
+                                            {
+                                                let ann_str = String::from_utf8_lossy(&buf);
+                                                print!("{}", ann_str);
+                                                recorded_stdout.push_str(&ann_str);
+                                            }
                                         }
                                         OutputFormat::Sarif => {
                                             sarif_findings.push(finding);
@@ -622,20 +691,65 @@ fn main() {
         }
 
         if cli.format == OutputFormat::Sarif {
-            let _ = output_formatters::emit_sarif(&sarif_findings, &mut std::io::stdout());
+            let mut buf = Vec::new();
+            if output_formatters::emit_sarif(&sarif_findings, &mut buf).is_ok() {
+                let sarif_str = String::from_utf8_lossy(&buf);
+                print!("{}", sarif_str);
+                recorded_stdout.push_str(&sarif_str);
+            }
         }
 
         let status = child.wait().expect("Failed to wait on cargo dylint");
-        if !status.success() {
-            exit(status.code().unwrap_or(1));
+        let exit_code = if !status.success() {
+            status.code().unwrap_or(1)
         } else if highest_exit_code != 0 {
-            exit(highest_exit_code);
+            highest_exit_code
+        } else {
+            0
+        };
+
+        if let Some(ref key_hash) = cache_key_hash {
+            let entry = cache::CacheEntry {
+                key: key_hash.clone(),
+                exit_code,
+                stdout: recorded_stdout,
+                stderr: String::new(),
+            };
+            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
         }
+
+        exit(exit_code);
     } else {
-        let status = child.wait().expect("Failed to wait on cargo dylint");
-        if !status.success() {
-            exit(status.code().unwrap_or(1));
+        let output = cmd
+            .output()
+            .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+
+        let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !stdout_str.is_empty() {
+            print!("{}", stdout_str);
         }
+        if !stderr_str.is_empty() {
+            eprint!("{}", stderr_str);
+        }
+
+        let exit_code = output
+            .status
+            .code()
+            .unwrap_or(if output.status.success() { 0 } else { 1 });
+
+        if let Some(ref key_hash) = cache_key_hash {
+            let entry = cache::CacheEntry {
+                key: key_hash.clone(),
+                exit_code,
+                stdout: stdout_str,
+                stderr: stderr_str,
+            };
+            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
+        }
+
+        exit(exit_code);
     }
 }
 
@@ -1371,5 +1485,21 @@ mod tests {
 
         let members = parse_workspace_members_from_metadata(sample_json.as_bytes()).unwrap();
         assert_eq!(members, vec!["contract-a", "contract-b"]);
+    }
+
+    #[test]
+    fn cli_parses_no_cache_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
+        assert!(cli.no_cache);
+        assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn cli_parses_clear_cache_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--clear-cache"])
+            .expect("parsing should succeed");
+        assert!(cli.clear_cache);
+        assert!(!cli.no_cache);
     }
 }

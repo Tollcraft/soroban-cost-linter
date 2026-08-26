@@ -139,6 +139,8 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--deny <LINT>`, `-D <LINT>` | Set a lint to `deny` for this run (repeatable, overrides `budget.toml`) |
 | `--package <SPEC>`, `-p <SPEC>` | Package(s) to lint (repeatable, restricts linting to specified packages) |
 | `--workspace` | Lint all packages in the workspace |
+| `--no-cache` | Bypass the lint result cache for this run |
+| `--clear-cache` | Clear all cached lint results and exit |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
@@ -147,6 +149,25 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--version` | Print the crate version and exit |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
+
+### Result Caching
+
+`cargo cost-lint` automatically caches lint results between runs to make repeat runs on unchanged code near-instant.
+
+#### Cache Invalidation
+The cache key is computed deterministically from:
+- **Source Content:** Hash of all source code files, `Cargo.toml`, and `Cargo.lock` files.
+- **Resolved Lint Levels:** Effective `-A`/`-W`/`-D` lint flags.
+- **Linter Version:** The version of `cargo-cost-lint`.
+- **Toolchain:** Active `rustc` compiler version and commit.
+- **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+
+Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
+
+#### Bypassing and Clearing the Cache
+- Run with `--no-cache` to force a fresh run without using cached results.
+- Run with `--clear-cache` to delete all cached entries.
+- The cache files are stored in `target/cost-lint-cache/`, which is ignored by Git and cleaned automatically with `cargo clean`.
 
 ### Package Selection
 
