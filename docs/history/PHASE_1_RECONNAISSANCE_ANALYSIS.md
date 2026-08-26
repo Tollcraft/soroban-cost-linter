@@ -1,5 +1,8 @@
 # Phase 1: Reconnaissance Analysis — Issue #206 / Task #18
 
+> **Note**: This is a historical document from early project planning and does not reflect current architecture or guidance.
+
+
 ## Executive Summary
 
 This document captures the reconnaissance phase analysis for resolving the issue:
