@@ -131,6 +131,8 @@ fn test_json_output() {
 
     let status = Command::new(env!("CARGO"))
         .arg("build")
+        .arg("--target-dir")
+        .arg(&target_dir)
         .current_dir(&lint_dir)
         .status()
         .expect("Failed to build soroban_cost_lints");
