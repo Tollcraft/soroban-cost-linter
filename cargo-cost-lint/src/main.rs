@@ -6,7 +6,7 @@ mod error;
 mod lint_name_set;
 mod output_formatters;
 
-use clap::{ArgGroup, Parser};
+use clap::{ArgGroup, Parser, ValueEnum};
 use output_formatters::{LintFinding, OutputFormat, Span};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -48,6 +48,16 @@ struct Cli {
         help = "Show diagnostic detail: config path, lint flags, spawned command"
     )]
     verbose: bool,
+
+    /// Control coloured output: auto, always, never.
+    ///
+    /// When set to *auto* (the default), colour is enabled only when
+    /// standard output is a terminal.  Honouring the widely-adopted
+    /// `NO_COLOR` convention, if this flag is omitted and the
+    /// `NO_COLOR` environment variable is set to any non-empty value,
+    /// output is uncoloured.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
+    color: ColorChoice,
 }
 
 #[derive(Deserialize, Debug)]
@@ -59,6 +69,47 @@ include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_explanations.rs"));
+
+#[derive(ValueEnum, Clone, Debug)]
+enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
+
+impl ColorChoice {
+    /// Return the `cargo dylint` / `cargo check` `--color` argument
+    /// value, or `None` when we should let cargo pick its default
+    /// (i.e. when colour is desired and there is nothing to override).
+    fn as_dylint_arg(&self) -> Option<&'static str> {
+        match self {
+            ColorChoice::Auto => None,
+            ColorChoice::Always => Some("always"),
+            ColorChoice::Never => Some("never"),
+        }
+    }
+}
+
+/// Determine the effective colour preference by merging:
+///
+/// 1. An explicit `--color` CLI flag (highest priority).
+/// 2. The `NO_COLOR` environment variable (set to any non-empty value
+///    means "no colour").
+/// 3. Cargo's built-in default (`Auto`) — colour when stdout is a
+///    terminal, no colour otherwise.
+fn resolve_color_choice(cli_color: &ColorChoice) -> ColorChoice {
+    match cli_color {
+        ColorChoice::Auto => {
+            // Honour the NO_COLOR convention (https://no-color.org/).
+            if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
+                ColorChoice::Never
+            } else {
+                ColorChoice::Auto
+            }
+        }
+        other => other.clone(),
+    }
+}
 
 fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
     let mut lint_flags = Vec::new();
@@ -230,6 +281,19 @@ fn main() {
     }
 
     let mut cmd = Command::new("cargo");
+
+    // Forward the resolved colour preference to cargo.
+    // `--color` must appear before the `dylint` subcommand so that
+    // cargo itself consumes it; we also set `CARGO_TERM_COLOR` so that
+    // any inner `cargo check` invoked by dylint inherits the same
+    // preference.
+    let effective_color = resolve_color_choice(&cli.color);
+    if let Some(color_val) = effective_color.as_dylint_arg() {
+        cmd.arg("--color");
+        cmd.arg(color_val);
+        cmd.env("CARGO_TERM_COLOR", color_val);
+    }
+
     cmd.arg("dylint");
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");

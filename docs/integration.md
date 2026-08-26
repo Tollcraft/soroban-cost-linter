@@ -273,3 +273,49 @@ You can pipe the JSON output into a tool like `jq` to create GitHub annotations 
           # jq -r '. | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"' lint-results.json
 ```
 *(Note: If the linter returns a non-zero exit code due to a `deny` lint, the step will still fail correctly in Actions).*
+
+## Colour output
+
+`cargo cost-lint` does not emit colours itself, but the underlying
+`rustc` diagnostics it surfaces are coloured by default when standard
+output is a terminal.
+
+### The `--color` flag
+
+Use `--color <WHEN>` to control coloured output explicitly:
+
+| Value    | Behaviour |
+|----------|-----------|
+| `auto`   | Colour when stdout is a terminal, none otherwise (default). |
+| `always` | Always emit colour. |
+| `never`  | Never emit colour. |
+
+```bash
+cargo cost-lint --color never
+```
+
+The flag is forwarded to `cargo dylint` (and propagated via
+`CARGO_TERM_COLOR`) so that the child process that actually emits
+the diagnostics honours the setting.
+
+### The `NO_COLOR` convention
+
+[no-color.org](https://no-color.org/) defines the convention that
+setting the `NO_COLOR` environment variable to **any non-empty value**
+disables colour.  `cargo cost-lint` honours this automatically —
+no flag is required:
+
+```bash
+NO_COLOR=1 cargo cost-lint   # uncoloured output
+```
+
+### Precedence
+
+1. `--color` flag (highest priority)
+2. `NO_COLOR` environment variable
+3. Cargo's built-in default (colour when stdout is a terminal)
+
+{% hint style="info" %}
+JSON mode (`--format json`) is unaffected — it already
+emits no colour.
+{% endhint %}
