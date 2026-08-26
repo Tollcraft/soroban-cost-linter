@@ -165,9 +165,55 @@ fn main() {
     }
 }
 
+/// Parse the pinned nightly channel from a `rust-toolchain` TOML file.
+///
+/// The file has the shape:
+/// ```toml
+/// [toolchain]
+/// channel = "nightly-YYYY-MM-DD"
+/// ```
+///
+/// We extract the `channel` value so it can be embedded in the binary
+/// at build time.
+fn parse_toolchain_channel(toolchain_path: &Path) -> Result<String> {
+    let content = fs::read_to_string(toolchain_path).map_err(|e| {
+        Error::Parse(format!(
+            "Failed to read {}: {}",
+            toolchain_path.display(),
+            e
+        ))
+    })?;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("channel") {
+            let value = value.trim();
+            // channel = "nightly-2026-04-16"
+            if let Some(value) = value.strip_prefix('=') {
+                let value = value.trim();
+                if let Some(value) = value.strip_prefix('"')
+                    && let Some(value) = value.strip_suffix('"')
+                {
+                    return Ok(value.to_string());
+                }
+            }
+        }
+    }
+
+    Err(Error::Parse(format!(
+        "Could not find 'channel' in {}",
+        toolchain_path.display()
+    )))
+}
+
+/// The cargo-dylint version constraint this tool expects.
+/// Updated manually when the minimum supported version changes.
+const DYLINT_VERSION_CONSTRAINT: &str = "^6.0.1";
+
 fn run() -> Result<()> {
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
     println!("cargo:rerun-if-changed=../docs/lints");
+    println!("cargo:rerun-if-changed=../rust-toolchain");
 
     let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs").map_err(|e| {
         Error::Parse(format!(
@@ -335,11 +381,24 @@ fn run() -> Result<()> {
         }
     }
 
+    // --- Parse the pinned toolchain and emit version metadata ---
+    let toolchain_path = Path::new("../rust-toolchain");
+    let toolchain_channel = parse_toolchain_channel(toolchain_path)?;
+
     let out_dir = env::var_os("OUT_DIR").ok_or(Error::MissingEnv)?;
     let names_path = Path::new(&out_dir).join("lint_names.rs");
     let metadata_path = Path::new(&out_dir).join("lint_metadata.rs");
     let info_path = Path::new(&out_dir).join("lint_info.rs");
     let explanations_path = Path::new(&out_dir).join("lint_explanations.rs");
+    let version_path = Path::new(&out_dir).join("version_info.rs");
+
+    // Emit version_info.rs with toolchain and dylint constraint.
+    let version_out = format!(
+        "pub const PINNED_TOOLCHAIN: &str = \"{}\";\n\npub const DYLINT_VERSION_CONSTRAINT: &str = \"{}\";\n",
+        toolchain_channel, DYLINT_VERSION_CONSTRAINT
+    );
+    fs::write(&version_path, version_out)
+        .map_err(|e| Error::Parse(format!("Failed to write version_info.rs: {}", e)))?;
 
     // Emit LINT_NAMES (used by the filter logic in main.rs).
     let mut names_out = String::new();

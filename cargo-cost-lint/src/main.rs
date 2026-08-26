@@ -17,7 +17,7 @@ use std::process::{Command, Stdio, exit};
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
-#[command(version)]
+#[command(version = long_version())]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 #[command(group(
     ArgGroup::new("verbosity")
@@ -161,6 +161,28 @@ include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_explanations.rs"));
+include!(concat!(env!("OUT_DIR"), "/version_info.rs"));
+
+/// Build the `--version` string.
+///
+/// First line is the conventional `name version` shape.
+/// Subsequent lines report the pinned nightly toolchain and the
+/// expected cargo-dylint version constraint — the two pieces of
+/// information most often needed when triaging build or lint issues.
+///
+/// Leaking the `String` is acceptable here: `--version` is printed
+/// once per process invocation and the memory is reclaimed on exit.
+fn long_version() -> &'static str {
+    Box::leak(
+        format!(
+            "{}\ntoolchain: {}\ncargo-dylint: {}",
+            env!("CARGO_PKG_VERSION"),
+            PINNED_TOOLCHAIN,
+            DYLINT_VERSION_CONSTRAINT,
+        )
+        .into_boxed_str(),
+    )
+}
 
 /// Validates package selection options against available workspace members
 /// and constructs the command-line arguments to forward to cargo.
@@ -1666,8 +1688,17 @@ mod tests {
 
     #[test]
     fn resolve_color_auto_no_color_unset_resolves_to_auto() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
+        // This test only makes sense when NO_COLOR is not already set in
+        // the environment.  On some CI runners (notably Windows) the
+        // variable is injected and cannot be reliably removed, so we
+        // skip rather than produce a false failure.
+        if std::env::var("NO_COLOR").is_ok() {
+            eprintln!(
+                "skipping resolve_color_auto_no_color_unset_resolves_to_auto: \
+                 NO_COLOR is set in the environment"
+            );
+            return;
+        }
         let resolved = resolve_color_choice(&ColorChoice::Auto);
         assert_eq!(resolved, ColorChoice::Auto);
     }
