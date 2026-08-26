@@ -17,6 +17,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
 | [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |
+| [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 
 ## CPU/Compute
 

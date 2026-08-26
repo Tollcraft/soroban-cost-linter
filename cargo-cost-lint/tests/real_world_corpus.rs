@@ -36,6 +36,7 @@ const ALWAYS_TP: &[&str] = &[
     "inefficient_bytes_concat",
     "map_insert_in_loop",
     "unnecessary_host_function_call",
+    "unwrap_on_storage_get",
 ];
 
 fn workspace_root() -> PathBuf {

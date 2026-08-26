@@ -612,6 +612,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: FORMATTED_PANIC_PAYLOAD,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: UNWRAP_ON_STORAGE_GET,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -649,6 +653,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
         FORMATTED_PANIC_PAYLOAD,
+        UNWRAP_ON_STORAGE_GET,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -674,6 +679,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
+    lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -2583,6 +2589,65 @@ impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
                     FORMATTED_PANIC_PAYLOAD_HELP,
                 );
             }
+        }
+    }
+}
+
+// =======================================================================
+// unwrap_on_storage_get — Lint
+// =======================================================================
+
+// Flags `.unwrap()` / `.expect()` called directly on a Soroban storage
+// read. A storage `get` returns an `Option` precisely because the key may
+// be absent or expired; unwrapping turns that expected case into a trap.
+// The cost dimension is what makes this a cost lint rather than a general
+// correctness one: everything the invocation metered before the trap —
+// including the storage reads themselves — has been paid for and delivered
+// nothing. Handling the `None` case explicitly turns a wasted invocation
+// into a cheap one.
+rustc_session::declare_lint! {
+    pub UNWRAP_ON_STORAGE_GET,
+    Warn,
+    "unwrap or expect directly on a storage read — panics on a missing or expired key"
+}
+
+/// Concrete pass that fires [`UNWRAP_ON_STORAGE_GET`].
+pub struct UnwrapOnStorageGet;
+rustc_session::impl_lint_pass!(UnwrapOnStorageGet => [UNWRAP_ON_STORAGE_GET]);
+
+impl<'tcx> LateLintPass<'tcx> for UnwrapOnStorageGet {
+    /// Flags `.unwrap()` / `.expect()` whose receiver is a `get` call on one
+    /// of [`SOROBAN_STORAGE_TYPES`] (`Instance`, `Persistent`, `Temporary`,
+    /// `Storage`).
+    ///
+    /// Only unwraps *directly* on a storage read are flagged: `unwrap` on any
+    /// other `Option`/`Result` is out of scope, as is a read whose `Option`
+    /// is matched or handled with `unwrap_or`/`unwrap_or_else`. Skipped
+    /// entirely under `#[cfg(test)]` or inside a test module, via
+    /// `clippy_utils::is_in_test` — unwrap in tests is idiomatic.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && matches!(path_segment.ident.name.as_str(), "unwrap" | "expect")
+            && !is_in_test(cx.tcx, expr.hir_id)
+            && let hir::ExprKind::MethodCall(get_segment, storage_receiver, _get_args, _get_span) =
+                receiver.kind
+            && get_segment.ident.name.as_str() == "get"
+            && is_type_match(
+                cx,
+                cx.typeck_results().expr_ty(storage_receiver),
+                SOROBAN_STORAGE_TYPES,
+            )
+        {
+            span_lint_and_help(
+                cx,
+                UNWRAP_ON_STORAGE_GET,
+                expr.span,
+                "unwrap on a storage read traps the contract when the key is missing or expired",
+                None,
+                "handle the None case explicitly with unwrap_or, unwrap_or_else, or an early \
+                 return carrying a proper error — work already metered before the trap is \
+                 charged to the caller while delivering nothing",
+            );
         }
     }
 }

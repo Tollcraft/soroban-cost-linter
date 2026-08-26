@@ -182,3 +182,10 @@ Fires on every `get`/`has` on `persistent` storage when the function contains no
 - **Near-miss 2 — non-persistent storage:** `instance.get(...)` / `temporary.get(...)` are out of scope and never flagged.
 - The lint collects reads via a visitor over the whole function body, so a read in a nested block still counts.
 - **No known false positives:** a persistent read with no `extend_ttl` in the function is always reported.
+
+### `unwrap_on_storage_get`
+
+Fires on `.unwrap()` / `.expect()` called *directly* on a storage `get` (on `Storage`, `Instance`, `Persistent`, or `Temporary` receivers).
+
+- **Read the contract has genuinely just written:** `env.storage().instance().set(&key, &value);` followed later by `env.storage().instance().get(&key).unwrap()`. Within one invocation the key was just written, so the read cannot miss and the unwrap cannot trap. The lint has no write-tracking across statements, so this shape still fires even though it is provably safe at runtime — suppress with `#[allow(unwrap_on_storage_get)]` or handle the `None` case anyway if the write can ever be removed.
+- **Anything not directly on a storage read is out of scope by construction:** `unwrap_or`, `unwrap_or_else`, an explicit `match` on the returned `Option`, and `unwrap` on any `Option`/`Result` that did not come from a storage `get` never fire.

@@ -168,6 +168,13 @@
     "name": "formatted_panic_payload"
   },
   {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "unwrap or expect directly on a storage read — panics on a missing or expired key",
+    "docs_path": "docs/lints/unwrap_on_storage_get.md",
+    "name": "unwrap_on_storage_get"
+  },
+  {
     "category": "Compute",
     "default_level": "warn",
     "description": "unbounded recursion driven by caller-supplied input",
