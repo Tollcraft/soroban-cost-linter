@@ -7,7 +7,7 @@ mod error;
 mod lint_name_set;
 mod output_formatters;
 
-use clap::{ArgGroup, Parser};
+use clap::{ArgGroup, Parser, ValueEnum};
 use output_formatters::{LintFinding, OutputFormat, Span};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -94,11 +94,67 @@ struct Cli {
 
     #[arg(long = "clear-cache", help = "Clear the lint result cache and exit")]
     clear_cache: bool,
+
+    /// Control coloured output: auto, always, never.
+    ///
+    /// When set to *auto* (the default), colour is enabled only when
+    /// standard output is a terminal.  Honours the widely-adopted
+    /// `NO_COLOR` convention (https://no-color.org/): if this flag is
+    /// omitted and the `NO_COLOR` environment variable is set to any
+    /// non-empty value, output is uncoloured.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
+    color: ColorChoice,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct BudgetConfig {
     pub lints: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Colour-policy preference forwarded to the underlying `cargo dylint`
+/// (and therefore `rustc`) invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ColorChoice {
+    /// Emit ANSI colours only when stdout is a terminal (default behaviour).
+    Auto,
+    /// Always emit ANSI colours, even when piped or redirected.
+    Always,
+    /// Never emit ANSI colours.
+    Never,
+}
+
+impl ColorChoice {
+    /// Return the `cargo dylint` / `cargo check` `--color` argument
+    /// value, or `None` when we should let cargo pick its default
+    /// (i.e. when colour is desired and there is nothing to override).
+    fn as_cargo_arg(&self) -> Option<&'static str> {
+        match self {
+            ColorChoice::Auto => None,
+            ColorChoice::Always => Some("always"),
+            ColorChoice::Never => Some("never"),
+        }
+    }
+}
+
+/// Determine the effective colour preference by merging:
+///
+/// 1. An explicit `--color` CLI flag (highest priority).
+/// 2. The `NO_COLOR` environment variable (set to any non-empty value
+///    means "no colour").
+/// 3. Cargo's built-in default (`Auto`) — colour when stdout is a
+///    terminal, no colour otherwise.
+fn resolve_color_choice(cli_color: &ColorChoice) -> ColorChoice {
+    match cli_color {
+        ColorChoice::Auto => {
+            // Honour the NO_COLOR convention (https://no-color.org/).
+            if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
+                ColorChoice::Never
+            } else {
+                ColorChoice::Auto
+            }
+        }
+        other => *other,
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -509,6 +565,15 @@ fn main() {
     }
 
     let mut cmd = Command::new("cargo");
+    // Forward colour preference so that the underlying rustc diagnostics
+    // honour the user's intent.  `--color` is a cargo-level flag, so it
+    // must appear *before* the `dylint` subcommand.
+    let effective_color = resolve_color_choice(&cli.color);
+    if let Some(color_val) = effective_color.as_cargo_arg() {
+        cmd.arg("--color");
+        cmd.arg(color_val);
+        cmd.env("CARGO_TERM_COLOR", color_val);
+    }
     cmd.arg("dylint");
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
@@ -1537,5 +1602,81 @@ mod tests {
             .expect("parsing should succeed");
         assert!(cli.clear_cache);
         assert!(!cli.no_cache);
+    }
+
+    // --- Colour / NO_COLOR tests (issue #420) ---
+
+    #[test]
+    fn cli_color_default_is_auto() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn cli_parses_color_always() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "always"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Always);
+    }
+
+    #[test]
+    fn cli_parses_color_never() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "never"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_explicit_always_overrides_no_color() {
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Always);
+        assert_eq!(resolved, ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_explicit_never_overrides_no_color() {
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Never);
+        assert_eq!(resolved, ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_set_resolves_to_never() {
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_empty_resolves_to_auto() {
+        unsafe { std::env::set_var("NO_COLOR", "") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_unset_resolves_to_auto() {
+        unsafe { std::env::remove_var("NO_COLOR") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_auto_returns_none() {
+        assert_eq!(ColorChoice::Auto.as_cargo_arg(), None);
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_always_returns_always() {
+        assert_eq!(ColorChoice::Always.as_cargo_arg(), Some("always"));
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_never_returns_never() {
+        assert_eq!(ColorChoice::Never.as_cargo_arg(), Some("never"));
     }
 }

@@ -1,6 +1,23 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.## Local Configuration (`budget.toml`)
+`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
+
+## Colour Control
+
+`soroban-cost-linter` forwards rustc's own coloured diagnostics to the terminal.
+You can control this behaviour with the `--color` flag or the `NO_COLOR`
+environment variable.
+
+| Scenario | Result |
+|---|---|
+| `cargo cost-lint` (no flags) | Colours when stdout is a terminal, none otherwise |
+| `cargo cost-lint --color always` | Colours always, even when piped |
+| `cargo cost-lint --color never` | No colours ever |
+| `NO_COLOR=1 cargo cost-lint` | No colours (same as `--color never`) |
+| `NO_COLOR=1 cargo cost-lint --color always` | Colours (`--color` takes precedence) |
+
+The [NO_COLOR](https://no-color.org/) convention is respected: any non-empty
+value forces uncoloured output unless `--color` is passed explicitly.
 
 ## Local Configuration (`budget.toml`)
 
