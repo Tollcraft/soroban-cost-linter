@@ -64,7 +64,7 @@ jobs:
   # reported and every PR waits on it forever. This job supplies that context
   # and stays correct if the matrix legs change.
   build-and-test:
-    needs: test
+    needs: [test, coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -74,3 +74,41 @@ jobs:
             echo "Matrix job 'test' reported: ${{ needs.test.result }}"
             exit 1
           fi
+          if [ "${{ needs.coverage.result }}" != "success" ]; then
+            echo "Coverage job 'coverage' reported: ${{ needs.coverage.result }}"
+            exit 1
+          fi
+
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate toolchain pins (Linux)
+        run: bash .github/scripts/validate-toolchain-pins.sh
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-04-16
+          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cost-linter-coverage
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install Dylint
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+      - name: Generate Coverage Report
+        run: |
+          echo "## Code Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov --package cargo-cost-lint --bins --test integration >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov --package cargo-cost-lint --bins --test integration --lcov --output-path lcov.info
+      - name: Upload LCOV Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov-report
+          path: lcov.info
+
