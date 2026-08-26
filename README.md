@@ -137,6 +137,8 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--allow <LINT>`, `-A <LINT>` | Set a lint to `allow` for this run (repeatable, overrides `budget.toml`) |
 | `--warn <LINT>`, `-W <LINT>` | Set a lint to `warn` for this run (repeatable, overrides `budget.toml`) |
 | `--deny <LINT>`, `-D <LINT>` | Set a lint to `deny` for this run (repeatable, overrides `budget.toml`) |
+| `--package <SPEC>`, `-p <SPEC>` | Package(s) to lint (repeatable, restricts linting to specified packages) |
+| `--workspace` | Lint all packages in the workspace |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
@@ -145,6 +147,26 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--version` | Print the crate version and exit |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
+
+### Package Selection
+
+In multi-crate workspaces, you can restrict linting to specific packages or explicitly lint the entire workspace:
+
+```bash
+# Lint a single package
+cargo cost-lint -p my-contract
+
+# Lint multiple packages
+cargo cost-lint -p contract-a --package contract-b
+
+# Explicitly lint all packages in the workspace
+cargo cost-lint --workspace
+```
+
+#### Default Behavior
+When neither `--package` nor `--workspace` is specified, `cargo cost-lint` follows standard Cargo semantics: it lints the package in the current working directory, or all default workspace members if invoked from the root of a virtual workspace.
+
+Passing an unknown package name with `--package` will be rejected with an error listing the available workspace members.
 
 ### Command-Line Level Overrides
 

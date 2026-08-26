@@ -75,6 +75,18 @@ struct Cli {
         help = "Deny a lint for this run (overrides budget.toml)"
     )]
     deny: Vec<String>,
+
+    #[arg(
+        long = "package",
+        short = 'p',
+        value_name = "SPEC",
+        action = clap::ArgAction::Append,
+        help = "Package(s) to lint (repeatable)"
+    )]
+    package: Vec<String>,
+
+    #[arg(long = "workspace", help = "Lint all packages in the workspace")]
+    workspace: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -86,6 +98,102 @@ include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_explanations.rs"));
+
+/// Validates package selection options against available workspace members
+/// and constructs the command-line arguments to forward to cargo.
+pub fn validate_and_build_package_args(
+    packages: &[String],
+    workspace: bool,
+    available_packages: &[String],
+) -> Result<Vec<String>, String> {
+    if workspace && !packages.is_empty() {
+        return Err(
+            "Error: The argument '--workspace' cannot be used with '--package <SPEC>'".to_string(),
+        );
+    }
+
+    if workspace {
+        return Ok(vec!["--workspace".to_string()]);
+    }
+
+    if packages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for pkg in packages {
+        if !available_packages.iter().any(|p| p == pkg) {
+            let valid = available_packages.join(", ");
+            return Err(format!(
+                "Error: Package '{}' not found in workspace. Valid workspace members are: {}",
+                pkg, valid
+            ));
+        }
+    }
+
+    let mut args = Vec::new();
+    for pkg in packages {
+        args.push("--package".to_string());
+        args.push(pkg.clone());
+    }
+    Ok(args)
+}
+
+/// Parses the output of `cargo metadata` to extract workspace member package names.
+pub fn parse_workspace_members_from_metadata(json_bytes: &[u8]) -> Result<Vec<String>, String> {
+    let value: serde_json::Value = serde_json::from_slice(json_bytes)
+        .map_err(|e| format!("Error: Failed to parse `cargo metadata` JSON: {}", e))?;
+
+    let workspace_members = value
+        .get("workspace_members")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<std::collections::HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let packages = value
+        .get("packages")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Error: `cargo metadata` missing `packages` array".to_string())?;
+
+    let mut member_names: Vec<String> = packages
+        .iter()
+        .filter_map(|pkg| {
+            let id = pkg.get("id").and_then(|i| i.as_str())?;
+            let name = pkg.get("name").and_then(|n| n.as_str())?;
+            if workspace_members.is_empty() || workspace_members.contains(id) {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    member_names.sort();
+    member_names.dedup();
+    Ok(member_names)
+}
+
+/// Discovers workspace package members by running `cargo metadata`.
+pub fn get_workspace_packages(dir: Option<&Path>) -> Result<Vec<String>, String> {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
+    if let Some(d) = dir {
+        cmd.current_dir(d);
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Error: Failed to run `cargo metadata`: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Error: `cargo metadata` failed: {}", stderr.trim()));
+    }
+
+    parse_workspace_members_from_metadata(&output.stdout)
+}
 
 /// Combines lint configurations from an optional `BudgetConfig` (budget.toml)
 /// with command-line overrides (`--allow`, `--warn`, `--deny`).
@@ -316,6 +424,30 @@ fn main() {
             }
         };
 
+    let package_args = if !cli.package.is_empty() || cli.workspace {
+        let available_packages = if !cli.package.is_empty() {
+            match get_workspace_packages(None) {
+                Ok(pkgs) => pkgs,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    exit(1);
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        match validate_and_build_package_args(&cli.package, cli.workspace, &available_packages) {
+            Ok(args) => args,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
     cmd.arg("--lib");
@@ -333,6 +465,21 @@ fn main() {
         cmd.env("DYLINT_RUSTFLAGS", &rustflags_value);
     }
 
+    let mut cargo_args = Vec::new();
+    cargo_args.extend(package_args);
+
+    if cli.format != OutputFormat::Text {
+        cargo_args.push("--message-format=json".to_string());
+        cmd.stdout(Stdio::piped());
+    }
+
+    if !cargo_args.is_empty() {
+        cmd.arg("--");
+        for arg in cargo_args {
+            cmd.arg(arg);
+        }
+    }
+
     if verbose {
         if let Some(ref p) = resolved_config_path {
             eprintln!("[verbose] config: {}", p.display());
@@ -345,12 +492,6 @@ fn main() {
             eprintln!("[verbose] DYLINT_RUSTFLAGS: (empty)");
         }
         eprintln!("[verbose] command: {:?}", cmd);
-    }
-
-    if cli.format != OutputFormat::Text {
-        cmd.arg("--");
-        cmd.arg("--message-format=json");
-        cmd.stdout(Stdio::piped());
     }
 
     let mut child = cmd
@@ -1117,5 +1258,118 @@ mod tests {
         let result = build_effective_lint_flags(None, &allow, &[], &[]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), vec!["-A redundant_env_clone"]);
+    }
+
+    #[test]
+    fn cli_parses_package_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--package", "my-contract"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.package, vec!["my-contract"]);
+        assert!(!cli.workspace);
+
+        let cli_short = Cli::try_parse_from(["cargo-cost-lint", "-p", "my-contract"])
+            .expect("parsing should succeed");
+        assert_eq!(cli_short.package, vec!["my-contract"]);
+    }
+
+    #[test]
+    fn cli_parses_repeatable_package_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "-p",
+            "contract-a",
+            "--package",
+            "contract-b",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.package, vec!["contract-a", "contract-b"]);
+    }
+
+    #[test]
+    fn cli_parses_workspace_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--workspace"])
+            .expect("parsing should succeed");
+        assert!(cli.workspace);
+        assert!(cli.package.is_empty());
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_default() {
+        let pkgs = vec![];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_single_package() {
+        let pkgs = vec!["contract-a".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(args, vec!["--package", "contract-a"]);
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_multiple_packages() {
+        let pkgs = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(
+            args,
+            vec!["--package", "contract-a", "--package", "contract-b"]
+        );
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_workspace() {
+        let pkgs = vec![];
+        let workspace = true;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(args, vec!["--workspace"]);
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_unknown_package() {
+        let pkgs = vec!["nonexistent-contract".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let result = validate_and_build_package_args(&pkgs, workspace, &available);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Package 'nonexistent-contract' not found in workspace"));
+        assert!(err.contains("Valid workspace members are: contract-a, contract-b"));
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_conflicting_workspace_and_package() {
+        let pkgs = vec!["contract-a".to_string()];
+        let workspace = true;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let result = validate_and_build_package_args(&pkgs, workspace, &available);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("cannot be used with '--package <SPEC>'"));
+    }
+
+    #[test]
+    fn test_parse_workspace_members_from_metadata() {
+        let sample_json = r#"{
+            "packages": [
+                {"name": "contract-a", "id": "path+file:///crates/contract-a#0.1.0"},
+                {"name": "contract-b", "id": "path+file:///crates/contract-b#0.1.0"},
+                {"name": "dep-c", "id": "registry+https://github.com/rust-lang/crates.io-index#0.1.0"}
+            ],
+            "workspace_members": [
+                "path+file:///crates/contract-a#0.1.0",
+                "path+file:///crates/contract-b#0.1.0"
+            ]
+        }"#;
+
+        let members = parse_workspace_members_from_metadata(sample_json.as_bytes()).unwrap();
+        assert_eq!(members, vec!["contract-a", "contract-b"]);
     }
 }
