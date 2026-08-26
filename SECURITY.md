@@ -7,9 +7,9 @@
 | 0.1.x   | :white_check_mark: |
 | < 0.1   | :x:                |
 
-## Dependency Auditing
+## Automated Security Audits
 
-Dependencies are automatically audited for security vulnerabilities, license compliance, and maintenance status using `cargo-deny`. This check runs on every push and pull request to the `main` branch, as well as on a daily schedule (at 06:00 UTC) to catch newly disclosed advisories in existing dependencies even when no code changes are made.
+Dependencies are automatically audited for security vulnerabilities, license compliance, and unmaintained crates using `cargo-deny`. In addition to running on every push and pull request to the `main` branch, the audit workflow runs on a daily schedule (`0 6 * * *`) against the default branch to catch newly disclosed vulnerabilities promptly.
 
 ## Reporting a Vulnerability
 
