@@ -258,3 +258,71 @@ fn test_shared_budget_toml_parsing() {
         "Should not fail to parse without lints section"
     );
 }
+
+#[test]
+fn test_list_lints_json_and_text_consistency_and_descriptions() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let text_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints");
+    assert!(text_output.status.success());
+    let text_str = String::from_utf8(text_output.stdout).expect("Stdout is not UTF-8");
+
+    let text_lint_lines: Vec<&str> = text_str.lines().filter(|l| l.contains('|')).collect();
+
+    let json_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints --format json");
+    assert!(json_output.status.success());
+    let json_str = String::from_utf8(json_output.stdout).expect("Stdout is not UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&json_str).expect("Output is not valid JSON");
+
+    let json_lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+
+    // Both text and JSON must report the exact same number of lints
+    assert_eq!(
+        text_lint_lines.len(),
+        json_lints.len(),
+        "Text and JSON list-lints count mismatch: text={}, json={}",
+        text_lint_lines.len(),
+        json_lints.len()
+    );
+
+    // Verify all lints have complete descriptions (not truncated at commas)
+    let formatted_panic = json_lints
+        .iter()
+        .find(|l| l["name"] == "formatted_panic_payload")
+        .expect("formatted_panic_payload not found in JSON inventory");
+    let desc = formatted_panic["description"].as_str().unwrap();
+    assert!(
+        desc.contains("string-formatting machinery"),
+        "formatted_panic_payload description was truncated at comma: got {:?}",
+        desc
+    );
+
+    for lint in json_lints {
+        let name = lint["name"].as_str().unwrap();
+        let level = lint["default_level"].as_str().unwrap();
+        let desc = lint["description"].as_str().unwrap();
+        let cat = lint["category"].as_str().unwrap();
+        let url = lint["documentation_url"].as_str().unwrap();
+
+        assert!(!name.is_empty(), "Empty name in lint entry");
+        assert!(!level.is_empty(), "Empty level in lint entry: {}", name);
+        assert!(
+            !desc.is_empty(),
+            "Empty description in lint entry: {}",
+            name
+        );
+        assert!(!cat.is_empty(), "Empty category in lint entry: {}", name);
+        assert!(!url.is_empty(), "Empty doc url in lint entry: {}", name);
+    }
+}

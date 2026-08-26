@@ -77,67 +77,105 @@ fn parse_register_lints(content: &str) -> Result<Vec<String>> {
 /// level, and one-line description.
 ///
 /// Returns metadata for lints in the order they appear in source.
-fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
+fn parse_declare_lints(content: &str) -> Result<Vec<LintMeta>> {
     let mut results = Vec::new();
-    let mut remaining = content;
+    let mut search_from = 0;
 
-    while let Some(start) = remaining.find("declare_lint! {") {
-        let after_start = &remaining[start + "declare_lint! {".len()..];
+    while let Some(rel_start) = content[search_from..].find("declare_lint! {") {
+        let absolute_start = search_from + rel_start;
+        let after_start = &content[absolute_start + "declare_lint! {".len()..];
+        let start_line = content[..absolute_start].lines().count() + 1;
 
         // Find matching closing brace, respecting nested braces.
         let mut depth: u32 = 1;
-        let mut end_offset = 0;
+        let mut end_offset = None;
         for (i, ch) in after_start.char_indices() {
             if ch == '{' {
                 depth += 1;
             } else if ch == '}' {
                 depth -= 1;
                 if depth == 0 {
-                    end_offset = i;
+                    end_offset = Some(i);
                     break;
                 }
             }
         }
 
-        if end_offset == 0 {
-            // Bail: malformed declare_lint!
-            break;
-        }
+        let end_idx = end_offset.ok_or_else(|| {
+            Error::Parse(format!(
+                "Unclosed declare_lint! block starting at line {}",
+                start_line
+            ))
+        })?;
 
-        let block = &after_start[..end_offset];
+        let block = &after_start[..end_idx];
 
-        // Extract the three key lines from the block body.
+        // Extract non-comment, non-empty lines from the block body.
         let lines: Vec<&str> = block
             .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty() && !l.starts_with("//"))
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("#["))
             .collect();
 
-        if lines.len() >= 3 {
-            // Line 0: "pub LINT_NAME," -> "lint_name"
-            let raw_name = lines[0]
-                .trim_start_matches("pub ")
-                .trim_end_matches(',')
-                .trim();
-            let name = raw_name.to_lowercase();
-
-            // Line 1: "Warn," -> "warn"
-            let level = lines[1].trim_end_matches(',').to_lowercase();
-
-            // Line 2: '"description"' -> "description"
-            let description = lines[2].trim().trim_matches('"').to_string();
-
-            results.push(LintMeta {
-                name,
-                level,
-                description,
-            });
+        if lines.len() < 3 {
+            return Err(Error::Parse(format!(
+                "declare_lint! block at line {} has fewer than 3 payload lines (expected name, level, description)",
+                start_line
+            )));
         }
 
-        remaining = &after_start[end_offset + 1..];
+        // Line 0: "pub LINT_NAME," -> "lint_name"
+        let raw_name = lines[0]
+            .trim_start_matches("pub ")
+            .trim_end_matches(',')
+            .trim();
+        if raw_name.is_empty() {
+            return Err(Error::Parse(format!(
+                "declare_lint! block at line {} has empty lint name",
+                start_line
+            )));
+        }
+        let name = raw_name.to_lowercase();
+
+        // Line 1: "Warn," -> "warn"
+        let raw_level = lines[1].trim_end_matches(',').trim();
+        if raw_level.is_empty() {
+            return Err(Error::Parse(format!(
+                "declare_lint! block for '{}' at line {} has empty lint level",
+                name, start_line
+            )));
+        }
+        let level = raw_level.to_lowercase();
+
+        // Line 2+: description (join remaining lines if multiline, trim quotes and commas)
+        let raw_description = lines[2..].join(" ");
+        let trimmed_desc = raw_description.trim().trim_end_matches(',');
+        let description = if trimmed_desc.starts_with('"')
+            && trimmed_desc.ends_with('"')
+            && trimmed_desc.len() >= 2
+        {
+            trimmed_desc[1..trimmed_desc.len() - 1].to_string()
+        } else {
+            trimmed_desc.trim_matches('"').to_string()
+        };
+
+        if description.is_empty() {
+            return Err(Error::Parse(format!(
+                "declare_lint! block for '{}' at line {} has empty description",
+                name, start_line
+            )));
+        }
+
+        results.push(LintMeta {
+            name,
+            level,
+            description,
+        });
+
+        search_from = absolute_start + "declare_lint! {".len() + end_idx + 1;
     }
 
-    results
+    Ok(results)
 }
 
 /// Wraps `s` in the shortest raw string literal (`r"..."`, `r#"..."#`, ...)
@@ -223,7 +261,7 @@ fn run() -> Result<()> {
     })?;
 
     let names = parse_register_lints(&content)?;
-    let declared = parse_declare_lints(&content);
+    let declared = parse_declare_lints(&content)?;
 
     // Build a name→metadata lookup from the declare_lint! blocks.
     let metadata_by_name: HashMap<&str, &LintMeta> =
@@ -303,37 +341,6 @@ fn run() -> Result<()> {
         // Notify cargo to re-run build.rs when any doc file changes
         println!("cargo:rerun-if-changed={}", doc_path);
         explanations.push((name.clone(), doc_content));
-    }
-
-    let mut declarations = Vec::new();
-    let mut search_from = 0usize;
-    while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
-        let absolute_start = search_from + start;
-        let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').unwrap_or_else(|| {
-            let line_number = content[..absolute_start].lines().count() + 1;
-            panic!(
-                "Could not parse declare_lint! block at line {}. Expected a closing '}}'",
-                line_number
-            );
-        });
-        let block = &after[..end];
-        // Filter out comment lines (///, //) and blank lines before splitting
-        // by comma, so that doc-commented declare_lint! blocks parse correctly.
-        let clean_lines: Vec<&str> = block
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty() && !l.starts_with("//"))
-            .collect();
-        let block_text = clean_lines.join("\n");
-        let parts: Vec<&str> = block_text.split(',').map(str::trim).collect();
-        if parts.len() >= 3 {
-            let lint_name = parts[0].trim_start_matches("pub ").trim();
-            let default_level = parts[1].to_ascii_lowercase();
-            let description = parts[2].trim().trim_matches('"').to_string();
-            declarations.push((lint_name.to_string(), default_level, description));
-        }
-        search_from = absolute_start + 1;
     }
 
     let mut category_map = HashMap::new();
@@ -429,10 +436,7 @@ fn run() -> Result<()> {
     metadata_out.push_str("    lints: &[\n");
 
     for name in &names {
-        if let Some((_, default_level, description)) = declarations
-            .iter()
-            .find(|(lint_name, _, _)| lint_name.to_lowercase() == *name)
-        {
+        if let Some(meta) = metadata_by_name.get(name.as_str()) {
             let category = category_map
                 .get(name)
                 .map(|value| value.as_str())
@@ -445,11 +449,11 @@ fn run() -> Result<()> {
             metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
             metadata_out.push_str(&format!(
                 "            default_level: {},\n",
-                rust_string(default_level)
+                rust_string(&meta.level)
             ));
             metadata_out.push_str(&format!(
                 "            description: {},\n",
-                rust_string(description)
+                rust_string(&meta.description)
             ));
             metadata_out.push_str(&format!(
                 "            category: {},\n",
@@ -460,6 +464,11 @@ fn run() -> Result<()> {
                 rust_string(&docs_path)
             ));
             metadata_out.push_str("        },\n");
+        } else {
+            return Err(Error::Parse(format!(
+                "Lint '{}' registered in register_lints but metadata not found in declare_lint! blocks",
+                name
+            )));
         }
     }
     metadata_out.push_str("    ],\n");
