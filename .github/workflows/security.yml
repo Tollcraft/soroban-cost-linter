@@ -16,7 +16,7 @@ on:
       - "deny.toml"
       - ".github/workflows/security.yml"
   schedule:
-    # Run daily at 06:00 UTC
+    # Run daily at 06:00 UTC to catch newly disclosed vulnerabilities
     - cron: "0 6 * * *"
   # Allow manual runs from the Actions tab.
   workflow_dispatch:
