@@ -236,7 +236,24 @@ The action defaults to the toolchain that matches the release. Override it only 
 | `args` | No | `''` | Extra arguments forwarded to `cargo cost-lint` |
 | `working-directory` | No | `'.'` | Directory containing the Soroban workspace |
 
-## JSON Output and CI Annotations
+## GitHub Actions Annotations (`--format github`)
+
+Pass `--format github` to output GitHub Actions workflow commands directly. Findings will appear as inline PR annotations on the Files Changed diff and Checks interface without requiring external tools like `jq`.
+
+```bash
+cargo cost-lint --format github
+```
+
+### Annotation format and severity mapping
+
+- `deny` lints emit `::error file=…,line=…,col=…::message`
+- `warn` lints emit `::warning file=…,line=…,col=…::message`
+
+File paths are output relative to the repository working directory, and special characters (`%`, `\r`, `\n`, `:`, `,`) are escaped per GitHub workflow command specifications so multi-line diagnostic messages and diagnostics containing colons render cleanly in GitHub's UI.
+
+The composite action (`action.yml`) uses `--format github` by default.
+
+## JSON Output (`--format json`)
 
 For machine-readable output, pass `--format json`. `cargo cost-lint` will emit JSON lines (NDJSON) detailing each lint finding. The exit code remains non-zero if a `deny` level lint fires.
 
@@ -258,18 +275,3 @@ Each line of stdout is a JSON object with the following schema:
 }
 ```
 
-### GitHub Actions Annotations Example
-You can pipe the JSON output into a tool like `jq` to create GitHub annotations (which show up directly on your PR's Files Changed tab).
-
-```yaml
-      - uses: Tollcraft/soroban-cost-linter@v1
-        with:
-          args: '--format json'
-      - name: Create GitHub annotations
-        if: always()
-        run: |
-          # If you captured the JSON output to a file, parse it:
-          # cargo cost-lint --format json > lint-results.json
-          # jq -r '. | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"' lint-results.json
-```
-*(Note: If the linter returns a non-zero exit code due to a `deny` lint, the step will still fail correctly in Actions).*

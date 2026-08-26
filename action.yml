@@ -67,4 +67,4 @@ runs:
         if [ -n "${{ inputs.config }}" ]; then
           CONFIG_ARG="--config ${{ inputs.config }}"
         fi
-        "${{ github.action_path }}/target/release/cargo-cost-lint" $CONFIG_ARG ${{ inputs.args }}
+        "${{ github.action_path }}/target/release/cargo-cost-lint" --format github $CONFIG_ARG ${{ inputs.args }}

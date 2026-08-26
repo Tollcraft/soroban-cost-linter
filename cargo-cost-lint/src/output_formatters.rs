@@ -14,6 +14,8 @@ pub enum OutputFormat {
     Json,
     /// SARIF 2.1.0 JSON report.
     Sarif,
+    /// GitHub Actions workflow command annotations.
+    Github,
 }
 
 /// Source-location span for a lint finding.
@@ -37,6 +39,90 @@ pub struct LintFinding {
     pub help: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+}
+
+/// Escapes special characters for GitHub Actions workflow command message bodies.
+///
+/// According to GitHub Actions specification:
+/// - `%` is escaped as `%25`
+/// - `\r` is escaped as `%0D`
+/// - `\n` is escaped as `%0A`
+pub fn escape_github_message(s: &str) -> String {
+    s.replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+}
+
+/// Escapes special characters for GitHub Actions workflow command property values.
+///
+/// According to GitHub Actions specification:
+/// - `%` is escaped as `%25`
+/// - `\r` is escaped as `%0D`
+/// - `\n` is escaped as `%0A`
+/// - `:` is escaped as `%3A`
+/// - `,` is escaped as `%2C`
+pub fn escape_github_property(s: &str) -> String {
+    s.replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
+}
+
+/// Format a single finding as a GitHub Actions workflow command annotation.
+pub fn format_github_annotation(finding: &LintFinding) -> String {
+    let severity = match finding.level.as_str() {
+        "error" | "deny" => "error",
+        _ => "warning",
+    };
+
+    let escaped_message = escape_github_message(&finding.message);
+
+    // Normalize file path: make relative to current directory if absolute, and use forward slashes.
+    let rel_file = if let Ok(current_dir) = std::env::current_dir() {
+        let p = std::path::Path::new(&finding.file);
+        if let Ok(stripped) = p.strip_prefix(&current_dir) {
+            stripped.to_string_lossy().replace('\\', "/")
+        } else {
+            finding.file.replace('\\', "/")
+        }
+    } else {
+        finding.file.replace('\\', "/")
+    };
+
+    let escaped_file = escape_github_property(&rel_file);
+
+    if finding.span.line_start > 0 {
+        if finding.span.column_start > 0 {
+            format!(
+                "::{} file={},line={},col={}::{}",
+                severity,
+                escaped_file,
+                finding.span.line_start,
+                finding.span.column_start,
+                escaped_message
+            )
+        } else {
+            format!(
+                "::{} file={},line={}::{}",
+                severity, escaped_file, finding.span.line_start, escaped_message
+            )
+        }
+    } else if !escaped_file.is_empty() {
+        format!("::{} file={}::{}", severity, escaped_file, escaped_message)
+    } else {
+        format!("::{}::{}", severity, escaped_message)
+    }
+}
+
+/// Emit a GitHub Actions workflow command annotation for a finding.
+pub fn emit_github_annotation<W: Write>(
+    finding: &LintFinding,
+    writer: &mut W,
+) -> crate::error::LinterResult<()> {
+    let annotation = format_github_annotation(finding);
+    writeln!(writer, "{}", annotation)?;
+    Ok(())
 }
 
 /// SARIF 2.1.0 report root.
@@ -152,6 +238,10 @@ pub fn handle_finding<W: Write>(
         writeln!(writer, "{}", json_str)?;
         return Ok(true);
     }
+    if cli.format == OutputFormat::Github {
+        emit_github_annotation(finding, writer)?;
+        return Ok(true);
+    }
     // For non‑SARIF formats we render the diagnostic message.
     if cli.format != OutputFormat::Sarif {
         // Use the rendered field if available; fallback to the raw message.
@@ -251,4 +341,148 @@ pub fn emit_sarif<W: Write>(
     Ok(())
 }
 
-// The suggestion extraction and fix‑application logic remain in the main crate.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_github_message() {
+        assert_eq!(
+            escape_github_message("Line 1\nLine 2\r\n100% complete: check here"),
+            "Line 1%0ALine 2%0D%0A100%25 complete: check here"
+        );
+    }
+
+    #[test]
+    fn test_escape_github_property() {
+        assert_eq!(
+            escape_github_property("file:name,with%special\r\nchars"),
+            "file%3Aname%2Cwith%25special%0D%0Achars"
+        );
+    }
+
+    #[test]
+    fn test_format_github_annotation_deny_error() {
+        let finding = LintFinding {
+            name: "soroban_storage_in_loop".to_string(),
+            level: "deny".to_string(),
+            file: "src/contract.rs".to_string(),
+            span: Span {
+                line_start: 42,
+                line_end: 42,
+                column_start: 13,
+                column_end: 20,
+            },
+            message: "storage operations in loops are expensive".to_string(),
+            help: None,
+            suggestion: None,
+        };
+
+        let annotation = format_github_annotation(&finding);
+        assert_eq!(
+            annotation,
+            "::error file=src/contract.rs,line=42,col=13::storage operations in loops are expensive"
+        );
+    }
+
+    #[test]
+    fn test_format_github_annotation_warn_warning() {
+        let finding = LintFinding {
+            name: "redundant_env_clone".to_string(),
+            level: "warn".to_string(),
+            file: "src/lib.rs".to_string(),
+            span: Span {
+                line_start: 15,
+                line_end: 15,
+                column_start: 5,
+                column_end: 10,
+            },
+            message: "redundant cloning of Env".to_string(),
+            help: None,
+            suggestion: None,
+        };
+
+        let annotation = format_github_annotation(&finding);
+        assert_eq!(
+            annotation,
+            "::warning file=src/lib.rs,line=15,col=5::redundant cloning of Env"
+        );
+    }
+
+    #[test]
+    fn test_format_github_annotation_multiline_and_colons() {
+        let finding = LintFinding {
+            name: "soroban_storage_in_loop".to_string(),
+            level: "deny".to_string(),
+            file: "contracts/vault/src/lib.rs".to_string(),
+            span: Span {
+                line_start: 100,
+                line_end: 105,
+                column_start: 9,
+                column_end: 14,
+            },
+            message: "storage operation inside loop detected:\n  env.storage().instance().set(&k, &v);\nhelp: consider batching writes outside the loop: see https://docs.rs/soroban-sdk".to_string(),
+            help: Some("consider batching writes".to_string()),
+            suggestion: None,
+        };
+
+        let annotation = format_github_annotation(&finding);
+        assert_eq!(
+            annotation,
+            "::error file=contracts/vault/src/lib.rs,line=100,col=9::storage operation inside loop detected:%0A  env.storage().instance().set(&k, &v);%0Ahelp: consider batching writes outside the loop: see https://docs.rs/soroban-sdk"
+        );
+        // Verify no raw newlines in the annotation string (single line command)
+        assert!(!annotation.contains('\n'));
+        assert!(!annotation.contains('\r'));
+    }
+
+    #[test]
+    fn test_format_github_annotation_without_span() {
+        let finding = LintFinding {
+            name: "budget_exceeded".to_string(),
+            level: "warn".to_string(),
+            file: "src/lib.rs".to_string(),
+            span: Span {
+                line_start: 0,
+                line_end: 0,
+                column_start: 0,
+                column_end: 0,
+            },
+            message: "general workspace warning".to_string(),
+            help: None,
+            suggestion: None,
+        };
+
+        let annotation = format_github_annotation(&finding);
+        assert_eq!(
+            annotation,
+            "::warning file=src/lib.rs::general workspace warning"
+        );
+    }
+
+    #[test]
+    fn test_emit_github_annotation() {
+        let finding = LintFinding {
+            name: "test_lint".to_string(),
+            level: "warn".to_string(),
+            file: "src/main.rs".to_string(),
+            span: Span {
+                line_start: 1,
+                line_end: 1,
+                column_start: 1,
+                column_end: 1,
+            },
+            message: "test message".to_string(),
+            help: None,
+            suggestion: None,
+        };
+
+        let mut buf = Vec::new();
+        emit_github_annotation(&finding, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert_eq!(
+            output,
+            "::warning file=src/main.rs,line=1,col=1::test message\n"
+        );
+    }
+}

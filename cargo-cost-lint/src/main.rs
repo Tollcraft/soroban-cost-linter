@@ -260,7 +260,7 @@ fn main() {
         eprintln!("[verbose] command: {:?}", cmd);
     }
 
-    if cli.format == OutputFormat::Json {
+    if cli.format != OutputFormat::Text {
         cmd.arg("--");
         cmd.arg("--message-format=json");
         cmd.stdout(Stdio::piped());
@@ -270,10 +270,11 @@ fn main() {
         .spawn()
         .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
 
-    if cli.format == OutputFormat::Json {
+    if cli.format != OutputFormat::Text {
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         let reader = BufReader::new(stdout);
         let mut highest_exit_code = 0;
+        let mut sarif_findings = Vec::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
@@ -367,8 +368,22 @@ fn main() {
                                         suggestion: None,
                                     };
 
-                                    if let Ok(json_str) = serde_json::to_string(&finding) {
-                                        println!("{}", json_str);
+                                    match cli.format {
+                                        OutputFormat::Json => {
+                                            if let Ok(json_str) = serde_json::to_string(&finding) {
+                                                println!("{}", json_str);
+                                            }
+                                        }
+                                        OutputFormat::Github => {
+                                            let _ = output_formatters::emit_github_annotation(
+                                                &finding,
+                                                &mut std::io::stdout(),
+                                            );
+                                        }
+                                        OutputFormat::Sarif => {
+                                            sarif_findings.push(finding);
+                                        }
+                                        OutputFormat::Text => {}
                                     }
                                 }
                             }
@@ -376,6 +391,10 @@ fn main() {
                     }
                 }
             }
+        }
+
+        if cli.format == OutputFormat::Sarif {
+            let _ = output_formatters::emit_sarif(&sarif_findings, &mut std::io::stdout());
         }
 
         let status = child.wait().expect("Failed to wait on cargo dylint");
@@ -798,6 +817,20 @@ mod tests {
         let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "json"])
             .expect("parsing should succeed");
         assert_eq!(cli.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_parses_format_github() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "github"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Github);
+    }
+
+    #[test]
+    fn cli_parses_format_sarif() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "sarif"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Sarif);
     }
 
     #[test]
