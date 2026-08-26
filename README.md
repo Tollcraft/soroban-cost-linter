@@ -134,6 +134,9 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | Flag | Description |
 |------|-------------|
 | `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
+| `--allow <LINT>`, `-A <LINT>` | Set a lint to `allow` for this run (repeatable, overrides `budget.toml`) |
+| `--warn <LINT>`, `-W <LINT>` | Set a lint to `warn` for this run (repeatable, overrides `budget.toml`) |
+| `--deny <LINT>`, `-D <LINT>` | Set a lint to `deny` for this run (repeatable, overrides `budget.toml`) |
 | `--format <text\|json>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
@@ -142,6 +145,22 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--version` | Print the crate version and exit |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
+
+### Command-Line Level Overrides
+
+You can temporarily override lint levels without editing `budget.toml` using `--allow` (`-A`), `--warn` (`-W`), and `--deny` (`-D`):
+
+```bash
+# Deny storage operations in loops and allow redundant env clones for this run
+cargo cost-lint --deny soroban_storage_in_loop --allow redundant_env_clone
+```
+
+#### Precedence
+1. **Command-line flags** (`--allow`, `--warn`, `--deny`) take the highest precedence.
+2. **`budget.toml`** defines project-wide defaults for unoverridden lints.
+3. **Built-in lint defaults** apply when neither the command line nor `budget.toml` specifies a level.
+
+Passing conflicting levels for the same lint (e.g. `--allow <LINT> --deny <LINT>`) or an unknown lint name will be rejected with an error before execution.
 
 ### Running the linter
 

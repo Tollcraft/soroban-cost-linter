@@ -48,11 +48,38 @@ struct Cli {
         help = "Show diagnostic detail: config path, lint flags, spawned command"
     )]
     verbose: bool,
+
+    #[arg(
+        long = "allow",
+        short = 'A',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Allow a lint for this run (overrides budget.toml)"
+    )]
+    allow: Vec<String>,
+
+    #[arg(
+        long = "warn",
+        short = 'W',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Set a lint to warning for this run (overrides budget.toml)"
+    )]
+    warn: Vec<String>,
+
+    #[arg(
+        long = "deny",
+        short = 'D',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Deny a lint for this run (overrides budget.toml)"
+    )]
+    deny: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    lints: Option<std::collections::HashMap<String, String>>,
+pub struct BudgetConfig {
+    pub lints: Option<std::collections::HashMap<String, String>>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -60,9 +87,55 @@ include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_explanations.rs"));
 
-fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
-    let mut lint_flags = Vec::new();
-    if let Some(lints) = &config.lints {
+/// Combines lint configurations from an optional `BudgetConfig` (budget.toml)
+/// with command-line overrides (`--allow`, `--warn`, `--deny`).
+///
+/// Command-line overrides take precedence over `budget.toml`.
+/// Unknown lint names in either source produce an error listing all valid lints.
+/// Conflicting command-line overrides for the same lint produce an error.
+pub fn build_effective_lint_flags(
+    config: Option<&BudgetConfig>,
+    cli_allow: &[String],
+    cli_warn: &[String],
+    cli_deny: &[String],
+) -> Result<Vec<String>, String> {
+    // 1. Process and validate CLI overrides.
+    let mut cli_levels: std::collections::HashMap<String, (&'static str, &'static str)> =
+        std::collections::HashMap::new();
+
+    let cli_groups = [
+        (cli_allow, "allow", "-A"),
+        (cli_warn, "warn", "-W"),
+        (cli_deny, "deny", "-D"),
+    ];
+
+    for (lints, level_name, flag) in cli_groups {
+        for lint in lints {
+            if !LINT_NAMES.contains(&lint.as_str()) {
+                let valid = LINT_NAMES.join(", ");
+                return Err(format!(
+                    "Error: Unknown lint name '{}'. Valid lints are: {}",
+                    lint, valid
+                ));
+            }
+            if let Some((existing_level, _)) = cli_levels.get(lint) {
+                if *existing_level != level_name {
+                    return Err(format!(
+                        "Error: Conflicting lint levels specified for '{}': cannot set to both '{}' and '{}'",
+                        lint, existing_level, level_name
+                    ));
+                }
+            } else {
+                cli_levels.insert(lint.clone(), (level_name, flag));
+            }
+        }
+    }
+
+    // 2. Process budget.toml configuration if present.
+    let mut effective_flags: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+
+    if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
         for (lint, level) in lints {
             if !LINT_NAMES.contains(&lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
@@ -82,10 +155,21 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
                     ));
                 }
             };
-            lint_flags.push(format!("{} {}", level_flag, lint));
+            effective_flags.insert(lint.clone(), format!("{} {}", level_flag, lint));
         }
     }
-    Ok(lint_flags)
+
+    // 3. Apply CLI overrides (taking precedence over budget.toml).
+    for (lint, (_level_name, flag)) in cli_levels {
+        effective_flags.insert(lint.clone(), format!("{} {}", flag, lint));
+    }
+
+    Ok(effective_flags.into_values().collect())
+}
+
+#[allow(dead_code)]
+fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
+    build_effective_lint_flags(Some(config), &[], &[], &[])
 }
 
 fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
@@ -200,8 +284,8 @@ fn main() {
 
     let quiet = cli.quiet;
     let verbose = cli.verbose;
-    let mut lint_flags = Vec::new();
     let mut resolved_config_path: Option<PathBuf> = None;
+    let mut config_opt: Option<BudgetConfig> = None;
 
     if let Some(ref path) = resolve_config(cli.config.as_deref()) {
         resolved_config_path = Some(path.clone());
@@ -210,13 +294,7 @@ fn main() {
         }
         if let Ok(config_str) = fs::read_to_string(path) {
             if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                match validate_and_build_flags(&config) {
-                    Ok(flags) => lint_flags = flags,
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        exit(1);
-                    }
-                }
+                config_opt = Some(config);
             } else {
                 if !quiet {
                     eprintln!("Warning: Failed to parse {}", path.display());
@@ -224,10 +302,19 @@ fn main() {
             }
         }
     } else {
-        if !quiet {
+        if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
             eprintln!("Warning: budget.toml not found, using default lint levels.");
         }
     }
+
+    let lint_flags =
+        match build_effective_lint_flags(config_opt.as_ref(), &cli.allow, &cli.warn, &cli.deny) {
+            Ok(flags) => flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        };
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
@@ -885,5 +972,150 @@ mod tests {
         let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
         assert!(!cli.quiet);
         assert!(!cli.verbose);
+    }
+
+    #[test]
+    fn cli_parses_allow_warn_deny_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--allow",
+            "redundant_env_clone",
+            "--warn",
+            "map_insert_in_loop",
+            "--deny",
+            "soroban_storage_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.allow, vec!["redundant_env_clone"]);
+        assert_eq!(cli.warn, vec!["map_insert_in_loop"]);
+        assert_eq!(cli.deny, vec!["soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn cli_parses_short_override_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "-A",
+            "redundant_env_clone",
+            "-W",
+            "map_insert_in_loop",
+            "-D",
+            "soroban_storage_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.allow, vec!["redundant_env_clone"]);
+        assert_eq!(cli.warn, vec!["map_insert_in_loop"]);
+        assert_eq!(cli.deny, vec!["soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn cli_parses_repeatable_override_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--allow",
+            "redundant_env_clone",
+            "--allow",
+            "symbol_new_for_short_literal",
+            "--deny",
+            "soroban_storage_in_loop",
+            "--deny",
+            "map_insert_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(
+            cli.allow,
+            vec!["redundant_env_clone", "symbol_new_for_short_literal"]
+        );
+        assert_eq!(
+            cli.deny,
+            vec!["soroban_storage_in_loop", "map_insert_in_loop"]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_cli_only() {
+        let allow = vec!["redundant_env_clone".to_string()];
+        let warn = vec!["map_insert_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(None, &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec![
+                "-W map_insert_in_loop",
+                "-A redundant_env_clone",
+                "-D soroban_storage_in_loop",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_precedence_over_budget_toml() {
+        // budget.toml sets soroban_storage_in_loop to "warn" and redundant_env_clone to "deny"
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        // CLI overrides soroban_storage_in_loop to "deny" and redundant_env_clone to "allow"
+        let allow = vec!["redundant_env_clone".to_string()];
+        let warn = vec![];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(Some(&config), &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-A redundant_env_clone", "-D soroban_storage_in_loop",]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_preserves_unoverridden_budget_toml_lints() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        // Only override soroban_storage_in_loop on CLI; redundant_env_clone should remain "warn"
+        let allow = vec![];
+        let warn = vec![];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(Some(&config), &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-W redundant_env_clone", "-D soroban_storage_in_loop",]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_unknown_lint_name_cli() {
+        let allow = vec!["invalid_lint_name".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &[], &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint name 'invalid_lint_name'"));
+        assert!(err.contains("Valid lints are:"));
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_conflicting_cli_flags() {
+        let allow = vec!["soroban_storage_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &[], &deny);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Conflicting lint levels specified for 'soroban_storage_in_loop'"));
+    }
+
+    #[test]
+    fn test_effective_flags_allows_duplicate_same_level_cli_flags() {
+        let allow = vec![
+            "redundant_env_clone".to_string(),
+            "redundant_env_clone".to_string(),
+        ];
+        let result = build_effective_lint_flags(None, &allow, &[], &[]);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec!["-A redundant_env_clone"]);
     }
 }
