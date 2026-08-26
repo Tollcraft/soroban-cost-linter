@@ -365,18 +365,129 @@ fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String
     build_effective_lint_flags(Some(config), &[], &[], &[])
 }
 
-fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
-    if let Some(path) = config {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            return Some(p);
+/// Container for `.lintignore` suppression patterns.
+#[derive(Clone, Debug)]
+pub struct LintIgnore {
+    gitignore: ignore::gitignore::Gitignore,
+    pub path: PathBuf,
+}
+
+impl LintIgnore {
+    /// Discovers `.lintignore` by searching `cwd` and walking up to `workspace_root`.
+    #[allow(clippy::collapsible_if)]
+    pub fn discover(cwd: &Path, workspace_root: &Path) -> Option<Self> {
+        let mut current = cwd.to_path_buf();
+        loop {
+            let path = current.join(".lintignore");
+            if path.exists() {
+                let mut builder = ignore::gitignore::GitignoreBuilder::new(&current);
+                if builder.add(&path).is_none() {
+                    let build_res = builder.build();
+                    if let Ok(gitignore) = build_res {
+                        return Some(LintIgnore { gitignore, path });
+                    }
+                }
+            }
+            if current == workspace_root {
+                break;
+            }
+            match current.parent() {
+                Some(parent) => current = parent.to_path_buf(),
+                None => break,
+            }
+        }
+        None
+    }
+
+    /// Checks if a file path matches any `.lintignore` rule.
+    pub fn is_ignored<P: AsRef<Path>>(&self, file_path: P) -> bool {
+        let path = file_path.as_ref();
+        let rel_path = if let Ok(current) = std::env::current_dir() {
+            if let Ok(stripped) = path.strip_prefix(&current) {
+                stripped
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+        self.gitignore.matched(rel_path, false).is_ignore()
+            || self.gitignore.matched(path, false).is_ignore()
+    }
+}
+
+/// Helper to find workspace root directory by invoking `cargo metadata` or walking up parent directories.
+#[allow(clippy::collapsible_if)]
+pub fn find_workspace_root_path(start_dir: &Path) -> PathBuf {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
+    cmd.current_dir(start_dir);
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            let json_res = serde_json::from_slice::<serde_json::Value>(&output.stdout);
+            if let Ok(val) = json_res {
+                if let Some(root_str) = val.get("workspace_root").and_then(|v| v.as_str()) {
+                    return PathBuf::from(root_str);
+                }
+            }
         }
     }
-    let budget = PathBuf::from("budget.toml");
-    if budget.exists() {
-        return Some(budget);
+    let mut current = start_dir.to_path_buf();
+    let mut candidate = current.clone();
+    loop {
+        let manifest = current.join("Cargo.toml");
+        if manifest.exists() {
+            candidate = current.clone();
+            let read_res = fs::read_to_string(&manifest);
+            if let Ok(content) = read_res {
+                if content.contains("[workspace]") {
+                    return current;
+                }
+            }
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    candidate
+}
+
+/// Discovers `budget.toml` by searching `cwd` and walking up to `workspace_root`.
+pub fn discover_config_file(cwd: &Path, workspace_root: &Path) -> Option<PathBuf> {
+    let mut current = cwd.to_path_buf();
+    loop {
+        let budget = current.join("budget.toml");
+        if budget.exists() {
+            return Some(budget);
+        }
+        if current == workspace_root {
+            break;
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
     }
     None
+}
+
+/// Resolves config path based on CLI `--config` option or by walking up from `cwd` to `workspace_root`.
+/// An explicit `--config <PATH>` wins and errors if the specified file does not exist.
+pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, String> {
+    if let Some(path_str) = config_arg {
+        let path = PathBuf::from(path_str);
+        if path.exists() {
+            Ok(Some(path))
+        } else {
+            Err(format!("Error: Config file '{}' does not exist", path_str))
+        }
+    } else {
+        let cwd = std::env::current_dir()
+            .map_err(|e| format!("Error: Failed to get current directory: {}", e))?;
+        let workspace_root = find_workspace_root_path(&cwd);
+        Ok(discover_config_file(&cwd, &workspace_root))
+    }
 }
 
 /// Loads `path` as a validated `BudgetConfig` and formats its `[lints]`
@@ -498,9 +609,23 @@ fn main() {
     let mut resolved_config_path: Option<PathBuf> = None;
     let mut config_opt: Option<BudgetConfig> = None;
 
-    if let Some(ref path) = resolve_config(cli.config.as_deref()) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let workspace_root = find_workspace_root_path(&cwd);
+    let lintignore_opt = LintIgnore::discover(&cwd, &workspace_root);
+
+    let resolved_config = match resolve_config(cli.config.as_deref()) {
+        Ok(path_opt) => path_opt,
+        Err(e) => {
+            eprintln!("{}", e);
+            exit(1);
+        }
+    };
+
+    if let Some(ref path) = resolved_config {
         resolved_config_path = Some(path.clone());
-        if !quiet {
+        if verbose {
+            eprintln!("Using config file: {}", path.display());
+        } else if !quiet {
             eprintln!("Using config: {}", path.display());
         }
         if let Ok(config_str) = fs::read_to_string(path) {
@@ -513,7 +638,9 @@ fn main() {
             }
         }
     } else {
-        if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
+        if verbose {
+            eprintln!("No budget.toml found, using default lint levels.");
+        } else if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
             eprintln!("Warning: budget.toml not found, using default lint levels.");
         }
     }
@@ -615,7 +742,8 @@ fn main() {
     let mut cargo_args = Vec::new();
     cargo_args.extend(package_args);
 
-    if cli.format != OutputFormat::Text {
+    let has_lintignore = lintignore_opt.is_some();
+    if cli.format != OutputFormat::Text || has_lintignore {
         cargo_args.push("--message-format=json".to_string());
     }
 
@@ -632,6 +760,9 @@ fn main() {
         } else {
             eprintln!("[verbose] config: (none — using default lint levels)");
         }
+        if let Some(ref li) = lintignore_opt {
+            eprintln!("[verbose] .lintignore: {}", li.path.display());
+        }
         if !rustflags_value.is_empty() {
             eprintln!("[verbose] DYLINT_RUSTFLAGS: {}", rustflags_value);
         } else {
@@ -640,7 +771,7 @@ fn main() {
         eprintln!("[verbose] command: {:?}", cmd);
     }
 
-    if cli.format != OutputFormat::Text {
+    if cli.format != OutputFormat::Text || has_lintignore {
         cmd.stdout(Stdio::piped());
         let mut child = cmd
             .spawn()
@@ -659,18 +790,6 @@ fn main() {
                         if let Some(code) = message.get("code") {
                             if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                                 if LINT_NAMES.contains(&lint_name) {
-                                    let level = message
-                                        .get("level")
-                                        .and_then(|l| l.as_str())
-                                        .unwrap_or("unknown");
-                                    if level == "error" || level == "deny" {
-                                        highest_exit_code = 1;
-                                    }
-
-                                    let msg_text = message
-                                        .get("message")
-                                        .and_then(|m| m.as_str())
-                                        .unwrap_or("");
                                     let mut file = String::new();
                                     let mut span_obj = Span {
                                         line_start: 0,
@@ -717,6 +836,31 @@ fn main() {
                                         }
                                     }
 
+                                    if let Some(ref lintignore) = lintignore_opt {
+                                        if !file.is_empty() && lintignore.is_ignored(&file) {
+                                            if verbose {
+                                                eprintln!(
+                                                    "[verbose] Suppressing finding in {} due to .lintignore pattern",
+                                                    file
+                                                );
+                                            }
+                                            continue;
+                                        }
+                                    }
+
+                                    let level = message
+                                        .get("level")
+                                        .and_then(|l| l.as_str())
+                                        .unwrap_or("unknown");
+                                    if level == "error" || level == "deny" {
+                                        highest_exit_code = 1;
+                                    }
+
+                                    let msg_text = message
+                                        .get("message")
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or("");
+
                                     let mut help_text = None;
                                     if let Some(children) =
                                         message.get("children").and_then(|c| c.as_array())
@@ -745,6 +889,14 @@ fn main() {
                                     };
 
                                     match cli.format {
+                                        OutputFormat::Text => {
+                                            if let Some(rendered) =
+                                                message.get("rendered").and_then(|r| r.as_str())
+                                            {
+                                                eprint!("{}", rendered);
+                                                recorded_stdout.push_str(rendered);
+                                            }
+                                        }
                                         OutputFormat::Json => {
                                             if let Ok(json_str) = serde_json::to_string(&finding) {
                                                 println!("{}", json_str);
@@ -767,7 +919,6 @@ fn main() {
                                         OutputFormat::Sarif => {
                                             sarif_findings.push(finding);
                                         }
-                                        OutputFormat::Text => {}
                                     }
                                 }
                             }
@@ -1716,5 +1867,91 @@ mod tests {
     #[test]
     fn color_choice_as_cargo_arg_never_returns_never() {
         assert_eq!(ColorChoice::Never.as_cargo_arg(), Some("never"));
+    }
+
+    #[test]
+    fn test_discover_config_in_cwd() {
+        let temp = tempfile::tempdir().unwrap();
+        let cwd = temp.path();
+        let budget_path = cwd.join("budget.toml");
+        std::fs::write(&budget_path, "[lints]\n").unwrap();
+
+        let found = discover_config_file(cwd, cwd);
+        assert_eq!(found, Some(budget_path));
+    }
+
+    #[test]
+    fn test_discover_config_in_ancestor() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_root = temp.path();
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let budget_path = workspace_root.join("budget.toml");
+        std::fs::write(&budget_path, "[lints]\n").unwrap();
+
+        let found = discover_config_file(&member_dir, workspace_root);
+        assert_eq!(found, Some(budget_path));
+    }
+
+    #[test]
+    fn test_discover_config_none_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_root = temp.path();
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let found = discover_config_file(&member_dir, workspace_root);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn test_discover_config_stops_at_workspace_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent_dir = temp.path();
+        let workspace_root = parent_dir.join("workspace");
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        // Create budget.toml in parent_dir (OUTSIDE workspace)
+        std::fs::write(parent_dir.join("budget.toml"), "[lints]\n").unwrap();
+
+        let found = discover_config_file(&member_dir, &workspace_root);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn test_resolve_config_explicit_override_and_missing_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let valid_config = temp.path().join("my_budget.toml");
+        std::fs::write(&valid_config, "[lints]\n").unwrap();
+
+        let res_ok = resolve_config(valid_config.to_str());
+        assert!(res_ok.is_ok());
+        assert_eq!(res_ok.unwrap(), Some(valid_config));
+
+        let res_err = resolve_config(Some("/nonexistent/file/path/budget.toml"));
+        assert!(res_err.is_err());
+        assert!(res_err.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_lintignore_matching() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let lintignore_path = root.join(".lintignore");
+        std::fs::write(
+            &lintignore_path,
+            "src/generated/*.rs\nsrc/legacy_batch.rs\n*.tmp.rs\n",
+        )
+        .unwrap();
+
+        let lintignore = LintIgnore::discover(root, root).expect(".lintignore should be loaded");
+        assert!(lintignore.is_ignored(root.join("src/generated/foo.rs")));
+        assert!(lintignore.is_ignored(root.join("src/legacy_batch.rs")));
+        assert!(lintignore.is_ignored(root.join("test.tmp.rs")));
+
+        assert!(!lintignore.is_ignored(root.join("src/main.rs")));
+        assert!(!lintignore.is_ignored(root.join("src/lib.rs")));
     }
 }

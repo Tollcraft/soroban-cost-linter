@@ -203,6 +203,15 @@ cargo cost-lint --deny soroban_storage_in_loop --allow redundant_env_clone
 2. **`budget.toml`** defines project-wide defaults for unoverridden lints.
 3. **Built-in lint defaults** apply when neither the command line nor `budget.toml` specifies a level.
 
+#### Configuration Discovery Order
+When resolving `budget.toml`, `cargo cost-lint` uses the following order:
+1. **Explicit `--config <PATH>` CLI option**: Loads the specified configuration file. Fails with an error if the path does not exist.
+2. **Current working directory**: Checks for `budget.toml` in the current working directory.
+3. **Walk-up discovery**: If not found in the current directory, walks up parent directories until it finds the workspace root.
+4. **Safe defaults**: If no `budget.toml` is found up to the workspace root, safe default lint levels are used.
+
+You can inspect the resolved configuration path by running with `--verbose`.
+
 Passing conflicting levels for the same lint (e.g. `--allow <LINT> --deny <LINT>`) or an unknown lint name will be rejected with an error before execution.
 
 ### Running the linter

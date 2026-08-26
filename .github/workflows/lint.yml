@@ -14,12 +14,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Validate toolchain pins (Linux)
         if: runner.os == 'Linux'
+        run: bash .github/scripts/validate-toolchain-pins.sh
+      - name: Validate toolchain pins (macOS)
+        if: runner.os == 'macOS'
         run: bash .github/scripts/validate-toolchain-pins.sh
       - name: Validate toolchain pins (Windows)
         if: runner.os == 'Windows'
