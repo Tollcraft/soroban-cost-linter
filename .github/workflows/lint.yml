@@ -96,9 +96,9 @@ jobs:
         with:
           shared-key: cost-linter-coverage
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - name: Generate Coverage Report
         run: |
           echo "## Code Coverage Summary" >> $GITHUB_STEP_SUMMARY
@@ -111,4 +111,5 @@ jobs:
         with:
           name: lcov-report
           path: lcov.info
+
 
