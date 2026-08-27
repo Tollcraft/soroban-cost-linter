@@ -573,6 +573,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: BLIND_STORAGE_WRITE,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         category: LintCategory::Memory,
     },
@@ -650,6 +654,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNBOUNDED_INPUT_LOOP,
         BYTES_APPEND_IN_LOOP,
         STORAGE_WRITE_WITHOUT_READ,
+        BLIND_STORAGE_WRITE,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
@@ -678,6 +683,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
+    lint_store.register_late_pass(|_| Box::new(BlindStorageWrite));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
@@ -1774,6 +1780,154 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                 );
             }
         }
+    }
+}
+
+// =======================================================================
+// blind_storage_write — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub BLIND_STORAGE_WRITE,
+    Warn,
+    "storage write that blindly overwrites a previously written key without reading it back"
+}
+
+/// Late pass backing [`BLIND_STORAGE_WRITE`].
+///
+/// Flags `set` calls on storage accessors that overwrite a key which was
+/// already written earlier in the same function body, when the code in between
+/// never read that key's value back. The boundary with
+/// [`STORAGE_WRITE_WITHOUT_READ`] is deliberate: that lint owns the case where a
+/// key is *never* read anywhere in the function (a write whose value is unused),
+/// whereas this lint only fires when the key *is* read somewhere in the
+/// function — so the write is plausibly meaningful — but this particular
+/// overwrite discards a prior `set` without consulting its value. Initialising a
+/// brand-new key with a single `set` (no prior write) is never flagged.
+pub struct BlindStorageWrite;
+rustc_session::impl_lint_pass!(BlindStorageWrite => [BLIND_STORAGE_WRITE]);
+
+const BLIND_WRITE_READ_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
+
+impl<'tcx> LateLintPass<'tcx> for BlindStorageWrite {
+    /// Visits a function body, collecting every storage read, then walks the body
+    /// in source order to emit a diagnostic for every `set` that overwrites a key
+    /// which was already written earlier in the function and was not read back
+    /// since that prior write.
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _: rustc_hir::intravisit::FnKind<'tcx>,
+        _: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _: rustc_span::Span,
+        def_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let fn_name = cx.tcx.opt_item_name(def_id.to_def_id());
+        if let Some(name) = fn_name {
+            let name_str = name.as_str();
+            if name_str.contains("init") || name_str.contains("set_admin") {
+                return;
+            }
+        }
+
+        // Collect every (receiver, key) pair that is read anywhere in the
+        // function. A read of the key elsewhere is what separates this lint from
+        // `storage_write_without_read`: if the key is never read, that other lint
+        // owns the diagnostic and we stay silent.
+        struct ReadCollector<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
+            reads: HashSet<(String, String)>,
+        }
+        impl<'a, 'tcx> Visitor<'tcx> for ReadCollector<'a, 'tcx> {
+            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                    } else {
+                        false
+                    };
+                    let method = path_segment.ident.name.as_str();
+                    if is_storage
+                        && BLIND_WRITE_READ_METHODS.contains(&method)
+                        && !args.is_empty()
+                    {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        self.reads.insert((r, k));
+                    }
+                }
+                intravisit::walk_expr(self, expr);
+            }
+        }
+        let mut read_collector = ReadCollector {
+            cx,
+            reads: HashSet::new(),
+        };
+        read_collector.visit_body(body);
+        let read_pairs = read_collector.reads;
+
+        // Walk the body in source order. For each storage `set`, fire only when
+        // the same (receiver, key) pair was already written earlier AND the key
+        // is read somewhere in the function AND no read of that key happened
+        // since the previous write — i.e. the overwrite is "blind".
+        struct BlindWriteVisitor<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
+            read_pairs: &'a HashSet<(String, String)>,
+            seen_write: HashSet<(String, String)>,
+            since_read: HashMap<(String, String), bool>,
+        }
+        impl<'a, 'tcx> Visitor<'tcx> for BlindWriteVisitor<'a, 'tcx> {
+            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                intravisit::walk_expr(self, expr);
+                if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                    } else {
+                        false
+                    };
+                    if !is_storage {
+                        return;
+                    }
+                    let method = path_segment.ident.name.as_str();
+                    if BLIND_WRITE_READ_METHODS.contains(&method) && !args.is_empty() {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        self.since_read.insert((r, k), true);
+                    } else if method == "set" && args.len() >= 2 {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        let pair = (r, k);
+                        let has_prior_write = self.seen_write.contains(&pair);
+                        let has_any_read = self.read_pairs.contains(&pair);
+                        let read_since = *self.since_read.get(&pair).unwrap_or(&false);
+                        if has_prior_write && has_any_read && !read_since {
+                            span_lint_and_help(
+                                self.cx,
+                                BLIND_STORAGE_WRITE,
+                                *span,
+                                "blind storage write overwrites a previously written key without reading it back",
+                                None,
+                                "read the previous value (or guard with `.has()`) before overwriting, otherwise the earlier store is silently discarded",
+                            );
+                        }
+                        self.seen_write.insert(pair.clone());
+                        self.since_read.insert(pair, false);
+                    }
+                }
+            }
+        }
+        let mut visitor = BlindWriteVisitor {
+            cx,
+            read_pairs: &read_pairs,
+            seen_write: HashSet::new(),
+            since_read: HashMap::new(),
+        };
+        visitor.visit_body(body);
     }
 }
 

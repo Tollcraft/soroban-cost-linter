@@ -91,6 +91,13 @@
     "name": "storage_write_without_read"
   },
   {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "storage write that blindly overwrites a previously written key without reading it back",
+    "docs_path": "docs/lints/blind_storage_write.md",
+    "name": "blind_storage_write"
+  },
+  {
     "category": "Memory",
     "default_level": "warn",
     "description": "inefficient bytes concatenation",

@@ -288,6 +288,21 @@ Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` a
 - Analysis is **per-function**: reads in a different function do not count toward a write's read set.
 - **No known false positives** beyond the intentional initializer skip: any write with a truly absent read is reported, which is the lint's purpose.
 
+### `blind_storage_write`
+
+Fires on a `set` that overwrites a key already written earlier in the same function, when the key is read *somewhere* in the function but was **not** read back between the two writes. The overwrite therefore silently discards the prior store.
+
+**Boundary with `storage_write_without_read`:** the two lints are deliberately disjoint.
+
+- `storage_write_without_read` owns the case where a key is **never** read anywhere in the function (the written value is unused). A double `set` with no read of the key fires *only* `storage_write_without_read`, not `blind_storage_write`.
+- `blind_storage_write` only fires when the key **is** read somewhere in the function (so the write is plausibly meaningful) but a specific overwrite discards a prior `set` without consulting it. A double `set` that follows a `get` of the same key fires *only* `blind_storage_write`, not `storage_write_without_read`.
+
+- **Near-miss — single write (new key):** a lone `set` with no prior write (initialising a brand-new key) never fires `blind_storage_write`, regardless of other reads in the function.
+- **Near-miss — informed overwrite:** `get(&1); set(&1, &2); get(&1); set(&1, &3)`. The second write is preceded by a fresh read of the key, so it is *informed* and not flagged.
+- **Initializer skip:** functions named `init` / `set_admin` are skipped entirely, mirroring `storage_write_without_read`.
+- Matching is by `(receiver, key)` source snippet, so a key written as `&1` and read via `1` (without `&`) will not be correlated and the write may fire spuriously — keep snippets identical when demonstrating the pattern.
+- Analysis is **per-function**: reads/writes in a different function do not affect the verdict.
+
 ### `persistent_read_without_ttl_extension`
 
 Fires on every `get`/`has` on `persistent` storage when the function contains no `extend_ttl` call.
