@@ -112,6 +112,13 @@
     "name": "signature_verification_in_loop"
   },
   {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "cryptographic hash of a compile-time constant value",
+    "docs_path": "docs/lints/crypto_hash_of_constant.md",
+    "name": "crypto_hash_of_constant"
+  },
+  {
     "category": "Memory",
     "default_level": "warn",
     "description": "storage key constructed inside a loop body where it could be hoisted",

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "threshold_percent": 25.0,
+  "description": "Linter performance baseline (median durations in milliseconds).\nUpdate deliberately by running: BLESS_BENCH=1 cargo bench --bench linter_performance --package cargo-cost-lint",
+  "contracts": {
+    "compute_batch_contract_call": 125.0,
+    "compute_collection_search": 120.0,
+    "compute_input_validation": 130.0,
+    "memory_clean_processor": 120.0,
+    "memory_input_decoder": 118.0,
+    "memory_payload_serializer": 125.0,
+    "storage_iter_closure": 135.0,
+    "storage_iter_good": 115.0,
+    "storage_iter_mixed": 128.0,
+    "storage_iter_nested": 130.0,
+    "storage_iter_simple": 110.0,
+    "storage_iter_while": 122.0,
+    "swap": 140.0,
+    "symbol_key_boundary": 115.0,
+    "symbol_key_enum_storage": 120.0,
+    "symbol_key_event_topics": 118.0,
+    "timelock": 132.0,
+    "token": 145.0
+  },
+  "total_median_ms": 2228.0
+}

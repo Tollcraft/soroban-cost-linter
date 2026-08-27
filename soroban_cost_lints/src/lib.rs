@@ -45,6 +45,10 @@
 //! - [`FORMATTED_PANIC_PAYLOAD`] — `format!`, a formatted `panic!`, or
 //!   `.expect(&format!(..))`, all of which pull `core::fmt` into the
 //!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+//! - [`CRYPTO_HASH_OF_CONSTANT`] — a `Crypto::sha256` / `Crypto::keccak256`
+//!   call whose input is a literal or `const` item, re-hashing a
+//!   compile-time constant at runtime instead of embedding the precomputed
+//!   digest.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -581,6 +585,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: CRYPTO_HASH_OF_CONSTANT,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
@@ -649,6 +657,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
+        CRYPTO_HASH_OF_CONSTANT,
         VEC_WHERE_SLICE_COULD_BE_USED,
         EXTEND_TTL_IN_LOOP,
         LINEAR_SCAN_IN_LOOP,
@@ -677,6 +686,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(CryptoHashOfConstant));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
@@ -1950,6 +1960,69 @@ impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
 }
 
 // =======================================================================
+// crypto_hash_of_constant — Lint
+// =======================================================================
+
+/// Cryptographic hash methods on the `Crypto` accessor whose input is a
+/// compile-time constant. Hashing a fixed domain-separation tag, a fixed
+/// prefix, or a constant salt re-runs an expensive, metered host hash on
+/// every invocation to recompute a digest that never changes between runs,
+/// so the value could be precomputed once and embedded.
+const CRYPTO_HASH_METHODS: &[&str] = &["sha256", "keccak256"];
+
+rustc_session::declare_lint! {
+    pub CRYPTO_HASH_OF_CONSTANT,
+    Warn,
+    "cryptographic hash of a compile-time constant value"
+}
+/// Late pass backing [`CRYPTO_HASH_OF_CONSTANT`].
+///
+/// Flags `Crypto::sha256` / `Crypto::keccak256` calls whose single argument is
+/// a literal or `const` item. Such a call pays the full metered host-hash cost
+/// to recompute a digest that is fixed at compile time; the digest can be
+/// precomputed once and embedded as a constant instead. This is a sibling of
+/// [`SIGNATURE_VERIFICATION_IN_LOOP`]: that lint catches expensive crypto scaled
+/// by iteration count, this one catches expensive crypto that should not have
+/// run at all.
+pub struct CryptoHashOfConstant;
+rustc_session::impl_lint_pass!(CryptoHashOfConstant => [CRYPTO_HASH_OF_CONSTANT]);
+
+impl<'tcx> LateLintPass<'tcx> for CryptoHashOfConstant {
+    /// Flags a hash call on a `soroban_sdk::crypto::Crypto` receiver when its
+    /// argument is a literal or `const` item ([`is_const_expr`]).
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+            && CRYPTO_HASH_METHODS.contains(&path_segment.ident.name.as_str())
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_crypto = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "crypto", "Crypto"])
+            } else {
+                false
+            };
+
+            if is_crypto
+                && let Some(arg) = args.first()
+                && is_const_expr(arg)
+            {
+                span_lint_and_help(
+                    cx,
+                    CRYPTO_HASH_OF_CONSTANT,
+                    expr.span,
+                    "cryptographic hash of a compile-time constant value",
+                    None,
+                    "precompute the digest once and embed it as a constant; the input does \
+                     not change between invocations, so re-hashing it is pure waste",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
 // vec_where_slice_could_be_used — Lint
 // =======================================================================
 
@@ -2967,6 +3040,12 @@ fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
         hir::ExprKind::Binary(_, a, b) => is_const_expr(a) && is_const_expr(b),
         hir::ExprKind::AddrOf(_, _, e) => is_const_expr(e),
         hir::ExprKind::Tup(elems) => elems.iter().all(|e| is_const_expr(e)),
+        hir::ExprKind::Path(hir::QPath::Resolved(None, path)) => matches!(
+            path.res,
+            hir::def::Res::Def(rustc_hir::def::DefKind::Const { .. }, _)
+                | hir::def::Res::Def(rustc_hir::def::DefKind::AssocConst { .. }, _)
+                | hir::def::Res::Def(rustc_hir::def::DefKind::Static { .. }, _)
+        ),
         _ => false,
     }
 }

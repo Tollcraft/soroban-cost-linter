@@ -24,6 +24,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `map_insert_in_loop` | warn | Map::insert called inside a loop | [Link](lints/map_insert_in_loop.md) |
 | `signature_verification_in_loop` | warn | signature verification performed inside a loop | [Link](lints/signature_verification_in_loop.md) |
+| `crypto_hash_of_constant` | warn | cryptographic hash of a compile-time constant value | [Link](lints/crypto_hash_of_constant.md) |
 | `storage_key_construction_in_loop` | warn | storage key constructed inside a loop body where it could be hoisted | [Link](lints/storage_key_construction_in_loop.md) |
 | `vec_where_slice_could_be_used` | warn | soroban_sdk::Vec passed by value where a native Rust slice would suffice | [Link](lints/vec_where_slice_could_be_used.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |

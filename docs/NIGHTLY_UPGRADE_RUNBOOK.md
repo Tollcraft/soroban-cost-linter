@@ -30,15 +30,13 @@ This is where most mismatches happen. The `clippy_utils` crate lives in the `rus
 
 1. Open the [rust-clippy repository](https://github.com/rust-lang/rust-clippy) on GitHub.
 
-2. Switch to the `rustup` branch (not `master` or `main`):
+2. The historical `rustup` branch (which used to carry one commit per nightly) has been retired. Use the `master` branch instead.
 
-   ![Click "Branch: master" dropdown and select "rustup"](https://user-images.githubusercontent.com/example/image.png)
+3. On `master`, view the commit history of the repository root:
 
-3. In the `rustup` branch, view the commit history of the repository root (or any file):
+   - Example URL: `https://github.com/rust-lang/rust-clippy/commits/master/`
 
-   - Example URL: `https://github.com/rust-lang/rust-clippy/commits/rustup/`
-
-4. Find a commit date matching your target nightly. For `nightly-2026-05-15`, look for a commit dated **May 15, 2026** (or the closest date prior).
+4. Find the most recent commit dated **on or before** your target nightly. For `nightly-2026-05-15`, look for a commit dated **May 15, 2026** (or the closest date prior). A clippy commit from that day is the closest available proxy for the clippy bundled into that nightly.
 
 5. Click into that commit and copy its SHA (the long hexadecimal string):
 
@@ -46,9 +44,11 @@ This is where most mismatches happen. The `clippy_utils` crate lives in the `rus
    f6d310692116e9a527ce6d0b3526c965d9c5d7b9   <- This is the rev
    ```
 
-**Why the `rustup` branch?**
+**Why `master` (and not a dedicated sync branch)?**
 
-The `rustup` branch contains commits that are synchronized with `rustc` releases. The `master` branch of rust-clippy moves faster and independently. Commits from `master` may reference a different (incompatible) version of `rustc_hir` or other internals.
+The `rustup` branch used to hold commits synchronized with `rustc` releases; it no longer exists. `master` moves faster and independently, so a commit picked by date is only an approximation. If the resolved rev fails to compile against the target nightly (see [Common Breakages](#common-breakages)), nudge it by a day or two and retry.
+
+> **Automation note:** The scheduled workflow (see [Automated Nightly Bump](#automated-nightly-bump)) resolves this rev for you via the GitHub API: it requests the latest `master` commit dated on or before the target nightly. You only do this by hand when reviewing/override.
 
 ### Step 3: Update `rust-toolchain`
 
@@ -261,6 +261,44 @@ After completing all steps:
 - [ ] (If needed) UI tests blessed with `BLESS=1 cargo test --workspace`
 - [ ] No new compiler warnings or errors introduced
 - [ ] `cargo fmt --all` and `cargo clippy` pass
+
+---
+
+## Automated Nightly Bump
+
+This repository ships a scheduled workflow, `.github/workflows/nightly-bump.yml`, that performs the *mechanical* part of this runbook on a timer (weekly, plus a manual `workflow_dispatch` trigger). It exists so the bump stops depending on someone remembering — turning an unbounded backlog into a small, regular one.
+
+### What the workflow does
+
+1. **Picks a target.** By default it targets a nightly from ~7 days ago (within the "last 1–2 weeks" window). You can override with the `target_nightly` input.
+2. **Resolves the `clippy_utils` rev** for that date via the GitHub API (see [Step 2](#step-2-find-the-matching-clippy_utils-revision)). Override with the `clippy_rev` input if the auto-resolved rev is wrong.
+3. **Applies the edit** across every file this runbook lists (`rust-toolchain`, `soroban_cost_lints/Cargo.toml`, the two workflows, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`) in one go — the same set enforced by `validate-toolchain-pins.sh`.
+4. **Runs the full test suite** (`cargo test --workspace`) under the new nightly.
+5. **Opens or updates a single PR** on the `ci/nightly-bump` branch. It never merges.
+
+### When the run passes
+
+The PR's checks are green. A human reviews the `git diff` (especially any regenerated `.stderr` UI fixtures — confirm they are cosmetic) and merges. No new PR is created on the next run unless the pin has since drifted.
+
+### When the run fails (this is the valuable case)
+
+The PR is still opened/updated, and its body contains a **scope report** instead of just "it failed":
+
+- **Compile errors** — the unique `error[EXXXX]` / `error:` messages, which usually point at `clippy_utils` / `rustc_hir` API breakage (Breakages #1 and #2).
+- **Likely affected lints** — the UI fixtures that surfaced in the output, mapping each to a lint in `soroban_cost_lints/src/lib.rs`.
+- **Failing tests** — the individual test paths that did not pass.
+
+That report *is* the work this runbook exists to scope. Pick up where it leaves off:
+
+1. Follow [Common Breakages](#common-breakages) to fix the code.
+2. Push the fix to the `ci/nightly-bump` branch — the workflow reuses the same PR, so you do **not** get a new PR each run.
+3. If the rev was resolved incorrectly, re-run the workflow with `clippy_rev` set to the correct SHA rather than hand-editing.
+
+### Notes
+
+- **No automatic merge.** The PR is always for a human to review, even when green.
+- **One PR, reused.** Every run targets the same branch (`ci/nightly-bump`), so a failing run updates the existing PR instead of spamming new ones.
+- **The script behind the workflow** lives at `.github/scripts/bump-nightly.sh` (with `resolve-clippy-rev.js` and `summarize-test-failures.js`). You can run `bash .github/scripts/bump-nightly.sh <nightly-YYYY-MM-DD>` locally to preview the edits it would make.
 
 ---
 
