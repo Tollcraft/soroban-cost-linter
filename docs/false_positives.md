@@ -114,10 +114,27 @@ Flags incremental concatenation of byte sequences inside loops.
 
 ### `contract_call_in_loop`
 
-Flags cross-contract invocations (`Client::new(&env, &addr).method(...)`) inside loops.
+Flags cross-contract invocations (`env.invoke_contract(&addr, &sym, ())`) inside loops.
 
 - **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
 - **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
+
+### `host_in_loop`
+
+Flags any method call on a `Host` object (`env.host()...`) inside a loop body. Unlike `unnecessary_host_function_call`, this lint performs no loop-invariance analysis — a `Host` use in a loop is always surfaced.
+
+- **Overhead:** `Host` operations cross the guest/host boundary and are metered per call.
+- **Loop-invariance:** Because the lint does not check whether the call result is loop-invariant, even a genuinely hoistable `Host` call is flagged. Hoist the `env.host()`-derived handle or the call itself outside the loop when the result is reused.
+- **Handling:** Suppress with `#[allow(host_in_loop)]` when every in-loop `Host` interaction is required.
+
+### `linear_scan_in_loop`
+
+Flags linear-time scans (`contains`, `position`, `find`) on a Soroban `Vec`/`Map` inside a loop when the scan argument does not depend on loop state.
+
+- **Overhead:** A per-iteration scan is O(n) on the collection, yielding O(n²) total cost.
+- **Near-miss — loop-variant argument:** a scan whose argument is the loop variable (e.g. `v.contains(&x)`) is genuinely per-iteration work and is correctly *not* flagged.
+- **Near-miss — impure argument:** an argument containing a method/function call is conservatively treated as loop-variant and the warning is suppressed.
+- **Handling:** Build a `Map` lookup outside the loop for O(1) access, or suppress with `#[allow(linear_scan_in_loop)]` when the scan is inherent to the algorithm.
 
 ### `unnecessary_host_function_call`
 
@@ -315,5 +332,30 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
 
   When the constant branch is deliberate — keeping a single, uniform hashing path for clarity or to share post-hash logic — suppress with `#[allow(crypto_hash_of_constant)]` at the call site, or split the constant case into its own precomputed `const` digest. This is the one pattern where the warning is correct in isolation but unwanted in context.
 
+### `host_in_loop`
 
+Fixtures live in `soroban_cost_lints/ui/host_in_loop.rs`.
+
+- **Firing cases:** `env.host().invoke_contract()` / `env.host().budget_cloned()` inside `for`, `while`, `loop`, and iterator-closure (`for_each`) bodies all fire.
+- **Genuine near-miss (must not fire):** the same `Host` call outside any loop is correctly silent.
+- **`Option::map` exception:** a `Host` call inside `opt.map(|e| e.host()...)` is not flagged because `Option::map` runs at most once — the loop detector does not treat it as a loop.
+- **No loop-invariance guard:** unlike `unnecessary_host_function_call`, a `Host` use whose result is loop-invariant is *still* flagged; hoist it out by hand or allow it.
+
+### `contract_call_in_loop`
+
+Fixtures live in `soroban_cost_lints/ui/contract_call_in_loop.rs`.
+
+- **Firing cases:** `env.invoke_contract(&addr, &sym, ())` inside `for`, `while`, and iterator-closure bodies all fire.
+- **Genuine near-miss (must not fire):** the cross-contract call is hoisted entirely out of the loop (its result reused as `shared`); nothing warns. A call whose *result* is loop-invariant but still written inside the loop would fire — the lint keys off position in the loop, not invariance.
+- **Overlap fixture:** `overlapping_host_and_contract_call` puts both `env.invoke_contract(...)` and `env.host().invoke_contract()` in the same loop body, so `contract_call_in_loop` and `host_in_loop` fire on different columns of the same iteration. This documents that the two lints are complementary, not mutually exclusive.
+- **`Option::map` exception:** an `invoke_contract` inside `opt.map(...)` is not flagged for the same at-most-once reason as above.
+
+### `linear_scan_in_loop`
+
+Fixtures live in `soroban_cost_lints/ui/linear_scan_in_loop.rs`.
+
+- **Firing cases:** `Vec::contains(&target)` / `Vec::position(|x| *x == target)` where `target` is defined *outside* the loop, inside `for`, `while`, and iterator-closure bodies — the scan argument is loop-invariant, so the O(n) scan is genuinely repeated every iteration.
+- **Genuine near-miss 1 — loop-variant argument:** `v.contains(&x)` where `x` is the loop variable depends on loop state and is correctly skipped.
+- **Genuine near-miss 2 — impure argument:** `v.contains(&wrapper.0.clone())` has a method call in the argument, so the lint conservatively treats it as loop-variant and stays silent.
+- **Loop shapes:** `for`, `while`, and iterator-closure all fire for invariant scans; `Option::map` single-call sites are not loops and never fire.
 
