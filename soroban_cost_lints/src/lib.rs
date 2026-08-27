@@ -208,6 +208,12 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 /// buffer, causing increasingly expensive host-side work per call.
 const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
 
+/// Methods on `soroban_sdk::String` that concatenate another string onto the
+/// receiver, returning a fresh `String`. Each call reallocates a host-side
+/// buffer and copies the entire accumulated string, so repeating it inside a
+/// loop is O(n²) in the number of characters produced.
+const STRING_CONCAT_METHODS: &[&str] = &["append"];
+
 fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str]]) -> bool {
     paths
         .iter()
@@ -573,6 +579,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Memory,
     },
     LintMetadata {
+        lint: STRING_CONCAT_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
         lint: STORAGE_WRITE_WITHOUT_READ,
         category: LintCategory::StorageOperations,
     },
@@ -662,6 +672,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_STRING_TO_BYTES,
         UNBOUNDED_INPUT_LOOP,
         BYTES_APPEND_IN_LOOP,
+        STRING_CONCAT_IN_LOOP,
         STORAGE_WRITE_WITHOUT_READ,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
@@ -693,6 +704,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(StringConcatInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
@@ -1095,13 +1107,15 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 return;
             }
 
-            span_lint_and_help(
+            let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
+            span_lint_and_sugg(
                 cx,
                 REDUNDANT_ENV_CLONE,
                 expr.span,
                 "redundant clone on Env object",
-                None,
                 "pass Env by reference or value instead of cloning",
+                receiver_snippet,
+                Applicability::MachineApplicable,
             );
         }
     }
@@ -1722,6 +1736,93 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
                     "accumulate values in native Rust collections first, then batch host \
                      operations or convert to SDK containers once after the loop; \
                      pre-size where practical",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// string_concat_in_loop — Lint
+// =======================================================================
+
+// Flags repeated `append` calls (or `String + String` additions) on a Soroban
+// `String` inside a loop. Each call allocates a fresh host-side buffer and
+// copies the entire accumulated string, so building a string from `n` pieces
+// inside a loop performs O(n²) byte copies — exactly the same quadratic
+// growth that [`BYTES_APPEND_IN_LOOP`] catches for `Bytes`/`Vec`/`Map`.
+rustc_session::declare_lint! {
+    pub STRING_CONCAT_IN_LOOP,
+    Warn,
+    "repeatedly concatenating a soroban String inside a loop"
+}
+/// Concrete pass that fires [`STRING_CONCAT_IN_LOOP`].
+pub struct StringConcatInLoop;
+rustc_session::impl_lint_pass!(StringConcatInLoop => [STRING_CONCAT_IN_LOOP]);
+
+/// Whether `ty` resolves to `soroban_sdk::String` (references peeled).
+fn is_string_type<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
+    let peeled = ty.peel_refs();
+    if let Some(adt_def) = ty_adt_def(peeled) {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "String"])
+    } else {
+        false
+    }
+}
+
+/// Detection: for every `MethodCall` whose segment is in
+/// [`STRING_CONCAT_METHODS`], peel references off the receiver and confirm the
+/// ADT is `soroban_sdk::String`.  A match is reported only when
+/// [`enclosing_loop`] returns `Some`.  We also catch `String + String`
+/// (`Add`) binary expressions inside a loop, since they perform the same
+/// host-side copy.  As with [`BYTES_APPEND_IN_LOOP`] we deliberately do
+/// **not** attempt to detect whether the loop could be batched — that
+/// reasoning is runtime-dependent and would inflate the false-positive rate.
+impl<'tcx> LateLintPass<'tcx> for StringConcatInLoop {
+    /// Flags a concatenation on a `soroban_sdk::String` inside a loop.
+    ///
+    /// Matching is done two ways: a method call named `append` whose receiver
+    /// is a `soroban_sdk::String`, and a `String + String` binary `Add` whose
+    /// either operand is a `soroban_sdk::String`.  Only syntactic loops are
+    /// considered; multi-call closures are not flagged here.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // `append` method on a `String` receiver inside a loop.
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if STRING_CONCAT_METHODS.contains(&method_name)
+                && is_string_type(cx, cx.typeck_results().expr_ty(receiver))
+                && enclosing_loop(cx, expr).is_some()
+            {
+                span_lint_and_help(
+                    cx,
+                    STRING_CONCAT_IN_LOOP,
+                    expr.span,
+                    "repeatedly concatenating a soroban String inside a loop",
+                    None,
+                    "collect the pieces in a native collection (e.g. `Vec<String>` or byte \
+                     slices) inside the loop and construct the `String` a single time \
+                     afterwards; pre-size where practical",
+                );
+                return;
+            }
+        }
+
+        // `String + String` (Add) inside a loop.
+        if let hir::ExprKind::Binary(op, lhs, rhs) = &expr.kind
+            && matches!(op.node, hir::BinOpKind::Add)
+        {
+            let is_string = is_string_type(cx, cx.typeck_results().expr_ty(lhs))
+                || is_string_type(cx, cx.typeck_results().expr_ty(rhs));
+            if is_string && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    STRING_CONCAT_IN_LOOP,
+                    expr.span,
+                    "repeatedly concatenating a soroban String inside a loop",
+                    None,
+                    "collect the pieces in a native collection (e.g. `Vec<String>` or byte \
+                     slices) inside the loop and construct the `String` a single time \
+                     afterwards; pre-size where practical",
                 );
             }
         }

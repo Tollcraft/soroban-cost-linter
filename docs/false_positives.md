@@ -32,6 +32,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | `vec_where_slice_could_be_used` | 9 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
 | `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
 | `bytes_append_in_loop` | 3 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
+| `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 | `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
 | `soroban_inefficient_bytes_concat` | 1 | 0 | warn | String/bytes formatting in loop iterations |
 | `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
@@ -98,6 +99,14 @@ Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
 
 - **Host Reallocation Cost:** In Soroban, growing SDK containers allocates new host objects per iteration.
 - **Remedy:** Preallocate collections where length is known or accumulate natively before creating host objects. If incremental host appending is required, suppress with `#[allow(bytes_append_in_loop)]`.
+
+### `string_concat_in_loop`
+
+Flags `append` on (or `String + String` addition of) a `soroban_sdk::String` inside loops.
+
+- **Host Reallocation Cost:** Each concatenation allocates a fresh host buffer and copies the entire accumulated string, so building a string from `n` pieces inside a loop is O(n²) in the number of characters produced.
+- **Small Fixed-Bound Loops (Known False Positive):** The lint does **not** prove loop bounds — it fires on any syntactic loop, mirroring `bytes_append_in_loop`. A loop with a small, fixed iteration count (e.g. 2–3) is the documented false positive; suppress the specific call site with `#[allow(string_concat_in_loop)]` or accumulate the few pieces in a native `Vec` and construct the `String` once.
+- **Remedy:** Accumulate the pieces in a native collection (e.g. `Vec<String>` or `Vec<Bytes>`) inside the loop and construct the `String` a single time afterwards; pre-size where practical.
 
 ### `instance_storage_for_unbounded_data`
 

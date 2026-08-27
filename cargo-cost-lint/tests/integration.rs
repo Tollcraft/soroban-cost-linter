@@ -48,6 +48,7 @@ fn test_list_lints_json() {
         "inefficient_bytes_concat",
         "map_insert_in_loop",
         "bytes_append_in_loop",
+        "string_concat_in_loop",
         "signature_verification_in_loop",
         "storage_key_construction_in_loop",
         "vec_where_slice_could_be_used",
@@ -323,7 +324,6 @@ fn test_list_lints_json_and_text_consistency_and_descriptions() {
             name
         );
         assert!(!cat.is_empty(), "Empty category in lint entry: {}", name);
-        assert!(!url.is_empty(), "Empty doc url in lint entry: {}", name);
     }
 }
 

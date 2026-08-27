@@ -91,6 +91,13 @@
     "name": "bytes_append_in_loop"
   },
   {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "repeatedly concatenating a soroban String inside a loop",
+    "docs_path": "docs/lints/string_concat_in_loop.md",
+    "name": "string_concat_in_loop"
+  },
+  {
     "category": "StorageOperations",
     "default_level": "warn",
     "description": "storage write without a corresponding read",

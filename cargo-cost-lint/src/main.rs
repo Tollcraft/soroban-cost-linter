@@ -102,6 +102,193 @@ struct Cli {
     /// non-empty value, output is uncoloured.
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
     color: ColorChoice,
+
+    #[arg(long, help = "Path to baseline file for suppressing pre-existing findings")]
+    baseline: Option<String>,
+
+    #[arg(long, help = "Update or create the baseline file with current findings")]
+    bless: bool,
+
+    #[arg(long, help = "Automatically apply machine-applicable suggestions")]
+    fix: bool,
+
+    #[arg(long, help = "Allow --fix to run on a dirty working tree with unstaged changes")]
+    allow_dirty: bool,
+
+    #[arg(long, help = "Allow --fix to run on a dirty working tree with staged changes")]
+    allow_staged: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct BaselineFinding {
+    pub lint_name: String,
+    pub file: String,
+    pub context_hash: String,
+    pub code_snippet: String,
+    pub occurrence: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Baseline {
+    pub version: u32,
+    pub findings: Vec<BaselineFinding>,
+}
+
+pub fn normalize_file_path(path_str: &str) -> String {
+    if let Ok(current_dir) = std::env::current_dir() {
+        let p = Path::new(path_str);
+        if let Ok(stripped) = p.strip_prefix(&current_dir) {
+            return stripped.to_string_lossy().replace('\\', "/");
+        }
+    }
+    path_str.replace('\\', "/")
+}
+
+pub fn compute_context_hash(lint_name: &str, relative_file: &str, context_str: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    lint_name.hash(&mut hasher);
+    relative_file.hash(&mut hasher);
+    context_str.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+pub fn extract_finding_context(
+    file_path: &str,
+    line_start: usize,
+    line_end: usize,
+) -> (String, String) {
+    if line_start > 0 {
+        if let Ok(content) = fs::read_to_string(file_path) {
+            let lines: Vec<&str> = content.lines().collect();
+            if line_start <= lines.len() {
+                let snippet_start = line_start - 1;
+                let snippet_end = line_end.min(lines.len());
+                let snippet = lines[snippet_start..snippet_end].join("\n");
+
+                let ctx_start = if line_start > 1 { line_start - 2 } else { 0 };
+                let ctx_end = (line_end + 1).min(lines.len());
+                let context = lines[ctx_start..ctx_end].join("\n");
+
+                return (snippet, context);
+            }
+        }
+    }
+    (String::new(), String::new())
+}
+
+fn check_git_clean(allow_dirty: bool, allow_staged: bool) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .map_err(|e| format!("Error checking git status: {}", e))?;
+
+    if !output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+
+    if lines.is_empty() {
+        return Ok(());
+    }
+
+    let mut has_staged = false;
+    let mut has_unstaged = false;
+
+    for line in lines {
+        let status_code = &line[0..2.min(line.len())];
+        let x = status_code.chars().next().unwrap_or(' ');
+        let y = status_code.chars().nth(1).unwrap_or(' ');
+
+        if x != ' ' && x != '?' {
+            has_staged = true;
+        }
+        if y != ' ' {
+            has_unstaged = true;
+        }
+    }
+
+    if has_unstaged && !allow_dirty {
+        return Err("error: the working tree has dirty files, aborting. Pass --allow-dirty to ignore dirty working tree.".to_string());
+    }
+    if has_staged && !allow_staged && !allow_dirty {
+        return Err("error: the working tree has staged changes, aborting. Pass --allow-staged or --allow-dirty to ignore.".to_string());
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct MachineFix {
+    file_path: String,
+    line_start: usize,
+    column_start: usize,
+    line_end: usize,
+    column_end: usize,
+    replacement: String,
+    _lint_name: String,
+}
+
+fn apply_machine_fixes(fixes: &[MachineFix]) -> Result<(usize, usize), String> {
+    if fixes.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let mut file_map: std::collections::HashMap<String, Vec<&MachineFix>> = std::collections::HashMap::new();
+    for fix in fixes {
+        file_map.entry(fix.file_path.clone()).or_default().push(fix);
+    }
+
+    let file_count = file_map.len();
+    let mut applied_count = 0;
+
+    for (file_path, mut fix_list) in file_map {
+        let content = match fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Error reading {}: {}", file_path, e)),
+        };
+
+        let get_offset = |content: &str, line: usize, col: usize| -> usize {
+            let mut curr_line = 1;
+            let mut curr_col = 1;
+            for (idx, ch) in content.char_indices() {
+                if curr_line == line && curr_col == col {
+                    return idx;
+                }
+                if ch == '\n' {
+                    curr_line += 1;
+                    curr_col = 1;
+                } else {
+                    curr_col += 1;
+                }
+            }
+            content.len()
+        };
+
+        fix_list.sort_by(|a, b| {
+            let off_a = get_offset(&content, a.line_start, a.column_start);
+            let off_b = get_offset(&content, b.line_start, b.column_start);
+            off_b.cmp(&off_a)
+        });
+
+        let mut new_content = content.clone();
+        for fix in fix_list {
+            let start = get_offset(&new_content, fix.line_start, fix.column_start);
+            let end = get_offset(&new_content, fix.line_end, fix.column_end);
+            if start <= end && end <= new_content.len() {
+                new_content.replace_range(start..end, &fix.replacement);
+                applied_count += 1;
+            }
+        }
+
+        if let Err(e) = fs::write(&file_path, new_content) {
+            return Err(format!("Error writing {}: {}", file_path, e));
+        }
+    }
+
+    Ok((applied_count, file_count))
 }
 
 /// Colour-policy preference forwarded to the underlying `cargo dylint`
@@ -594,6 +781,13 @@ fn main() {
     let mut resolved_config_path: Option<PathBuf> = None;
     let mut config_opt: Option<BudgetConfig> = None;
 
+    if cli.fix {
+        if let Err(e) = check_git_clean(cli.allow_dirty, cli.allow_staged) {
+            eprintln!("{}", e);
+            exit(1);
+        }
+    }
+
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let workspace_root = find_workspace_root_path(&cwd);
     let lintignore_opt = LintIgnore::discover(&cwd, &workspace_root);
@@ -699,9 +893,6 @@ fn main() {
     }
 
     let mut cmd = Command::new("cargo");
-    // Forward colour preference so that the underlying rustc diagnostics
-    // honour the user's intent.  `--color` is a cargo-level flag, so it
-    // must appear *before* the `dylint` subcommand.
     let effective_color = resolve_color_choice(&cli.color);
     if let Some(color_val) = effective_color.as_cargo_arg() {
         cmd.arg("--color");
@@ -728,7 +919,11 @@ fn main() {
     cargo_args.extend(package_args);
 
     let has_lintignore = lintignore_opt.is_some();
-    if cli.format != OutputFormat::Text || has_lintignore {
+    let has_baseline = cli.baseline.is_some();
+    let is_blessing = cli.bless || std::env::var("BLESS").is_ok_and(|v| v == "1" || v == "true");
+    let needs_json = cli.format != OutputFormat::Text || has_lintignore || has_baseline || cli.fix;
+
+    if needs_json {
         cargo_args.push("--message-format=json".to_string());
     }
 
@@ -756,7 +951,7 @@ fn main() {
         eprintln!("[verbose] command: {:?}", cmd);
     }
 
-    if cli.format != OutputFormat::Text || has_lintignore {
+    if needs_json {
         cmd.stdout(Stdio::piped());
         let mut child = cmd
             .spawn()
@@ -765,7 +960,8 @@ fn main() {
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         let reader = BufReader::new(stdout);
         let mut highest_exit_code = 0;
-        let mut sarif_findings = Vec::new();
+        let mut raw_findings: Vec<(LintFinding, String)> = Vec::new();
+        let mut machine_fixes: Vec<MachineFix> = Vec::new();
         let mut recorded_stdout = String::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
@@ -858,7 +1054,35 @@ fn main() {
                                                     .get("message")
                                                     .and_then(|m| m.as_str())
                                                     .map(|s| s.to_string());
-                                                break;
+                                            }
+
+                                            // Extract MachineApplicable suggestions
+                                            if let Some(suggs) = child_item.get("suggestions").and_then(|s| s.as_array()) {
+                                                for sug in suggs {
+                                                    if sug.get("applicability").and_then(|a| a.as_str()) == Some("MachineApplicable") {
+                                                        if let Some(parts) = sug.get("parts").and_then(|p| p.as_array()) {
+                                                            for part in parts {
+                                                                let f = part.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
+                                                                let ls = part.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                                                                let cs = part.get("column_start").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+                                                                let le = part.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                                                                let ce = part.get("column_end").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+                                                                let rep = part.get("snippet").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                                                                if !f.is_empty() {
+                                                                    machine_fixes.push(MachineFix {
+                                                                        file_path: f.to_string(),
+                                                                        line_start: ls,
+                                                                        column_start: cs,
+                                                                        line_end: le,
+                                                                        column_end: ce,
+                                                                        replacement: rep,
+                                                                        _lint_name: lint_name.to_string(),
+                                                                    });
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -873,42 +1097,174 @@ fn main() {
                                         suggestion: None,
                                     };
 
-                                    match cli.format {
-                                        OutputFormat::Text => {
-                                            if let Some(rendered) =
-                                                message.get("rendered").and_then(|r| r.as_str())
-                                            {
-                                                eprint!("{}", rendered);
-                                                recorded_stdout.push_str(rendered);
-                                            }
-                                        }
-                                        OutputFormat::Json => {
-                                            if let Ok(json_str) = serde_json::to_string(&finding) {
-                                                println!("{}", json_str);
-                                                recorded_stdout.push_str(&json_str);
-                                                recorded_stdout.push('\n');
-                                            }
-                                        }
-                                        OutputFormat::Github => {
-                                            let mut buf = Vec::new();
-                                            if output_formatters::emit_github_annotation(
-                                                &finding, &mut buf,
-                                            )
-                                            .is_ok()
-                                            {
-                                                let ann_str = String::from_utf8_lossy(&buf);
-                                                print!("{}", ann_str);
-                                                recorded_stdout.push_str(&ann_str);
-                                            }
-                                        }
-                                        OutputFormat::Sarif => {
-                                            sarif_findings.push(finding);
-                                        }
-                                    }
+                                    let rendered = message.get("rendered").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                                    raw_findings.push((finding, rendered));
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+
+        let status = child.wait().expect("Failed to wait on cargo dylint");
+
+        // Execute --fix if requested
+        if cli.fix {
+            match apply_machine_fixes(&machine_fixes) {
+                Ok((applied, files)) => {
+                    if applied > 0 && !quiet {
+                        eprintln!("Applied {} fix(es) across {} file(s).", applied, files);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    exit(1);
+                }
+            }
+        }
+
+        // Handle --baseline
+        let mut final_findings = Vec::new();
+        let exit_code;
+
+        if let Some(ref b_path_str) = cli.baseline {
+            let b_path = PathBuf::from(b_path_str);
+            let mut occ_map: std::collections::HashMap<(String, String, String), usize> = std::collections::HashMap::new();
+
+            if is_blessing {
+                let mut b_list = Vec::new();
+                for (finding, _) in &raw_findings {
+                    let rel_file = normalize_file_path(&finding.file);
+                    let (snippet, context) = extract_finding_context(&finding.file, finding.span.line_start, finding.span.line_end);
+                    let ctx_hash = compute_context_hash(&finding.name, &rel_file, &context);
+                    let key = (finding.name.clone(), rel_file.clone(), ctx_hash.clone());
+                    let count = occ_map.entry(key).or_insert(0);
+                    *count += 1;
+                    b_list.push(BaselineFinding {
+                        lint_name: finding.name.clone(),
+                        file: rel_file,
+                        context_hash: ctx_hash,
+                        code_snippet: snippet,
+                        occurrence: *count,
+                    });
+                }
+                b_list.sort_by(|a, b| {
+                    a.file.cmp(&b.file)
+                        .then_with(|| a.lint_name.cmp(&b.lint_name))
+                        .then_with(|| a.code_snippet.cmp(&b.code_snippet))
+                        .then_with(|| a.occurrence.cmp(&b.occurrence))
+                });
+                let baseline = Baseline { version: 1, findings: b_list };
+                let json_out = serde_json::to_string_pretty(&baseline).expect("Failed to serialize baseline");
+                if let Err(e) = fs::write(&b_path, json_out) {
+                    eprintln!("Error writing baseline file {}: {}", b_path.display(), e);
+                    exit(1);
+                }
+                if !quiet {
+                    eprintln!("Baseline saved to {} ({} findings)", b_path.display(), baseline.findings.len());
+                }
+                final_findings = raw_findings;
+                exit_code = 0;
+            } else {
+                let content = match fs::read_to_string(&b_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Error: Baseline file not found or unreadable {}: {}", b_path.display(), e);
+                        exit(1);
+                    }
+                };
+                let baseline: Baseline = match serde_json::from_str(&content) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("Error parsing baseline JSON {}: {}", b_path.display(), e);
+                        exit(1);
+                    }
+                };
+
+                let mut matched_base = vec![false; baseline.findings.len()];
+                let mut suppressed_count = 0;
+
+                for item in raw_findings {
+                    let (ref finding, _) = item;
+                    let rel_file = normalize_file_path(&finding.file);
+                    let (_snippet, context) = extract_finding_context(&finding.file, finding.span.line_start, finding.span.line_end);
+                    let ctx_hash = compute_context_hash(&finding.name, &rel_file, &context);
+                    let key = (finding.name.clone(), rel_file.clone(), ctx_hash.clone());
+                    let count = occ_map.entry(key).or_insert(0);
+                    *count += 1;
+
+                    let mut suppressed = false;
+                    for (idx, b_item) in baseline.findings.iter().enumerate() {
+                        if !matched_base[idx]
+                            && b_item.lint_name == finding.name
+                            && b_item.file == rel_file
+                            && b_item.context_hash == ctx_hash
+                            && b_item.occurrence == *count
+                        {
+                            matched_base[idx] = true;
+                            suppressed = true;
+                            suppressed_count += 1;
+                            break;
+                        }
+                    }
+
+                    if !suppressed {
+                        final_findings.push(item);
+                    }
+                }
+
+                for (idx, b_item) in baseline.findings.iter().enumerate() {
+                    if !matched_base[idx] && !quiet {
+                        eprintln!("Fixed finding (no longer present): {} in {}", b_item.lint_name, b_item.file);
+                    }
+                }
+
+                if suppressed_count > 0 && !quiet {
+                    eprintln!("Suppressed {} baseline finding(s)", suppressed_count);
+                }
+
+                let has_errors = final_findings.iter().any(|(f, _)| f.level == "error" || f.level == "deny");
+                exit_code = if has_errors { 1 } else { 0 };
+            }
+        } else {
+            final_findings = raw_findings;
+            exit_code = if !status.success() {
+                status.code().unwrap_or(1)
+            } else if highest_exit_code != 0 {
+                highest_exit_code
+            } else {
+                0
+            };
+        }
+
+        // Format final findings
+        let mut sarif_findings = Vec::new();
+        for (finding, rendered) in &final_findings {
+            match cli.format {
+                OutputFormat::Text => {
+                    if !rendered.is_empty() {
+                        eprint!("{}", rendered);
+                        recorded_stdout.push_str(rendered);
+                    }
+                }
+                OutputFormat::Json => {
+                    if let Ok(json_str) = serde_json::to_string(finding) {
+                        println!("{}", json_str);
+                        recorded_stdout.push_str(&json_str);
+                        recorded_stdout.push('\n');
+                    }
+                }
+                OutputFormat::Github => {
+                    let mut buf = Vec::new();
+                    if output_formatters::emit_github_annotation(finding, &mut buf).is_ok() {
+                        let ann_str = String::from_utf8_lossy(&buf);
+                        print!("{}", ann_str);
+                        recorded_stdout.push_str(&ann_str);
+                    }
+                }
+                OutputFormat::Sarif => {
+                    sarif_findings.push(finding.clone());
                 }
             }
         }
@@ -921,15 +1277,6 @@ fn main() {
                 recorded_stdout.push_str(&sarif_str);
             }
         }
-
-        let status = child.wait().expect("Failed to wait on cargo dylint");
-        let exit_code = if !status.success() {
-            status.code().unwrap_or(1)
-        } else if highest_exit_code != 0 {
-            highest_exit_code
-        } else {
-            0
-        };
 
         if let Some(ref key_hash) = cache_key_hash {
             let entry = cache::CacheEntry {

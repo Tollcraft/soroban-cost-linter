@@ -43,6 +43,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | unnecessary String to Bytes conversion |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
+| [`string_concat_in_loop`](string_concat_in_loop.md) | `warn` | repeatedly concatenating a soroban String inside a loop |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
