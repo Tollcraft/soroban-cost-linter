@@ -63,6 +63,13 @@
     "name": "contract_call_in_loop"
   },
   {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "token transfer (transfer / transfer_from) on a contract client inside a loop",
+    "docs_path": "docs/lints/token_transfer_in_loop.md",
+    "name": "token_transfer_in_loop"
+  },
+  {
     "category": "SymbolOperations",
     "default_level": "warn",
     "description": "Symbol::new used with a short literal that could use symbol_short! macro",
@@ -189,10 +196,10 @@
     "name": "unbounded_recursion"
   },
   {
-    "category": "EntryLifecycle",
+    "category": "Memory",
     "default_level": "warn",
-    "description": "temporary storage write followed by an unsafe read that assumes the value persists",
-    "docs_path": "docs/lints/temporary_storage_for_persistent_data.md",
-    "name": "temporary_storage_for_persistent_data"
+    "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
+    "docs_path": "docs/lints/std_collection_in_contract.md",
+    "name": "std_collection_in_contract"
   }
 ]

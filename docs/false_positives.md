@@ -163,6 +163,15 @@ Fires on `.unwrap()` / `.expect()` called directly on a storage read.
 
 - **Immediate Overwrite:** If a key was just set in the same transaction, suppress with `#[allow(unwrap_on_storage_get)]` or use pattern matching `if let Some(...)`.
 
+### `std_collection_in_contract`
+
+Fires on `std::collections::HashMap`, `std::collections::BTreeMap`, and `std::vec::Vec` usage inside a `#[contractimpl]` block.
+
+- **Known false positive — performance-critical inner loop with small, fixed-size data:** if the contract processes a tiny, fixed, contract-controlled collection (e.g. a 2–3 element lookup table that never grows), the overhead of host-boundary conversion may exceed the cost of wasm-linear-memory allocation. Suppress with `#[allow(std_collection_in_contract)]` for such cases.
+- **Near-miss 1 — helper function called from `#[contractimpl]`:** the lint only fires inside the `#[contractimpl]` block itself, not in helper functions called from it. A helper that uses `HashMap` for internal bookkeeping is not flagged, which is intentional — the boundary is narrow and correct.
+- **Near-miss 2 — non-collection std types:** `String`, `Box`, `Rc`, `Arc`, and other std types are not flagged. Only the three collection types listed above are in scope.
+- **Test code exclusion:** std collections in `#[test]` functions and `#[cfg(test)]` modules are never flagged, because they are idiomatic and correct in tests.
+
 ---
 
 ## Suppression Methods

@@ -6,13 +6,13 @@ mod lint_name_set;
 mod output_formatters;
 
 use clap::{ArgGroup, Parser, ValueEnum};
+use config::BudgetConfig;
 use output_formatters::{LintFinding, OutputFormat, Span};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
-
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(version = long_version())]
@@ -102,11 +102,6 @@ struct Cli {
     /// non-empty value, output is uncoloured.
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
     color: ColorChoice,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct BudgetConfig {
-    pub lints: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Colour-policy preference forwarded to the underlying `cargo dylint`
@@ -492,32 +487,9 @@ pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, Strin
 /// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
 /// (unknown lint names, invalid levels) is handled by
 /// `BudgetConfig::from_file_validated`, the single canonical config parser.
-// Not currently reached from `main()`, which still uses the inline
-// `validate_and_build_flags` path. `cargo-cost-lint` now carries two config
-// generations -- this one via `BudgetConfig::from_file_validated` (validates
-// lint names and levels) and the newer `config::Config::from_file_or_default`
-// (fallback defaults, no name validation). Both are tested; picking which one
-// ships is a behavioural decision for a maintainer, so this change leaves
-// `main()` as it found it rather than choosing silently.
-// Kept: scaffolding for future feature implementations
-#[allow(dead_code)]
-fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
-    let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
-
-    let mut lint_flags = Vec::new();
-    if let Some(lints) = config.lints {
-        for (lint, level) in lints {
-            let flag = match level.as_str() {
-                "allow" => "-A",
-                "warn" => "-W",
-                "deny" => "-D",
-                _ => unreachable!("level already validated by BudgetConfig::from_file_validated"),
-            };
-            lint_flags.push(format!("{} {}", flag, lint));
-        }
-    }
-
-    Ok(lint_flags)
+pub fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    let config = BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
+    Ok(config.to_lint_flags())
 }
 
 /// Lenient wrapper around [`parse_budget_config`] that uses safe defaults
@@ -532,9 +504,7 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 /// actually wrote something wrong — are returned unchanged so the
 /// strict behaviour already covered by [`parse_budget_config`] and
 /// its existing tests is preserved.
-// Kept: scaffolding for future feature implementations
-#[allow(dead_code)]
-fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+pub fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     match parse_budget_config(path) {
         Ok(flags) => Ok(flags),
         Err(e)
@@ -543,6 +513,23 @@ fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
         {
             eprintln!("warning: {e}\n         continuing with safe defaults (no lint overrides).");
             Ok(Vec::new())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Loads and validates `budget.toml` from `path` into `BudgetConfig` using safe defaults
+/// (returning `Ok(None)`) when the file cannot be read or parsed, but propagating
+/// validation errors.
+pub fn load_budget_config_lenient(path: &Path) -> Result<Option<BudgetConfig>, String> {
+    match BudgetConfig::from_file_validated(path, LINT_NAMES) {
+        Ok(cfg) => Ok(Some(cfg)),
+        Err(e)
+            if e.starts_with("Error: Failed to read")
+                || e.starts_with("Error: Failed to parse") =>
+        {
+            eprintln!("warning: {e}\n         continuing with safe defaults (no lint overrides).");
+            Ok(None)
         }
         Err(e) => Err(e),
     }
@@ -626,13 +613,13 @@ fn main() {
         } else if !quiet {
             eprintln!("Using config: {}", path.display());
         }
-        if let Ok(config_str) = fs::read_to_string(path) {
-            if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                config_opt = Some(config);
-            } else {
-                if !quiet {
-                    eprintln!("Warning: Failed to parse {}", path.display());
-                }
+        match load_budget_config_lenient(path) {
+            Ok(cfg) => {
+                config_opt = cfg;
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
             }
         }
     } else {
@@ -1479,6 +1466,54 @@ mod tests {
         let result = try_parse_budget_config(&path.to_string_lossy());
         assert!(result.is_err(), "expected Err for unknown level");
         assert!(result.unwrap_err().contains("Unknown lint level"));
+    }
+
+    #[test]
+    fn load_budget_config_lenient_handles_valid_missing_and_invalid() {
+        let dir = std::env::temp_dir().join("cost_lint_test_load_lenient");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // 1. Missing file -> Ok(None)
+        let missing = dir.join("missing_budget.toml");
+        let res_missing = load_budget_config_lenient(&missing);
+        assert!(res_missing.is_ok());
+        assert_eq!(res_missing.unwrap(), None);
+
+        // 2. Unparseable file -> Ok(None)
+        let invalid = dir.join("invalid_budget.toml");
+        fs::write(&invalid, "invalid toml {{{{").unwrap();
+        let res_invalid = load_budget_config_lenient(&invalid);
+        assert!(res_invalid.is_ok());
+        assert_eq!(res_invalid.unwrap(), None);
+
+        // 3. Valid file -> Ok(Some(BudgetConfig))
+        let valid = dir.join("valid_budget.toml");
+        fs::write(
+            &valid,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\n",
+        )
+        .unwrap();
+        let res_valid = load_budget_config_lenient(&valid);
+        assert!(res_valid.is_ok());
+        let cfg = res_valid.unwrap().expect("should parse config");
+        assert_eq!(
+            cfg.lints
+                .as_ref()
+                .unwrap()
+                .get("soroban_storage_in_loop")
+                .map(|s| s.as_str()),
+            Some("deny")
+        );
+
+        // 4. Unknown lint level -> Err(...)
+        let bad_level = dir.join("bad_level_budget.toml");
+        fs::write(&bad_level, "[lints]\nsoroban_storage_in_loop = \"oops\"\n").unwrap();
+        let res_bad = load_budget_config_lenient(&bad_level);
+        assert!(res_bad.is_err());
+        assert!(res_bad.unwrap_err().contains("Unknown lint level"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     // --- CLI argument parser unit tests (issue #320) ---

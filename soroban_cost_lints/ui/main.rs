@@ -187,7 +187,14 @@ pub mod soroban_sdk {
 
 use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 
-
+// Stub contract client for token_transfer_in_loop fixtures.
+// Generated Soroban clients produce types like this — the key is that the
+// receiver is an ADT whose def-path does NOT match any known soroban_sdk type.
+struct TokenClient(Env);
+impl TokenClient {
+    pub fn transfer(&self, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
+    pub fn transfer_from(&self, _spender: &soroban_sdk::Address, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
+}
 
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
@@ -533,6 +540,84 @@ fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func:
 fn good_single_append_outside_loop() {
     let mut bytes = Bytes(vec![]);
     bytes.append(&Bytes(vec![])); // Good - single append outside loop
+}
+
+// =======================================================================
+// token_transfer_in_loop — Fixtures
+// =======================================================================
+
+fn bad_transfer_in_for_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer(&from, &to, &100); // Should Warn
+    }
+}
+
+fn bad_transfer_in_while_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    let mut i = 0;
+    while i < 10 {
+        client.transfer(&from, &to, &100); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_transfer_in_loop_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    loop {
+        client.transfer(&from, &to, &100); // Should Warn
+        break;
+    }
+}
+
+fn bad_transfer_from_in_for_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let spender = soroban_sdk::Address;
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer_from(&spender, &from, &to, &50); // Should Warn
+    }
+}
+
+fn bad_transfer_in_closure(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    (0..10).for_each(|_| {
+        client.transfer(&from, &to, &100); // Should Warn — closure in loop
+    });
+}
+
+fn good_transfer_outside_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    client.transfer(&from, &to, &100); // Good — single call, not in a loop
+}
+
+fn good_transfer_from_outside_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let spender = soroban_sdk::Address;
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    client.transfer_from(&spender, &from, &to, &50); // Good — outside loop
+}
+
+#[allow(token_transfer_in_loop)]
+fn allowed_transfer_in_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer(&from, &to, &100); // Good (allowed)
+    }
 }
 
 // =======================================================================

@@ -545,6 +545,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: TOKEN_TRANSFER_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
         category: LintCategory::StorageOperations,
     },
@@ -625,8 +629,8 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
-        lint: TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
-        category: LintCategory::EntryLifecycle,
+        lint: STD_COLLECTION_IN_CONTRACT,
+        category: LintCategory::Memory,
     },
 ];
 
@@ -647,6 +651,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNBOUNDED_RECURSION,
         HOST_IN_LOOP,
         CONTRACT_CALL_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
         LOOP_INVARIANT_STORAGE_ACCESS,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         INEFFICIENT_BYTES_CONCAT,
@@ -667,7 +672,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
-        TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        STD_COLLECTION_IN_CONTRACT,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -676,6 +681,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnboundedRecursion::default()));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
+    lint_store.register_late_pass(|_| Box::new(TokenTransferInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
     lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
@@ -695,7 +701,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
-    lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
+    lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -1283,6 +1289,83 @@ impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
                     "cross-contract call inside a loop",
                     None,
                     "add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// token_transfer_in_loop — Lint
+// =======================================================================
+
+// Flags `transfer` / `transfer_from` calls on a generated Soroban contract
+// client (conventionally a `*Client` struct) that sit inside a loop body.
+//
+// Token transfers are cross-contract invocations plus at least two storage
+// writes each — one of the most expensive single operations a Soroban
+// contract can perform. Repeating one per iteration (an airdrop loop, a
+// batch payout, a fee distribution) multiplies that cost by a
+// caller-influenced factor and is a common way for a contract to become
+// unusable at scale after testing fine with three recipients.
+//
+// This lint is a specialised companion to [`CONTRACT_CALL_IN_LOOP`]:
+// the generic lint catches every `env.invoke_contract`, but a token
+// transfer has a specific fix (batch the transfer, or restructure to a
+// claim pattern where recipients pull), so this diagnostic names that
+// alternative rather than only stating the problem.
+//
+// Detection matches on the method name (`transfer`, `transfer_from`)
+// when the receiver is an ADT whose definition path does *not* match
+// any known `soroban_sdk` type. This identifies generated contract
+// clients without requiring the real SDK types to be present, and the
+// two method names cover the standard Soroban token interface.
+rustc_session::declare_lint! {
+    pub TOKEN_TRANSFER_IN_LOOP,
+    Warn,
+    "token transfer (transfer / transfer_from) on a contract client inside a loop"
+}
+/// Concrete pass that fires [`TOKEN_TRANSFER_IN_LOOP`].
+pub struct TokenTransferInLoop;
+rustc_session::impl_lint_pass!(TokenTransferInLoop => [TOKEN_TRANSFER_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for TokenTransferInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && matches!(
+                path_segment.ident.name.as_str(),
+                "transfer" | "transfer_from"
+            )
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_known_sdk_type = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                matches_any_path(
+                    cx,
+                    did,
+                    &[
+                        &["soroban_sdk", "Env"],
+                        &["soroban_sdk", "Address"],
+                        &["soroban_sdk", "storage", "Storage"],
+                        &["soroban_sdk", "storage", "Instance"],
+                        &["soroban_sdk", "storage", "Persistent"],
+                        &["soroban_sdk", "storage", "Temporary"],
+                    ],
+                )
+            } else {
+                false
+            };
+
+            if !is_known_sdk_type && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    TOKEN_TRANSFER_IN_LOOP,
+                    expr.span,
+                    "token transfer inside a loop",
+                    None,
+                    "batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing",
                 );
             }
         }
@@ -3051,159 +3134,131 @@ fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
 }
 
 // =======================================================================
-// temporary_storage_for_persistent_data — Lint
+// std_collection_in_contract — Lint
 // =======================================================================
 
+// Flags `std::collections::HashMap`, `std::collections::BTreeMap`, and
+// `std::vec::Vec` usage inside Soroban contract code. These types allocate
+// in linear memory rather than through the host, inflating the deployed
+// binary (the allocator is compiled into wasm) and requiring explicit
+// conversion every time a value crosses the host boundary.
+//
+// The lint fires inside `#[contractimpl]` blocks and skips code that is
+// inside `#[cfg(test)]` modules or functions annotated with `#[test]`,
+// where std collections are idiomatic and correct.
+//
+// Detection: for method calls (`map.insert(...)`, `vec.push(...)`), the
+// receiver type is checked against the std collection ADT paths. For
+// constructor calls (`HashMap::new()`, `Vec::new()`), the callee's DefId
+// is resolved and its parent module is inspected to determine if it
+// belongs to a std collection type.
 rustc_session::declare_lint! {
-    pub TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+    pub STD_COLLECTION_IN_CONTRACT,
     Warn,
-    "temporary storage write followed by an unsafe read that assumes the value persists"
+    "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec"
 }
-/// Concrete pass that fires [`TEMPORARY_STORAGE_FOR_PERSISTENT_DATA`].
-pub struct TemporaryStorageForPersistentData;
-rustc_session::impl_lint_pass!(TemporaryStorageForPersistentData => [TEMPORARY_STORAGE_FOR_PERSISTENT_DATA]);
+/// Concrete pass that fires [`STD_COLLECTION_IN_CONTRACT`].
+pub struct StdCollectionInContract;
+rustc_session::impl_lint_pass!(StdCollectionInContract => [STD_COLLECTION_IN_CONTRACT]);
 
-impl<'tcx> LateLintPass<'tcx> for TemporaryStorageForPersistentData {
-    fn check_fn(
-        &mut self,
-        cx: &LateContext<'tcx>,
-        _kind: intravisit::FnKind<'tcx>,
-        _decl: &'tcx hir::FnDecl<'tcx>,
-        body: &'tcx hir::Body<'tcx>,
-        _span: rustc_span::Span,
-        _hir_id: rustc_hir::def_id::LocalDefId,
-    ) {
-        let mut collector = TempWriteCollector {
-            cx,
-            writes: Vec::new(),
-        };
-        collector.visit_body(body);
+/// Paths of std collection types that should be replaced with Soroban SDK
+/// equivalents. Matched via `match_soroban_def_path` (ends-with comparison).
+const STD_COLLECTION_TYPES: &[&[&str]] = &[
+    &["std", "collections", "HashMap"],
+    &["std", "collections", "BTreeMap"],
+    &["std", "vec", "Vec"],
+];
 
-        let mut unsafe_reader = TempUnsafeReadDetector {
-            cx,
-            writes: &collector.writes,
-            reported: HashSet::new(),
-        };
-        unsafe_reader.visit_body(body);
-    }
+/// Constructor method names for std collection types. A call to one of these
+/// on a path whose parent module belongs to a std collection type is flagged.
+const STD_COLLECTION_CTOR_METHODS: &[&str] = &["new", "with_capacity"];
+
+/// Returns `true` if the expression sits inside a `#[contractimpl]` block.
+///
+/// Walks the HIR owner hierarchy from `expr` upward. For each enclosing
+/// `Impl` item, checks whether it carries the `#[contractimpl]` attribute
+/// (either bare `#[contractimpl]` or namespaced `#[contractimpl::...]`).
+/// Stops as soon as a match is found.
+fn is_in_contract_code<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    use rustc_hir::{ItemKind, OwnerNode};
+
+    // `#[contractimpl]` is a custom Soroban attribute, not a compiler-known
+    // symbol, so we intern the name at runtime.
+    let contractimpl_sym = rustc_span::symbol::Symbol::intern("contractimpl");
+
+    cx.tcx
+        .hir_parent_owner_iter(expr.hir_id)
+        .filter(|(_, node)| {
+            matches!(node, OwnerNode::Item(item) if matches!(item.kind, ItemKind::Impl(_)))
+        })
+        .any(|(owner_id, _)| {
+            let impl_hir_id = cx.tcx.local_def_id_to_hir_id(owner_id.def_id);
+            let attrs = cx.tcx.hir_attrs(impl_hir_id);
+            // Check for bare `#[contractimpl]` or namespaced `#[contractimpl::...]`.
+            attrs.iter().any(|attr| {
+                let segments = attr.path();
+                segments.first().is_some_and(|s| *s == contractimpl_sym)
+            })
+        })
 }
 
-/// Collects temporary storage write calls (`.set()` on `Temporary`) within a
-/// function body, recording the key snippet and span of each write.
-struct TempWriteCollector<'a, 'tcx> {
-    cx: &'a LateContext<'tcx>,
-    writes: Vec<(String, rustc_span::Span)>,
-}
-
-impl<'a, 'tcx> Visitor<'tcx> for TempWriteCollector<'a, 'tcx> {
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "set"
-            && args.len() >= 2
-            && is_temporary_storage_write(self.cx, receiver)
-        {
-            let key_inner = peel_addr_of(&args[0]);
-            if let Some(key_snippet) = snippet_opt(self.cx, key_inner.span) {
-                self.writes.push((key_snippet, expr.span));
-            }
+impl<'tcx> LateLintPass<'tcx> for StdCollectionInContract {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // Skip test code — std collections are idiomatic in tests.
+        if is_in_test(cx.tcx, expr.hir_id) {
+            return;
         }
-        intravisit::walk_expr(self, expr);
-    }
-}
 
-/// Detects unsafe reads (`.unwrap()` / `.expect()` on `.get()`) of the same
-/// keys previously written to temporary storage in the same function body.
-struct TempUnsafeReadDetector<'a, 'tcx> {
-    cx: &'a LateContext<'tcx>,
-    writes: &'a [(String, rustc_span::Span)],
-    reported: HashSet<rustc_span::Span>,
-}
+        // Only fire inside #[contractimpl] blocks.
+        if !is_in_contract_code(cx, expr) {
+            return;
+        }
 
-impl<'a, 'tcx> Visitor<'tcx> for TempUnsafeReadDetector<'a, 'tcx> {
-    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
-            let method_name = path_segment.ident.name.as_str();
-            if (method_name == "unwrap" || method_name == "expect")
-                && args.is_empty()
-                && let Some(temp_read) = is_temp_get(self.cx, receiver)
-            {
-                let read_key_inner = peel_addr_of(temp_read);
-                if let Some(read_key_snippet) = snippet_opt(self.cx, read_key_inner.span) {
-                    for &(ref write_key, write_span) in self.writes {
-                        if read_key_snippet == *write_key && !self.reported.contains(&write_span) {
-                            self.reported.insert(write_span);
-                            span_lint_and_help(
-                                self.cx,
-                                TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
-                                expr.span,
-                                "unsafe read from temporary storage after a write — temporary \
-                                 entries are permanently deleted when their TTL expires, so \
-                                 this read will panic if the value has expired",
-                                None,
-                                "handle the None case with match, unwrap_or, or \
-                                 unwrap_or_else; or use persistent storage if the data must \
-                                 survive across ledger closes",
-                            );
-                        }
-                    }
+        let uses_std_collection = match expr.kind {
+            // Method calls: map.insert(), vec.push(), etc.
+            hir::ExprKind::MethodCall(_, receiver, _, _) => {
+                let receiver_ty = cx.typeck_results().expr_ty(receiver).peel_refs();
+                if let rustc_middle::ty::Adt(adt_def, _) = receiver_ty.kind() {
+                    matches_any_path(cx, adt_def.did(), STD_COLLECTION_TYPES)
+                } else {
+                    false
                 }
             }
-        }
-        intravisit::walk_expr(self, expr);
-    }
-}
 
-/// Checks whether `expr` is a `set()` call on a `Temporary` storage receiver.
-fn is_temporary_storage_write<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
-    if let hir::ExprKind::MethodCall(path_segment, receiver, _, _) = expr.kind {
-        let method_name = path_segment.ident.name.as_str();
-        if method_name != "set" {
-            return false;
-        }
-        let receiver_ty = cx.typeck_results().expr_ty(receiver);
-        let peeled = receiver_ty.peel_refs();
-        if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
-            match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Temporary"])
-        } else {
-            false
-        }
-    } else {
-        false
-    }
-}
-
-/// Checks whether `expr` is a `get()` call on a `Temporary` storage receiver.
-/// Returns `Some(key_expr)` if so.
-fn is_temp_get<'tcx>(
-    cx: &LateContext<'tcx>,
-    expr: &'tcx hir::Expr<'tcx>,
-) -> Option<&'tcx hir::Expr<'tcx>> {
-    if let hir::ExprKind::MethodCall(path_segment, receiver, args, _) = expr.kind {
-        let method_name = path_segment.ident.name.as_str();
-        if method_name == "get" && !args.is_empty() {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled = receiver_ty.peel_refs();
-            if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind()
-                && match_soroban_def_path(
-                    cx,
-                    adt_def.did(),
-                    &["soroban_sdk", "storage", "Temporary"],
-                )
-            {
-                return Some(&args[0]);
+            // Constructor calls: HashMap::new(), Vec::new(), etc.
+            // The callee's type from typeck is FnDef(did, args), so we can
+            // extract the DefId directly from the type.
+            hir::ExprKind::Call(callee, _) => {
+                let callee_ty = cx.typeck_results().expr_ty(callee);
+                if let rustc_middle::ty::FnDef(callee_did, _) = callee_ty.kind() {
+                    let callee_path = cached_def_path_str(cx.tcx, *callee_did);
+                    let method_name = cx.tcx.item_name(*callee_did);
+                    let method_name_str = method_name.as_str();
+                    STD_COLLECTION_TYPES.iter().any(|type_segments| {
+                        let type_suffix = type_segments.join("::");
+                        callee_path.contains(&type_suffix)
+                            && STD_COLLECTION_CTOR_METHODS.contains(&method_name_str)
+                    })
+                } else {
+                    false
+                }
             }
+            _ => false,
+        };
+
+        if uses_std_collection {
+            span_lint_and_help(
+                cx,
+                STD_COLLECTION_IN_CONTRACT,
+                expr.span,
+                "std collection type used in contract code",
+                None,
+                "use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, \
+                 and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate \
+                 in wasm linear memory, inflate the binary, and require conversion at the host boundary",
+            );
         }
     }
-    None
-}
-
-/// Strips any number of leading `AddrOf` wrappers, returning the innermost
-/// expression.  Handles `&key`, `&&key`, etc.
-fn peel_addr_of<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
-    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
-        expr = inner;
-    }
-    expr
 }
 
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
