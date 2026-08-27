@@ -314,7 +314,7 @@ fn test_list_lints_json_and_text_consistency_and_descriptions() {
         let level = lint["default_level"].as_str().unwrap();
         let desc = lint["description"].as_str().unwrap();
         let cat = lint["category"].as_str().unwrap();
-        let url = lint["documentation_url"].as_str().unwrap();
+        let _url = lint["documentation_url"].as_str().unwrap();
 
         assert!(!name.is_empty(), "Empty name in lint entry");
         assert!(!level.is_empty(), "Empty level in lint entry: {}", name);
