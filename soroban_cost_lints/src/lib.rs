@@ -3340,8 +3340,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TempUnsafeReadDetector<'a, 'tcx> {
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
-            if (method_name == "unwrap" || method_name == "expect")
-                && args.is_empty()
+            if ((method_name == "unwrap" && args.is_empty())
+                || (method_name == "expect" && args.len() == 1))
                 && let Some(temp_read) = is_temp_get(self.cx, receiver)
             {
                 let read_key_inner = peel_addr_of(temp_read);
