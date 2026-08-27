@@ -1,13 +1,13 @@
 mod config;
 mod error;
-// Declared but not yet wired into the CLI; see module_13.rs.
+// Declared but not yet wired into the CLI; see budget_config.rs.
 // Kept: scaffolding awaiting maintainer decision
 #[allow(dead_code)]
-mod module_13;
-// Declared but not yet wired into the CLI; see module_15.rs.
+mod budget_config;
+// Declared but not yet wired into the CLI; see lint_name_set.rs.
 // Kept: scaffolding awaiting maintainer decision
 #[allow(dead_code)]
-mod module_15;
+mod lint_name_set;
 
 use clap::{ArgGroup, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
