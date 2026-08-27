@@ -927,6 +927,87 @@ mod tests {
     }
 
     #[test]
+    fn lint_info_matches_lint_inventory() {
+        assert_eq!(
+            LINT_INFO.len(),
+            LINT_INVENTORY.lints.len(),
+            "LINT_INFO and LINT_INVENTORY must have identical number of entries"
+        );
+        for (info, inv) in LINT_INFO.iter().zip(LINT_INVENTORY.lints.iter()) {
+            assert_eq!(info.name, inv.name, "Lint names must match");
+            assert_eq!(
+                info.level, inv.default_level,
+                "Lint default levels must match for {}",
+                info.name
+            );
+            assert_eq!(
+                info.description, inv.description,
+                "Lint descriptions must match for {}",
+                info.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_declare_lint_parser_with_comma_in_description() {
+        let sample = r#"
+        rustc_session::declare_lint! {
+            pub TEST_COMMA_LINT,
+            Warn,
+            "this description has, multiple, commas, and formatting"
+        }
+        "#;
+        let mut depth: u32 = 0;
+        let mut end_offset = 0;
+        let start = sample.find("declare_lint! {").unwrap();
+        let after_start = &sample[start + "declare_lint! {".len()..];
+        depth += 1;
+        for (i, ch) in after_start.char_indices() {
+            if ch == '{' {
+                depth += 1;
+            } else if ch == '}' {
+                depth -= 1;
+                if depth == 0 {
+                    end_offset = i;
+                    break;
+                }
+            }
+        }
+        assert!(end_offset > 0);
+        let block = &after_start[..end_offset];
+        let lines: Vec<&str> = block
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("#["))
+            .collect();
+        assert!(lines.len() >= 3);
+        let name = lines[0]
+            .strip_prefix("pub ")
+            .unwrap_or(lines[0])
+            .trim_end_matches(',')
+            .trim()
+            .to_lowercase();
+        let level = lines[1].trim_end_matches(',').trim().to_lowercase();
+        let raw_desc = lines[2..].join(" ");
+        let trimmed_desc = raw_desc.trim().trim_end_matches(',').trim();
+        let description = if trimmed_desc.starts_with('"')
+            && trimmed_desc.ends_with('"')
+            && trimmed_desc.len() >= 2
+        {
+            trimmed_desc[1..trimmed_desc.len() - 1].to_string()
+        } else {
+            trimmed_desc.trim_matches('"').to_string()
+        };
+
+        assert_eq!(name, "test_comma_lint");
+        assert_eq!(level, "warn");
+        assert_eq!(
+            description,
+            "this description has, multiple, commas, and formatting"
+        );
+    }
+
+    #[test]
     fn lint_registry_json_matches_registered_lints() {
         let registry_path = concat!(
             env!("CARGO_MANIFEST_DIR"),

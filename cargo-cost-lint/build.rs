@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 enum Error {
@@ -15,7 +15,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Io(e) => write!(f, "I/O error: {}", e),
-            Error::MissingEnv => write!(f, "OUT_DIR environment variable not set"),
+            Error::MissingEnv => write!(
+                f,
+                "OUT_DIR or CARGO_MANIFEST_DIR environment variable not set"
+            ),
             Error::Parse(msg) => write!(f, "Parse error: {}", msg),
         }
     }
@@ -106,26 +109,36 @@ fn parse_declare_lints(content: &str) -> Vec<LintMeta> {
 
         let block = &after_start[..end_offset];
 
-        // Extract the three key lines from the block body.
+        // Extract lines from the block body, filtering out comments (///, //) and attributes (#[...]).
         let lines: Vec<&str> = block
             .lines()
             .map(|l| l.trim())
-            .filter(|l| !l.is_empty() && !l.starts_with("//"))
+            .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("#["))
             .collect();
 
         if lines.len() >= 3 {
             // Line 0: "pub LINT_NAME," -> "lint_name"
             let raw_name = lines[0]
-                .trim_start_matches("pub ")
+                .strip_prefix("pub ")
+                .unwrap_or(lines[0])
                 .trim_end_matches(',')
                 .trim();
             let name = raw_name.to_lowercase();
 
             // Line 1: "Warn," -> "warn"
-            let level = lines[1].trim_end_matches(',').to_lowercase();
+            let level = lines[1].trim_end_matches(',').trim().to_lowercase();
 
-            // Line 2: '"description"' -> "description"
-            let description = lines[2].trim().trim_matches('"').to_string();
+            // Line 2+: Description string literal (handling commas and multi-line descriptions)
+            let raw_desc = lines[2..].join(" ");
+            let trimmed_desc = raw_desc.trim().trim_end_matches(',').trim();
+            let description = if trimmed_desc.starts_with('"')
+                && trimmed_desc.ends_with('"')
+                && trimmed_desc.len() >= 2
+            {
+                trimmed_desc[1..trimmed_desc.len() - 1].to_string()
+            } else {
+                trimmed_desc.trim_matches('"').to_string()
+            };
 
             results.push(LintMeta {
                 name,
@@ -211,13 +224,34 @@ fn parse_toolchain_channel(toolchain_path: &Path) -> Result<String> {
 const DYLINT_VERSION_CONSTRAINT: &str = "^6.0.1";
 
 fn run() -> Result<()> {
+    // cargo-cost-lint is an internal workspace tool that embeds compile-time metadata,
+    // documentation explanations, and the pinned toolchain version directly from sibling
+    // workspace paths (`../soroban_cost_lints`, `../docs/lints`, and `../rust-toolchain`).
+    // It is not published independently to crates.io (`publish = false` in Cargo.toml).
+    let manifest_dir_str = env::var("CARGO_MANIFEST_DIR").map_err(|_| Error::MissingEnv)?;
+    let manifest_dir = PathBuf::from(manifest_dir_str);
+
+    let lib_rs_path = manifest_dir.join("../soroban_cost_lints/src/lib.rs");
+    let docs_dir = manifest_dir.join("../docs/lints");
+    let toolchain_path = manifest_dir.join("../rust-toolchain");
+
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
     println!("cargo:rerun-if-changed=../docs/lints");
     println!("cargo:rerun-if-changed=../rust-toolchain");
 
-    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs").map_err(|e| {
+    if !lib_rs_path.exists() {
+        return Err(Error::Parse(
+            "cargo-cost-lint cannot be built outside the soroban-cost-linter workspace \
+             because it relies on compile-time metadata from sibling workspace crates. \
+             This crate is not intended for standalone publishing (publish = false)."
+                .to_string(),
+        ));
+    }
+
+    let content = fs::read_to_string(&lib_rs_path).map_err(|e| {
         Error::Parse(format!(
-            "Failed to read source file ../soroban_cost_lints/src/lib.rs: {}",
+            "Failed to read source file {}: {}",
+            lib_rs_path.display(),
             e
         ))
     })?;
@@ -258,22 +292,21 @@ fn run() -> Result<()> {
     }
 
     // --- Verify every registered lint has a corresponding doc file ---
-    let docs_dir = "../docs/lints";
     for name in &names {
-        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_path = docs_dir.join(format!("{}.md", name));
         assert!(
-            Path::new(&doc_path).exists(),
+            doc_path.exists(),
             "lint '{}' is registered but has no doc file at '{}'. \
              Create a documentation page at docs/lints/{}.md to explain \
              what the lint does, why it is expensive, and how to fix it.",
             name,
-            doc_path,
+            doc_path.display(),
             name
         );
     }
 
     // --- Verify no orphaned docs/lints/*.md exist without a registered lint ---
-    if let Ok(read_dir) = fs::read_dir(docs_dir) {
+    if let Ok(read_dir) = fs::read_dir(&docs_dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.extension().and_then(|ext| ext.to_str()) == Some("md")
@@ -293,47 +326,17 @@ fn run() -> Result<()> {
     // --- Read each doc file and embed as raw string literals ---
     let mut explanations: Vec<(String, String)> = Vec::new();
     for name in &names {
-        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_path = docs_dir.join(format!("{}.md", name));
         let doc_content = fs::read_to_string(&doc_path).unwrap_or_else(|e| {
             panic!(
                 "Failed to read doc file '{}': expected it to be readable, got {}",
-                doc_path, e
+                doc_path.display(),
+                e
             )
         });
         // Notify cargo to re-run build.rs when any doc file changes
-        println!("cargo:rerun-if-changed={}", doc_path);
+        println!("cargo:rerun-if-changed=../docs/lints/{}.md", name);
         explanations.push((name.clone(), doc_content));
-    }
-
-    let mut declarations = Vec::new();
-    let mut search_from = 0usize;
-    while let Some(start) = content[search_from..].find("rustc_session::declare_lint! {") {
-        let absolute_start = search_from + start;
-        let after = &content[absolute_start + "rustc_session::declare_lint! {".len()..];
-        let end = after.find('}').unwrap_or_else(|| {
-            let line_number = content[..absolute_start].lines().count() + 1;
-            panic!(
-                "Could not parse declare_lint! block at line {}. Expected a closing '}}'",
-                line_number
-            );
-        });
-        let block = &after[..end];
-        // Filter out comment lines (///, //) and blank lines before splitting
-        // by comma, so that doc-commented declare_lint! blocks parse correctly.
-        let clean_lines: Vec<&str> = block
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty() && !l.starts_with("//"))
-            .collect();
-        let block_text = clean_lines.join("\n");
-        let parts: Vec<&str> = block_text.split(',').map(str::trim).collect();
-        if parts.len() >= 3 {
-            let lint_name = parts[0].trim_start_matches("pub ").trim();
-            let default_level = parts[1].to_ascii_lowercase();
-            let description = parts[2].trim().trim_matches('"').to_string();
-            declarations.push((lint_name.to_string(), default_level, description));
-        }
-        search_from = absolute_start + 1;
     }
 
     let mut category_map = HashMap::new();
@@ -382,8 +385,7 @@ fn run() -> Result<()> {
     }
 
     // --- Parse the pinned toolchain and emit version metadata ---
-    let toolchain_path = Path::new("../rust-toolchain");
-    let toolchain_channel = parse_toolchain_channel(toolchain_path)?;
+    let toolchain_channel = parse_toolchain_channel(&toolchain_path)?;
 
     let out_dir = env::var_os("OUT_DIR").ok_or(Error::MissingEnv)?;
     let names_path = Path::new(&out_dir).join("lint_names.rs");
@@ -429,10 +431,7 @@ fn run() -> Result<()> {
     metadata_out.push_str("    lints: &[\n");
 
     for name in &names {
-        if let Some((_, default_level, description)) = declarations
-            .iter()
-            .find(|(lint_name, _, _)| lint_name.to_lowercase() == *name)
-        {
+        if let Some(meta) = metadata_by_name.get(name.as_str()) {
             let category = category_map
                 .get(name)
                 .map(|value| value.as_str())
@@ -445,11 +444,11 @@ fn run() -> Result<()> {
             metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
             metadata_out.push_str(&format!(
                 "            default_level: {},\n",
-                rust_string(default_level)
+                rust_string(&meta.level)
             ));
             metadata_out.push_str(&format!(
                 "            description: {},\n",
-                rust_string(description)
+                rust_string(&meta.description)
             ));
             metadata_out.push_str(&format!(
                 "            category: {},\n",

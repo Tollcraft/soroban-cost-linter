@@ -26,13 +26,15 @@ runs:
   using: 'composite'
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
       with:
         toolchain: ${{ inputs.toolchain }}
         components: rustc-dev, llvm-tools-preview
 
     - name: Install Dylint
       shell: bash
+      env:
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
       run: cargo install cargo-dylint dylint-link --version "^6.0.1"
 
     - name: Build lint library
@@ -44,17 +46,22 @@ runs:
       # library that the "Run Cost Linter" step could not find.
       env:
         RUSTFLAGS: -C linker=dylint-link
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
       run: cargo build --release --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
 
     - name: Register lint library with dylint
       shell: bash
       working-directory: ${{ github.action_path }}
+      env:
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
       run: |
         cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > /tmp/dylint-register.log 2>&1 || true
         echo "dylint registration done ($(wc -l < /tmp/dylint-register.log) lines logged)"
 
     - name: Build CLI
       shell: bash
+      env:
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
       run: cargo build --release --manifest-path "${{ github.action_path }}/cargo-cost-lint/Cargo.toml"
 
     - name: Run Cost Linter
@@ -62,9 +69,11 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
       run: |
         CONFIG_ARG=""
         if [ -n "${{ inputs.config }}" ]; then
           CONFIG_ARG="--config ${{ inputs.config }}"
         fi
         "${{ github.action_path }}/target/release/cargo-cost-lint" --format github $CONFIG_ARG ${{ inputs.args }}
+
