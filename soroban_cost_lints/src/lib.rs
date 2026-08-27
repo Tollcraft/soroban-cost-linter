@@ -3314,10 +3314,10 @@ struct TempWriteCollector<'a, 'tcx> {
 
 impl<'a, 'tcx> Visitor<'tcx> for TempWriteCollector<'a, 'tcx> {
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
             && path_segment.ident.name.as_str() == "set"
             && args.len() >= 2
-            && is_temporary_storage_write(self.cx, receiver)
+            && is_temporary_storage_write(self.cx, expr)
         {
             let key_inner = peel_addr_of(&args[0]);
             if let Some(key_snippet) = snippet_opt(self.cx, key_inner.span) {
