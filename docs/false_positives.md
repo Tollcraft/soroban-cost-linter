@@ -182,3 +182,38 @@ Fires on every `get`/`has` on `persistent` storage when the function contains no
 - **Near-miss 2 — non-persistent storage:** `instance.get(...)` / `temporary.get(...)` are out of scope and never flagged.
 - The lint collects reads via a visitor over the whole function body, so a read in a nested block still counts.
 - **No known false positives:** a persistent read with no `extend_ttl` in the function is always reported.
+
+### `soroban_inefficient_bytes_concat`
+
+Fires when `push_back` or `append` is called on a `Bytes` object, suggesting `Bytes::from_slice` instead.
+
+- **Near-miss (must not fire):** when building a buffer piecemeal in an unbounded or large iteration where `Vec<u8>` is correctly used as the accumulator, and `Bytes::from_slice` is deferred until after the loop. The lint only flags the SDK method calls.
+- **No known false positives:** if you call `Bytes::push_back` directly, it always crosses the host boundary.
+
+### `inefficient_bytes_concat`
+
+Fires when the `+` operator is used on `Bytes` objects.
+
+- **Near-miss:** if a type alias or generic happens to resolve to `Bytes` but wasn't statically known, it might bypass the lint (though the lint tries to peel refs and resolve ADTs). In general, `b1 + b2` is always an expensive host call and should be avoided in loops or large batches.
+- **No known false positives:** the `+` operator on `Bytes` always performs a host allocation.
+
+### `unnecessary_string_to_bytes`
+
+Fires when `.to_bytes()` is called on a `soroban_sdk::String`.
+
+- **Near-miss:** if the `String` is passed to a function that genuinely requires `Bytes` and cannot be modified to accept `String` or `impl IntoVal<Env, RawVal>`. Wait, even then it's a cost, but one you might have to pay. The lint just flags the conversion.
+- **No known false positives:** the conversion itself always involves a host copy.
+
+### `bytes_append_in_loop`
+
+Fires when `Bytes::append` or `Bytes::push_back` is called inside a loop.
+
+- **Near-miss:** an append inside a loop with a small, statically known bound (e.g. `for _ in 0..2`). The cost is bounded, but the lint deliberately does not perform constant propagation or loop bound analysis. It errs on the side of reporting any loop.
+- You can suppress this with `#[allow(bytes_append_in_loop)]` if the loop bound is strictly small and fixed.
+
+### `vec_where_slice_could_be_used`
+
+Fires when a function parameter takes `Vec<T>` by value but the function only reads from it, suggesting `&[T]` or `&Vec<T>` instead.
+
+- **Near-miss (must not fire):** a `Vec` that is passed into another function that consumes it by value, or pushed into another collection. The lint sees it is consumed and correctly stays silent.
+- **False Positive:** if the `Vec` is moved into a closure or thread where `&[T]` wouldn't live long enough, though this is rare in Soroban smart contracts.
