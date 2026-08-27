@@ -1,6 +1,12 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1787741592 with 86 findings across 15 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1787773179 with 90 findings (17 TP, 73 FP, 81.11% FP rate) across 15 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "summary": {
+    "total_findings": 90,
+    "total_true_positives": 17,
+    "total_false_positives": 73,
+    "false_positive_rate_percent": 81.11
+  },
   "contracts": {
     "compute_batch_contract_call": {
       "total": 2,
@@ -498,7 +504,7 @@
       ]
     },
     "token": {
-      "total": 18,
+      "total": 22,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -507,10 +513,34 @@
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         },
         {
+          "lint_name": "unwrap_on_storage_get",
+          "file": "src/lib.rs",
+          "line": 34,
+          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+        },
+        {
+          "lint_name": "unwrap_on_storage_get",
+          "file": "src/lib.rs",
+          "line": 55,
+          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+        },
+        {
+          "lint_name": "unwrap_on_storage_get",
+          "file": "src/lib.rs",
+          "line": 66,
+          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+        },
+        {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
           "line": 66,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
+        },
+        {
+          "lint_name": "unwrap_on_storage_get",
+          "file": "src/lib.rs",
+          "line": 67,
+          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
         }
       ],
       "false_positives": [

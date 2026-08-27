@@ -1,0 +1,124 @@
+name: Nightly Bump
+
+# Attempt to move this crate to a newer Rust nightly on a schedule, and open a
+# pull request for a human to review. No automatic merging.
+#
+# - Updates the pin (rust-toolchain + matching clippy_utils rev + every file
+#   that must stay in sync).
+# - Runs the full test suite.
+# - Opens / updates a single PR on the `ci/nightly-bump` branch. A failed run
+#   reports which lints broke in the PR body instead of only "it failed".
+#
+# Trigger manually with optional `target_nightly` / `clippy_rev` overrides.
+
+on:
+  schedule:
+    # Weekly, Mondays at 06:17 UTC (off the :00 to avoid the top-of-hour rush).
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      target_nightly:
+        description: "Optional explicit nightly, e.g. nightly-2026-05-15. Blank = auto (today - 7d)."
+        required: false
+        default: ""
+      clippy_rev:
+        description: "Optional explicit clippy_utils rev (40-char SHA) to use."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve target and apply the bump
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OFFSET_DAYS: 7
+          CLIPPY_REV: ${{ inputs.clippy_rev }}
+        run: |
+          if [ -n "${{ inputs.target_nightly }}" ]; then
+            TARGET="${{ inputs.target_nightly }}"
+          else
+            TARGET="nightly-$(date -u -d '-7 days' +%Y-%m-%d)"
+          fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          set +e
+          bash .github/scripts/bump-nightly.sh "$TARGET"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 2 ]; then
+            # Target already equals the pinned nightly; nothing to do.
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::bump-nightly.sh failed (rc=$RC)"
+            exit 1
+          fi
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Nothing to do when the target already equals the pinned nightly.
+      - name: Skip notice
+        if: steps.bump.outputs.changed != 'true'
+        run: echo "Pin is already at the target nightly; no PR needed."
+
+      - name: Install Rust
+        if: steps.bump.outputs.changed == 'true'
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: ${{ steps.bump.outputs.target }}
+          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+
+      - name: Rust Cache
+        if: steps.bump.outputs.changed == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cost-linter-nightly-bump
+
+      - name: Install Dylint
+        if: steps.bump.outputs.changed == 'true'
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+
+      # Run the test suite. We never fail the job here: whether it passes or
+      # not, we still want to open / update the PR with a report. The PR's own
+      # status check reflects the real result.
+      - name: Run full test suite
+        id: test
+        if: steps.bump.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set +e
+          cargo test --workspace > "$RUNNER_TEMP/nightly-bump-test.log" 2>&1
+          CODE=$?
+          echo "exit=$CODE" >> "$GITHUB_OUTPUT"
+          node .github/scripts/summarize-test-failures.js "$RUNNER_TEMP/nightly-bump-test.log" "${{ steps.bump.outputs.target }}" > "$RUNNER_TEMP/NIGHTLY_BUMP_REPORT.md"
+          cat "$RUNNER_TEMP/NIGHTLY_BUMP_REPORT.md"
+
+      - name: Open or update the bump PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/nightly-bump
+          base: main
+          title: "chore(ci): attempt nightly bump to ${{ steps.bump.outputs.target }}"
+          body-path: ${{ runner.temp }}/NIGHTLY_BUMP_REPORT.md
+          commit-message: "chore(ci): attempt nightly bump to ${{ steps.bump.outputs.target }}"
+          labels: dependencies,automated
+          delete-branch: false

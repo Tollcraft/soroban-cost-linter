@@ -6,17 +6,23 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  CARGO_NET_RETRY: "10"
+
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Validate toolchain pins (Linux)
         if: runner.os == 'Linux'
+        run: bash .github/scripts/validate-toolchain-pins.sh
+      - name: Validate toolchain pins (macOS)
+        if: runner.os == 'macOS'
         run: bash .github/scripts/validate-toolchain-pins.sh
       - name: Validate toolchain pins (Windows)
         if: runner.os == 'Windows'
@@ -64,7 +70,7 @@ jobs:
   # reported and every PR waits on it forever. This job supplies that context
   # and stays correct if the matrix legs change.
   build-and-test:
-    needs: [test, coverage]
+    needs: [test, coverage, benchmark]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -76,6 +82,10 @@ jobs:
           fi
           if [ "${{ needs.coverage.result }}" != "success" ]; then
             echo "Coverage job 'coverage' reported: ${{ needs.coverage.result }}"
+            exit 1
+          fi
+          if [ "${{ needs.benchmark.result }}" != "success" ]; then
+            echo "Benchmark job 'benchmark' reported: ${{ needs.benchmark.result }}"
             exit 1
           fi
 
@@ -114,5 +124,28 @@ jobs:
         with:
           name: lcov-report
           path: lcov.info
+
+  benchmark:
+    name: Performance Benchmark Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate toolchain pins (Linux)
+        run: bash .github/scripts/validate-toolchain-pins.sh
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly-2026-04-16
+          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cost-linter-bench
+          cache-directories: tests/corpus/.shared-target
+      - name: Install Dylint
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+      - name: Run Performance Benchmark Gate
+        run: cargo bench --bench linter_performance --package cargo-cost-lint
+
 
 

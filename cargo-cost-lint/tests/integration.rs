@@ -258,3 +258,123 @@ fn test_shared_budget_toml_parsing() {
         "Should not fail to parse without lints section"
     );
 }
+
+#[test]
+fn test_list_lints_json_and_text_consistency_and_descriptions() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let text_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints");
+    assert!(text_output.status.success());
+    let text_str = String::from_utf8(text_output.stdout).expect("Stdout is not UTF-8");
+
+    let text_lint_lines: Vec<&str> = text_str.lines().filter(|l| l.contains('|')).collect();
+
+    let json_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints --format json");
+    assert!(json_output.status.success());
+    let json_str = String::from_utf8(json_output.stdout).expect("Stdout is not UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&json_str).expect("Output is not valid JSON");
+
+    let json_lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+
+    // Both text and JSON must report the exact same number of lints
+    assert_eq!(
+        text_lint_lines.len(),
+        json_lints.len(),
+        "Text and JSON list-lints count mismatch: text={}, json={}",
+        text_lint_lines.len(),
+        json_lints.len()
+    );
+
+    // Verify all lints have complete descriptions (not truncated at commas)
+    let formatted_panic = json_lints
+        .iter()
+        .find(|l| l["name"] == "formatted_panic_payload")
+        .expect("formatted_panic_payload not found in JSON inventory");
+    let desc = formatted_panic["description"].as_str().unwrap();
+    assert!(
+        desc.contains("string-formatting machinery"),
+        "formatted_panic_payload description was truncated at comma: got {:?}",
+        desc
+    );
+
+    for lint in json_lints {
+        let name = lint["name"].as_str().unwrap();
+        let level = lint["default_level"].as_str().unwrap();
+        let desc = lint["description"].as_str().unwrap();
+        let cat = lint["category"].as_str().unwrap();
+        let url = lint["documentation_url"].as_str().unwrap();
+
+        assert!(!name.is_empty(), "Empty name in lint entry");
+        assert!(!level.is_empty(), "Empty level in lint entry: {}", name);
+        assert!(
+            !desc.is_empty(),
+            "Empty description in lint entry: {}",
+            name
+        );
+        assert!(!cat.is_empty(), "Empty category in lint entry: {}", name);
+        assert!(!url.is_empty(), "Empty doc url in lint entry: {}", name);
+    }
+}
+
+/// Every `--format` value documented in README.md's "Output format" table
+/// must be accepted by the CLI. Clap rejects unknown values with an
+/// `invalid value ... for '--format'` usage error before any linting
+/// happens, so a documented format that stops being a valid `OutputFormat`
+/// variant fails this test immediately.
+///
+/// The negative control at the end proves the detection mechanism works:
+/// a value that is neither documented nor implemented must be rejected.
+#[test]
+fn documented_formats_are_accepted() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Keep in sync with the "Output format" table in README.md.
+    let documented_formats = ["text", "json", "sarif", "github"];
+
+    // Run outside any cargo workspace so the check is cheap: the point is
+    // clap argument validation, not linting. The spawned `cargo dylint` may
+    // fail here (missing tool or no workspace), but never with a clap
+    // parse rejection for the format value itself.
+    let run_dir = env::temp_dir();
+
+    for format in documented_formats {
+        let output = Command::new(bin_path)
+            .arg("--format")
+            .arg(format)
+            .current_dir(&run_dir)
+            .output()
+            .expect("Failed to execute cargo-cost-lint");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("invalid value"),
+            "--format {format} was rejected by clap:\n{stderr}"
+        );
+    }
+
+    // Negative control: a format that is neither documented nor implemented
+    // must be rejected by clap with an `invalid value` usage error.
+    let rejected = Command::new(bin_path)
+        .arg("--format")
+        .arg("xml")
+        .current_dir(&run_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
+    assert!(
+        stderr.contains("invalid value") && stderr.contains("xml"),
+        "Expected '--format xml' to be rejected by clap, but it was not:\n{stderr}"
+    );
+}

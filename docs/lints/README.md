@@ -28,6 +28,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
+| [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
 | [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
