@@ -37,5 +37,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
 | `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
+| `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
 
 *Severities can be overridden via `budget.toml`.*

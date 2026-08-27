@@ -632,6 +632,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: STD_COLLECTION_IN_CONTRACT,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        category: LintCategory::EntryLifecycle,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -673,6 +677,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
         STD_COLLECTION_IN_CONTRACT,
+        TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -702,6 +707,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
     lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
+    lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -3259,6 +3265,162 @@ impl<'tcx> LateLintPass<'tcx> for StdCollectionInContract {
             );
         }
     }
+}
+
+// =======================================================================
+// temporary_storage_for_persistent_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+    Warn,
+    "temporary storage write followed by an unsafe read that assumes the value persists"
+}
+/// Concrete pass that fires [`TEMPORARY_STORAGE_FOR_PERSISTENT_DATA`].
+pub struct TemporaryStorageForPersistentData;
+rustc_session::impl_lint_pass!(TemporaryStorageForPersistentData => [TEMPORARY_STORAGE_FOR_PERSISTENT_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for TemporaryStorageForPersistentData {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _kind: intravisit::FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _hir_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let mut collector = TempWriteCollector {
+            cx,
+            writes: Vec::new(),
+        };
+        collector.visit_body(body);
+
+        let mut unsafe_reader = TempUnsafeReadDetector {
+            cx,
+            writes: &collector.writes,
+            reported: HashSet::new(),
+        };
+        unsafe_reader.visit_body(body);
+    }
+}
+
+/// Collects temporary storage write calls (`.set()` on `Temporary`) within a
+/// function body, recording the key snippet and span of each write.
+struct TempWriteCollector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: Vec<(String, rustc_span::Span)>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempWriteCollector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "set"
+            && args.len() >= 2
+            && is_temporary_storage_write(self.cx, receiver)
+        {
+            let key_inner = peel_addr_of(&args[0]);
+            if let Some(key_snippet) = snippet_opt(self.cx, key_inner.span) {
+                self.writes.push((key_snippet, expr.span));
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Detects unsafe reads (`.unwrap()` / `.expect()` on `.get()`) of the same
+/// keys previously written to temporary storage in the same function body.
+struct TempUnsafeReadDetector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: &'a [(String, rustc_span::Span)],
+    reported: HashSet<rustc_span::Span>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempUnsafeReadDetector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if (method_name == "unwrap" || method_name == "expect")
+                && args.is_empty()
+                && let Some(temp_read) = is_temp_get(self.cx, receiver)
+            {
+                let read_key_inner = peel_addr_of(temp_read);
+                if let Some(read_key_snippet) = snippet_opt(self.cx, read_key_inner.span) {
+                    for &(ref write_key, write_span) in self.writes {
+                        if read_key_snippet == *write_key && !self.reported.contains(&write_span) {
+                            self.reported.insert(write_span);
+                            span_lint_and_help(
+                                self.cx,
+                                TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+                                expr.span,
+                                "unsafe read from temporary storage after a write — temporary \
+                                 entries are permanently deleted when their TTL expires, so \
+                                 this read will panic if the value has expired",
+                                None,
+                                "handle the None case with match, unwrap_or, or \
+                                 unwrap_or_else; or use persistent storage if the data must \
+                                 survive across ledger closes",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Checks whether `expr` is a `set()` call on a `Temporary` storage receiver.
+fn is_temporary_storage_write<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, _, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name != "set" {
+            return false;
+        }
+        let receiver_ty = cx.typeck_results().expr_ty(receiver);
+        let peeled = receiver_ty.peel_refs();
+        if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+            match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Temporary"])
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+/// Checks whether `expr` is a `get()` call on a `Temporary` storage receiver.
+/// Returns `Some(key_expr)` if so.
+fn is_temp_get<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, args, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name == "get" && !args.is_empty() {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled = receiver_ty.peel_refs();
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind()
+                && match_soroban_def_path(
+                    cx,
+                    adt_def.did(),
+                    &["soroban_sdk", "storage", "Temporary"],
+                )
+            {
+                return Some(&args[0]);
+            }
+        }
+    }
+    None
+}
+
+/// Strips any number of leading `AddrOf` wrappers, returning the innermost
+/// expression.  Handles `&key`, `&&key`, etc.
+fn peel_addr_of<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
+    }
+    expr
 }
 
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot

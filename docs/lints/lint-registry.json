@@ -201,5 +201,12 @@
     "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
     "docs_path": "docs/lints/std_collection_in_contract.md",
     "name": "std_collection_in_contract"
+  },
+  {
+    "category": "EntryLifecycle",
+    "default_level": "warn",
+    "description": "temporary storage write followed by an unsafe read that assumes the value persists",
+    "docs_path": "docs/lints/temporary_storage_for_persistent_data.md",
+    "name": "temporary_storage_for_persistent_data"
   }
 ]

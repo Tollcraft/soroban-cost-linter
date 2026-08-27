@@ -8,7 +8,7 @@ mod output_formatters;
 use clap::{ArgGroup, Parser, ValueEnum};
 use config::BudgetConfig;
 use output_formatters::{LintFinding, OutputFormat, Span};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -1489,11 +1489,7 @@ mod tests {
 
         // 3. Valid file -> Ok(Some(BudgetConfig))
         let valid = dir.join("valid_budget.toml");
-        fs::write(
-            &valid,
-            "[lints]\nsoroban_storage_in_loop = \"deny\"\n",
-        )
-        .unwrap();
+        fs::write(&valid, "[lints]\nsoroban_storage_in_loop = \"deny\"\n").unwrap();
         let res_valid = load_budget_config_lenient(&valid);
         assert!(res_valid.is_ok());
         let cfg = res_valid.unwrap().expect("should parse config");
