@@ -166,9 +166,8 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:287:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
-   |                   ^^^^^^^^^^^
+   |                   ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
    |
-   = help: pass Env by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
@@ -320,9 +319,7 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:550:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: token transfer inside a loop
   --> $DIR/main.rs:554:9
@@ -337,9 +334,7 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:559:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: token transfer inside a loop
   --> $DIR/main.rs:564:9
@@ -353,9 +348,7 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:570:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: token transfer inside a loop
   --> $DIR/main.rs:574:9
@@ -369,9 +362,7 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:580:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: token transfer inside a loop
   --> $DIR/main.rs:585:9
@@ -385,33 +376,25 @@ warning: redundant clone on Env object
   --> $DIR/main.rs:590:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:599:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:606:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:615:30
    |
 LL |     let client = TokenClient(env.clone());
-   |                              ^^^^^^^^^^^
-   |
-   = help: pass Env by reference or value instead of cloning
+   |                              ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
 
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:632:9

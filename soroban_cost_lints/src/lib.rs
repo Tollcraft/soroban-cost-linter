@@ -539,6 +539,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: VEC_INDEX_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: UNBOUNDED_RECURSION,
         category: LintCategory::Compute,
     },
@@ -677,6 +681,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         VEC_WHERE_SLICE_COULD_BE_USED,
         EXTEND_TTL_IN_LOOP,
         LINEAR_SCAN_IN_LOOP,
+        VEC_INDEX_IN_LOOP,
         REQUIRE_AUTH_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
@@ -708,6 +713,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
+    lint_store.register_late_pass(|_| Box::new(VecIndexInLoop));
     lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
@@ -1101,7 +1107,8 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 return;
             }
 
-            let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
+            let receiver_snippet =
+                snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
             span_lint_and_sugg(
                 cx,
                 REDUNDANT_ENV_CLONE,
@@ -2442,6 +2449,116 @@ impl<'tcx> LateLintPass<'tcx> for LinearScanInLoop {
                     None,
                     "consider building a Map lookup outside the loop for O(1) access",
                 );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// vec_index_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub VEC_INDEX_IN_LOOP,
+    Warn,
+    "indexing a Soroban Vec in a loop"
+}
+pub struct VecIndexInLoop;
+rustc_session::impl_lint_pass!(VecIndexInLoop => [VEC_INDEX_IN_LOOP]);
+
+struct VecIndexVisitor<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    loop_var_hir_id: hir::HirId,
+    indexed_collections: HashMap<hir::HirId, Vec<&'tcx hir::Expr<'tcx>>>,
+}
+
+fn path_to_local(expr: &hir::Expr<'_>) -> Option<hir::HirId> {
+    if let hir::ExprKind::Path(hir::QPath::Resolved(_, path)) = expr.kind
+        && let hir::def::Res::Local(hir_id) = path.res
+    {
+        Some(hir_id)
+    } else {
+        None
+    }
+}
+
+fn peel_casts<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::Cast(sub_expr, _) = expr.kind {
+        expr = sub_expr;
+    }
+    expr
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for VecIndexVisitor<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if (method_name == "get" || method_name == "get_unchecked") && args.len() == 1 {
+                let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+                let peeled = receiver_ty.peel_refs();
+                let is_soroban_vec = if let Some(adt_def) = ty_adt_def(peeled) {
+                    match_soroban_def_path(self.cx, adt_def.did(), &["soroban_sdk", "Vec"])
+                        || match_soroban_def_path(
+                            self.cx,
+                            adt_def.did(),
+                            &["soroban_sdk", "vec", "Vec"],
+                        )
+                } else {
+                    false
+                };
+
+                if is_soroban_vec {
+                    let peeled_idx = peel_casts(&args[0]);
+                    if let Some(idx_local) = path_to_local(peeled_idx)
+                        && idx_local == self.loop_var_hir_id
+                        && let Some(coll_local) = path_to_local(receiver)
+                    {
+                        self.indexed_collections
+                            .entry(coll_local)
+                            .or_default()
+                            .push(expr);
+                    }
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for VecIndexInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let Some(clippy_utils::higher::ForLoop { pat, arg, body, .. }) =
+            clippy_utils::higher::ForLoop::hir(expr)
+            && clippy_utils::higher::Range::hir(cx, arg).is_some()
+            && let hir::PatKind::Binding(_, loop_var_hir_id, _, _) = pat.kind
+        {
+            let mut visitor = VecIndexVisitor {
+                cx,
+                loop_var_hir_id,
+                indexed_collections: HashMap::new(),
+            };
+            visitor.visit_expr(body);
+
+            if !visitor.indexed_collections.is_empty() {
+                let mutated = mutated_variables(body, cx);
+                for (coll_local, _) in visitor.indexed_collections {
+                    let is_mutated = if let Some(ref mutated_set) = mutated {
+                        mutated_set.contains(&coll_local)
+                    } else {
+                        true
+                    };
+                    if !is_mutated {
+                        span_lint_and_help(
+                            cx,
+                            VEC_INDEX_IN_LOOP,
+                            expr.span,
+                            "indexing a Soroban Vec in a loop",
+                            None,
+                            "consider iterating over the collection directly using `.iter()`",
+                        );
+                        break;
+                    }
+                }
             }
         }
     }

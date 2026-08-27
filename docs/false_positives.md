@@ -18,9 +18,9 @@ The project runs continuous regression and triage checks against real-world Soro
 
 | Metric | Count | Percentage |
 |---|---:|---:|
-| **Total Findings** | 90 | 100.0% |
-| **True Positives (TP)** | 17 | 18.9% |
-| **False Positives (FP)** | 73 | 81.1% |
+| **Total Findings** | 102 | 100.0% |
+| **True Positives (TP)** | 26 | 25.5% |
+| **False Positives (FP)** | 76 | 74.5% |
 
 ### Breakdown by Lint
 
@@ -28,18 +28,21 @@ The project runs continuous regression and triage checks against real-world Soro
 |---|---:|---:|---|---|
 | `loop_invariant_storage_access` | 23 | 0 | warn | Tracking precision enhancements for receiver-chain hoisting and loop-variant arguments |
 | `soroban_storage_in_loop` | 16 | 0 | warn | Intentional batch-write patterns; key variance analysis under design |
-| `storage_write_without_read` | 13 | 0 | warn | Blind overwrites and initialization flows across multi-tx invocations |
-| `vec_where_slice_could_be_used` | 9 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
+| `storage_write_without_read` | 14 | 0 | warn | Blind overwrites and initialization flows across multi-tx invocations |
+| `vec_where_slice_could_be_used` | 11 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
 | `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
-| `bytes_append_in_loop` | 3 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
+| `bytes_append_in_loop` | 4 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
 | `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 | `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
-| `soroban_inefficient_bytes_concat` | 1 | 0 | warn | String/bytes formatting in loop iterations |
+| `soroban_inefficient_bytes_concat` | 0 | 2 | warn | True positive: inefficient Bytes concatenation inside a loop |
 | `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
-| `symbol_new_for_short_literal` | 0 | 8 | warn | True positive: short literals should use `symbol_short!` |
+| `symbol_new_for_short_literal` | 0 | 10 | warn | True positive: short literals should use `symbol_short!` |
 | `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
 | `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
 | `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
+| `vec_index_in_loop` | 0 | 4 | warn | True positive: indexing Soroban Vec in a loop |
+| `persistent_read_without_ttl_extension` | 0 | 1 | warn | True positive: persistent read with no TTL extension |
+
 
 ### Target False-Positive Ratio & Policy
 
@@ -332,6 +335,13 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
   ```
 
   When the constant branch is deliberate — keeping a single, uniform hashing path for clarity or to share post-hash logic — suppress with `#[allow(crypto_hash_of_constant)]` at the call site, or split the constant case into its own precomputed `const` digest. This is the one pattern where the warning is correct in isolation but unwanted in context.
+
+### `vec_index_in_loop`
+
+Fires when a Soroban `Vec` is indexed by a loop variable in a range loop.
+
+- **Mutations inside closures:** If the collection is mutated inside a closure within the loop, the mutation might not be detected, leading to a warning. Converting to iteration in this case might cause a compilation error.
+- **Remedy:** Use `.iter()` to iterate directly over the vector.
 
 
 

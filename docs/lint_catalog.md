@@ -31,6 +31,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `vec_where_slice_could_be_used` | warn | soroban_sdk::Vec passed by value where a native Rust slice would suffice | [Link](lints/vec_where_slice_could_be_used.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |
 | `linear_scan_in_loop` | warn | linear scan on collection inside a loop — O(n²) cost | [Link](lints/linear_scan_in_loop.md) |
+| `vec_index_in_loop` | warn | indexing a Soroban Vec in a loop | [Link](lints/vec_index_in_loop.md) |
 | `persistent_read_without_ttl_extension` | warn | persistent storage read without TTL extension — archival cost cliff | [Link](lints/persistent_read_without_ttl_extension.md) |
 | `require_auth_in_loop` | warn | Address::require_auth or require_auth_for_args called inside a loop | [Link](lints/require_auth_in_loop.md) |
 | `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |

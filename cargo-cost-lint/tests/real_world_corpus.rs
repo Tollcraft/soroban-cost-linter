@@ -45,9 +45,12 @@ const ALWAYS_TP: &[&str] = &[
     "redundant_env_clone",
     "symbol_new_for_short_literal",
     "inefficient_bytes_concat",
+    "soroban_inefficient_bytes_concat",
+    "vec_index_in_loop",
     "map_insert_in_loop",
     "unnecessary_host_function_call",
     "unwrap_on_storage_get",
+    "persistent_read_without_ttl_extension",
 ];
 
 fn workspace_root() -> PathBuf {

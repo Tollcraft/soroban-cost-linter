@@ -161,6 +161,13 @@
     "name": "linear_scan_in_loop"
   },
   {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "indexing a Soroban Vec in a loop",
+    "docs_path": "docs/lints/vec_index_in_loop.md",
+    "name": "vec_index_in_loop"
+  },
+  {
     "category": "EntryLifecycle",
     "default_level": "warn",
     "description": "persistent storage read without TTL extension — archival cost cliff",

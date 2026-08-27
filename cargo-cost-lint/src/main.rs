@@ -103,19 +103,31 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
     color: ColorChoice,
 
-    #[arg(long, help = "Path to baseline file for suppressing pre-existing findings")]
+    #[arg(
+        long,
+        help = "Path to baseline file for suppressing pre-existing findings"
+    )]
     baseline: Option<String>,
 
-    #[arg(long, help = "Update or create the baseline file with current findings")]
+    #[arg(
+        long,
+        help = "Update or create the baseline file with current findings"
+    )]
     bless: bool,
 
     #[arg(long, help = "Automatically apply machine-applicable suggestions")]
     fix: bool,
 
-    #[arg(long, help = "Allow --fix to run on a dirty working tree with unstaged changes")]
+    #[arg(
+        long,
+        help = "Allow --fix to run on a dirty working tree with unstaged changes"
+    )]
     allow_dirty: bool,
 
-    #[arg(long, help = "Allow --fix to run on a dirty working tree with staged changes")]
+    #[arg(
+        long,
+        help = "Allow --fix to run on a dirty working tree with staged changes"
+    )]
     allow_staged: bool,
 }
 
@@ -153,6 +165,7 @@ pub fn compute_context_hash(lint_name: &str, relative_file: &str, context_str: &
     format!("{:016x}", hasher.finish())
 }
 
+#[allow(clippy::collapsible_if)]
 pub fn extract_finding_context(
     file_path: &str,
     line_start: usize,
@@ -236,7 +249,8 @@ fn apply_machine_fixes(fixes: &[MachineFix]) -> Result<(usize, usize), String> {
         return Ok((0, 0));
     }
 
-    let mut file_map: std::collections::HashMap<String, Vec<&MachineFix>> = std::collections::HashMap::new();
+    let mut file_map: std::collections::HashMap<String, Vec<&MachineFix>> =
+        std::collections::HashMap::new();
     for fix in fixes {
         file_map.entry(fix.file_path.clone()).or_default().push(fix);
     }
@@ -1057,27 +1071,64 @@ fn main() {
                                             }
 
                                             // Extract MachineApplicable suggestions
-                                            if let Some(suggs) = child_item.get("suggestions").and_then(|s| s.as_array()) {
+                                            if let Some(suggs) = child_item
+                                                .get("suggestions")
+                                                .and_then(|s| s.as_array())
+                                            {
                                                 for sug in suggs {
-                                                    if sug.get("applicability").and_then(|a| a.as_str()) == Some("MachineApplicable") {
-                                                        if let Some(parts) = sug.get("parts").and_then(|p| p.as_array()) {
+                                                    if sug
+                                                        .get("applicability")
+                                                        .and_then(|a| a.as_str())
+                                                        == Some("MachineApplicable")
+                                                    {
+                                                        if let Some(parts) = sug
+                                                            .get("parts")
+                                                            .and_then(|p| p.as_array())
+                                                        {
                                                             for part in parts {
-                                                                let f = part.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
-                                                                let ls = part.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
-                                                                let cs = part.get("column_start").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
-                                                                let le = part.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
-                                                                let ce = part.get("column_end").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
-                                                                let rep = part.get("snippet").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                                                                let f = part
+                                                                    .get("file_name")
+                                                                    .and_then(|f| f.as_str())
+                                                                    .unwrap_or("");
+                                                                let ls = part
+                                                                    .get("line_start")
+                                                                    .and_then(|l| l.as_u64())
+                                                                    .unwrap_or(0)
+                                                                    as usize;
+                                                                let cs = part
+                                                                    .get("column_start")
+                                                                    .and_then(|c| c.as_u64())
+                                                                    .unwrap_or(0)
+                                                                    as usize;
+                                                                let le = part
+                                                                    .get("line_end")
+                                                                    .and_then(|l| l.as_u64())
+                                                                    .unwrap_or(0)
+                                                                    as usize;
+                                                                let ce = part
+                                                                    .get("column_end")
+                                                                    .and_then(|c| c.as_u64())
+                                                                    .unwrap_or(0)
+                                                                    as usize;
+                                                                let rep = part
+                                                                    .get("snippet")
+                                                                    .and_then(|s| s.as_str())
+                                                                    .unwrap_or("")
+                                                                    .to_string();
                                                                 if !f.is_empty() {
-                                                                    machine_fixes.push(MachineFix {
-                                                                        file_path: f.to_string(),
-                                                                        line_start: ls,
-                                                                        column_start: cs,
-                                                                        line_end: le,
-                                                                        column_end: ce,
-                                                                        replacement: rep,
-                                                                        _lint_name: lint_name.to_string(),
-                                                                    });
+                                                                    machine_fixes.push(
+                                                                        MachineFix {
+                                                                            file_path: f
+                                                                                .to_string(),
+                                                                            line_start: ls,
+                                                                            column_start: cs,
+                                                                            line_end: le,
+                                                                            column_end: ce,
+                                                                            replacement: rep,
+                                                                            _lint_name: lint_name
+                                                                                .to_string(),
+                                                                        },
+                                                                    );
                                                                 }
                                                             }
                                                         }
@@ -1097,7 +1148,11 @@ fn main() {
                                         suggestion: None,
                                     };
 
-                                    let rendered = message.get("rendered").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                                    let rendered = message
+                                        .get("rendered")
+                                        .and_then(|r| r.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     raw_findings.push((finding, rendered));
                                 }
                             }
@@ -1130,13 +1185,18 @@ fn main() {
 
         if let Some(ref b_path_str) = cli.baseline {
             let b_path = PathBuf::from(b_path_str);
-            let mut occ_map: std::collections::HashMap<(String, String, String), usize> = std::collections::HashMap::new();
+            let mut occ_map: std::collections::HashMap<(String, String, String), usize> =
+                std::collections::HashMap::new();
 
             if is_blessing {
                 let mut b_list = Vec::new();
                 for (finding, _) in &raw_findings {
                     let rel_file = normalize_file_path(&finding.file);
-                    let (snippet, context) = extract_finding_context(&finding.file, finding.span.line_start, finding.span.line_end);
+                    let (snippet, context) = extract_finding_context(
+                        &finding.file,
+                        finding.span.line_start,
+                        finding.span.line_end,
+                    );
                     let ctx_hash = compute_context_hash(&finding.name, &rel_file, &context);
                     let key = (finding.name.clone(), rel_file.clone(), ctx_hash.clone());
                     let count = occ_map.entry(key).or_insert(0);
@@ -1150,19 +1210,28 @@ fn main() {
                     });
                 }
                 b_list.sort_by(|a, b| {
-                    a.file.cmp(&b.file)
+                    a.file
+                        .cmp(&b.file)
                         .then_with(|| a.lint_name.cmp(&b.lint_name))
                         .then_with(|| a.code_snippet.cmp(&b.code_snippet))
                         .then_with(|| a.occurrence.cmp(&b.occurrence))
                 });
-                let baseline = Baseline { version: 1, findings: b_list };
-                let json_out = serde_json::to_string_pretty(&baseline).expect("Failed to serialize baseline");
+                let baseline = Baseline {
+                    version: 1,
+                    findings: b_list,
+                };
+                let json_out =
+                    serde_json::to_string_pretty(&baseline).expect("Failed to serialize baseline");
                 if let Err(e) = fs::write(&b_path, json_out) {
                     eprintln!("Error writing baseline file {}: {}", b_path.display(), e);
                     exit(1);
                 }
                 if !quiet {
-                    eprintln!("Baseline saved to {} ({} findings)", b_path.display(), baseline.findings.len());
+                    eprintln!(
+                        "Baseline saved to {} ({} findings)",
+                        b_path.display(),
+                        baseline.findings.len()
+                    );
                 }
                 final_findings = raw_findings;
                 exit_code = 0;
@@ -1170,7 +1239,11 @@ fn main() {
                 let content = match fs::read_to_string(&b_path) {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!("Error: Baseline file not found or unreadable {}: {}", b_path.display(), e);
+                        eprintln!(
+                            "Error: Baseline file not found or unreadable {}: {}",
+                            b_path.display(),
+                            e
+                        );
                         exit(1);
                     }
                 };
@@ -1188,7 +1261,11 @@ fn main() {
                 for item in raw_findings {
                     let (ref finding, _) = item;
                     let rel_file = normalize_file_path(&finding.file);
-                    let (_snippet, context) = extract_finding_context(&finding.file, finding.span.line_start, finding.span.line_end);
+                    let (_snippet, context) = extract_finding_context(
+                        &finding.file,
+                        finding.span.line_start,
+                        finding.span.line_end,
+                    );
                     let ctx_hash = compute_context_hash(&finding.name, &rel_file, &context);
                     let key = (finding.name.clone(), rel_file.clone(), ctx_hash.clone());
                     let count = occ_map.entry(key).or_insert(0);
@@ -1216,7 +1293,10 @@ fn main() {
 
                 for (idx, b_item) in baseline.findings.iter().enumerate() {
                     if !matched_base[idx] && !quiet {
-                        eprintln!("Fixed finding (no longer present): {} in {}", b_item.lint_name, b_item.file);
+                        eprintln!(
+                            "Fixed finding (no longer present): {} in {}",
+                            b_item.lint_name, b_item.file
+                        );
                     }
                 }
 
@@ -1224,7 +1304,9 @@ fn main() {
                     eprintln!("Suppressed {} baseline finding(s)", suppressed_count);
                 }
 
-                let has_errors = final_findings.iter().any(|(f, _)| f.level == "error" || f.level == "deny");
+                let has_errors = final_findings
+                    .iter()
+                    .any(|(f, _)| f.level == "error" || f.level == "deny");
                 exit_code = if has_errors { 1 } else { 0 };
             }
         } else {
@@ -1836,11 +1918,7 @@ mod tests {
 
         // 3. Valid file -> Ok(Some(BudgetConfig))
         let valid = dir.join("valid_budget.toml");
-        fs::write(
-            &valid,
-            "[lints]\nsoroban_storage_in_loop = \"deny\"\n",
-        )
-        .unwrap();
+        fs::write(&valid, "[lints]\nsoroban_storage_in_loop = \"deny\"\n").unwrap();
         let res_valid = load_budget_config_lenient(&valid);
         assert!(res_valid.is_ok());
         let cfg = res_valid.unwrap().expect("should parse config");
