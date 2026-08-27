@@ -308,3 +308,162 @@ functions = ["deposit", "swap", "withdraw"]
         assert!(config.lints.is_none());
     }
 }
+
+/// Lenient `budget.toml` parser (formerly `budget_config.rs`).
+///
+/// This is the same concern as [`BudgetConfig`] (loading the config table from
+/// `budget.toml`) but with a different trade-off: instead of validating lint
+/// names/levels and erroring, it silently falls back to defaults on any
+/// problem. It was merged into this module because the two modules described
+/// the same config and keeping them separate only hid which one was actually
+/// wired into `main()`. (See issue #400.)
+#[allow(dead_code)]
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct LenientBudgetConfig {
+    #[serde(default)]
+    pub lints: HashMap<String, String>,
+}
+
+/// Parse a `LenientBudgetConfig` from the file at `config_path`, returning
+/// defaults when the file is missing, empty, invalid TOML, or lacks the
+/// `budget` table / `lints` field.
+#[allow(dead_code)]
+pub fn parse_lenient_budget_config(config_path: &Path) -> LenientBudgetConfig {
+    let content = match fs::read_to_string(config_path) {
+        Ok(c) => c,
+        Err(_) => return LenientBudgetConfig::default(),
+    };
+
+    let content = content.trim();
+    if content.is_empty() {
+        return LenientBudgetConfig::default();
+    }
+
+    parse_lenient_budget_config_str(content)
+}
+
+/// Parse a `LenientBudgetConfig` from a raw TOML string, falling back to
+/// defaults on any error.
+#[allow(dead_code)]
+pub fn parse_lenient_budget_config_str(raw: &str) -> LenientBudgetConfig {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return LenientBudgetConfig::default();
+    }
+
+    toml::from_str::<LenientBudgetConfigWrapper>(raw)
+        .map(|w| w.budget)
+        .unwrap_or_default()
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Debug, Default)]
+struct LenientBudgetConfigWrapper {
+    #[serde(default)]
+    budget: LenientBudgetConfig,
+}
+
+#[cfg(test)]
+mod lenient_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_file(path: &Path, contents: &str) {
+        let mut f = fs::File::create(path).unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn empty_file_returns_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.toml");
+        write_file(&path, "");
+
+        let config = parse_lenient_budget_config(&path);
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn whitespace_only_file_returns_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("whitespace.toml");
+        write_file(&path, "   \n\t\n  ");
+
+        let config = parse_lenient_budget_config(&path);
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn missing_file_returns_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nonexistent.toml");
+
+        let config = parse_lenient_budget_config(&path);
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn invalid_toml_returns_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.toml");
+        write_file(&path, "this is not [[valid toml");
+
+        let config = parse_lenient_budget_config(&path);
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn empty_string_returns_defaults() {
+        let config = parse_lenient_budget_config_str("");
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn whitespace_only_string_returns_defaults() {
+        let config = parse_lenient_budget_config_str("   \n\t  ");
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn invalid_toml_string_returns_defaults() {
+        let config = parse_lenient_budget_config_str("not valid {{{ toml");
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn missing_budget_table_returns_defaults() {
+        let config = parse_lenient_budget_config_str("foo = 1");
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn missing_lints_field_returns_defaults() {
+        let config = parse_lenient_budget_config_str("[budget]\nother = 1");
+        assert!(config.lints.is_empty());
+    }
+
+    #[test]
+    fn valid_config_parses_correctly() {
+        let toml_str = r#"
+[budget]
+lints = { "soroban_storage_in_loop" = "deny" }
+"#;
+        let config = parse_lenient_budget_config_str(toml_str);
+        assert_eq!(config.lints.len(), 1);
+        assert_eq!(config.lints.get("soroban_storage_in_loop").unwrap(), "deny");
+    }
+
+    #[test]
+    fn valid_config_file_parses_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("good.toml");
+        write_file(
+            &path,
+            "[budget]\nlints = { \"redundant_env_clone\" = \"warn\" }\n",
+        );
+
+        let config = parse_lenient_budget_config(&path);
+        assert_eq!(config.lints.len(), 1);
+        assert_eq!(config.lints.get("redundant_env_clone").unwrap(), "warn");
+    }
+}

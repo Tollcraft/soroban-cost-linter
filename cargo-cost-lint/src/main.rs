@@ -1,5 +1,3 @@
-#[allow(dead_code)]
-mod budget_config;
 pub mod cache;
 mod config;
 mod error;
