@@ -1,0 +1,18 @@
+warning: unsafe read from temporary storage after a write — temporary entries are permanently deleted when their TTL expires, so this read will panic if the value has expired
+  --> $DIR/temporary_storage_for_persistent_data.rs:66:5
+   |
+LL |     env.storage().temporary().get::<_, i32>(&1).unwrap() //~ WARNING unsafe read from temporary storage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case with match, unwrap_or, or unwrap_or_else; or use persistent storage if the data must survive across ledger closes
+   = note: `#[warn(temporary_storage_for_persistent_data)]` on by default
+
+warning: unsafe read from temporary storage after a write — temporary entries are permanently deleted when their TTL expires, so this read will panic if the value has expired
+  --> $DIR/temporary_storage_for_persistent_data.rs:72:5
+   |
+LL |     env.storage().temporary().get::<_, i32>(&"key").expect("must exist") //~ WARNING unsafe read from temporary storage
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case with match, unwrap_or, or unwrap_or_else; or use persistent storage if the data must survive across ledger closes
+
+warning: 2 warnings emitted

@@ -189,3 +189,51 @@ Fires on `.unwrap()` / `.expect()` called *directly* on a storage `get` (on `Sto
 
 - **Read the contract has genuinely just written:** `env.storage().instance().set(&key, &value);` followed later by `env.storage().instance().get(&key).unwrap()`. Within one invocation the key was just written, so the read cannot miss and the unwrap cannot trap. The lint has no write-tracking across statements, so this shape still fires even though it is provably safe at runtime — suppress with `#[allow(unwrap_on_storage_get)]` or handle the `None` case anyway if the write can ever be removed.
 - **Anything not directly on a storage read is out of scope by construction:** `unwrap_or`, `unwrap_or_else`, an explicit `match` on the returned `Option`, and `unwrap` on any `Option`/`Result` that did not come from a storage `get` never fire.
+
+### `temporary_storage_for_persistent_data`
+
+Fires on an *unchecked* read after a write to temporary storage — a `.unwrap()`/
+`.expect()` on a `get` of a key that was written to `temporary()` earlier in the
+same function body.
+
+- **Cache-like temporary storage (intentional, must not fire):** temporary
+  storage is explicitly meant for data that "can be arbitrarily recreated".
+  A valid cache use case looks like this — the value may expire, the absence is
+  detected, and execution recomputes/refetches and continues safely:
+
+  ```
+  temporary value expires
+  → absence detected
+  → value recomputed/refetched
+  → execution continues safely
+  ```
+
+  In code:
+
+  ```rust
+  fn cached_balance(env: Env, key: i32) -> i128 {
+      if let Some(balance) = env.storage().temporary().get::<_, i128>(&key) {
+          return balance;
+      }
+      let recomputed = compute_balance();
+      env.storage().temporary().set(&key, &recomputed);
+      recomputed
+  }
+  ```
+
+  This is **not** a finding: the author is relying on the *absence* to be
+  handled (via the `if let`/`None` path), so an expired entry costs a
+  recomputation instead of a panic or data corruption. This is correct use of
+  temporary storage; only an *unchecked* read that assumes the value still
+  exists is flagged. Cases that handle absence — `unwrap_or`, explicit
+  `match`, or a `has()`-guarded read — never fire.
+- **A key the contract wrote to *persistent* or *instance* storage is never
+  reported** — the lint only tracks `temporary()` writes, so durable storage
+  reads remain quiet.
+- **Within one invocation, a just-written temporary key cannot have expired
+  yet.** The lint still fires because it does not model ledger time: the
+  *next* invocation could come after the entry's TTL, and the write-then-unwrap
+  pattern signals the author is treating temporary data as permanent. If the
+  value genuinely must survive, the fix is to use persistent storage rather
+  than to suppress the lint.
+
