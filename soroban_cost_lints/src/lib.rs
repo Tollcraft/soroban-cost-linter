@@ -45,6 +45,10 @@
 //! - [`FORMATTED_PANIC_PAYLOAD`] — `format!`, a formatted `panic!`, or
 //!   `.expect(&format!(..))`, all of which pull `core::fmt` into the
 //!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+//! - [`CRYPTO_HASH_OF_CONSTANT`] — a `Crypto::sha256` / `Crypto::keccak256`
+//!   call whose input is a literal or `const` item, re-hashing a
+//!   compile-time constant at runtime instead of embedding the precomputed
+//!   digest.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -581,6 +585,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: CRYPTO_HASH_OF_CONSTANT,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
@@ -612,6 +620,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: FORMATTED_PANIC_PAYLOAD,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: UNWRAP_ON_STORAGE_GET,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -641,6 +653,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
+        CRYPTO_HASH_OF_CONSTANT,
         VEC_WHERE_SLICE_COULD_BE_USED,
         EXTEND_TTL_IN_LOOP,
         LINEAR_SCAN_IN_LOOP,
@@ -649,6 +662,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
         FORMATTED_PANIC_PAYLOAD,
+        UNWRAP_ON_STORAGE_GET,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -667,6 +681,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(CryptoHashOfConstant));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
@@ -674,6 +689,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
+    lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -1938,6 +1954,69 @@ impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
 }
 
 // =======================================================================
+// crypto_hash_of_constant — Lint
+// =======================================================================
+
+/// Cryptographic hash methods on the `Crypto` accessor whose input is a
+/// compile-time constant. Hashing a fixed domain-separation tag, a fixed
+/// prefix, or a constant salt re-runs an expensive, metered host hash on
+/// every invocation to recompute a digest that never changes between runs,
+/// so the value could be precomputed once and embedded.
+const CRYPTO_HASH_METHODS: &[&str] = &["sha256", "keccak256"];
+
+rustc_session::declare_lint! {
+    pub CRYPTO_HASH_OF_CONSTANT,
+    Warn,
+    "cryptographic hash of a compile-time constant value"
+}
+/// Late pass backing [`CRYPTO_HASH_OF_CONSTANT`].
+///
+/// Flags `Crypto::sha256` / `Crypto::keccak256` calls whose single argument is
+/// a literal or `const` item. Such a call pays the full metered host-hash cost
+/// to recompute a digest that is fixed at compile time; the digest can be
+/// precomputed once and embedded as a constant instead. This is a sibling of
+/// [`SIGNATURE_VERIFICATION_IN_LOOP`]: that lint catches expensive crypto scaled
+/// by iteration count, this one catches expensive crypto that should not have
+/// run at all.
+pub struct CryptoHashOfConstant;
+rustc_session::impl_lint_pass!(CryptoHashOfConstant => [CRYPTO_HASH_OF_CONSTANT]);
+
+impl<'tcx> LateLintPass<'tcx> for CryptoHashOfConstant {
+    /// Flags a hash call on a `soroban_sdk::crypto::Crypto` receiver when its
+    /// argument is a literal or `const` item ([`is_const_expr`]).
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+            && CRYPTO_HASH_METHODS.contains(&path_segment.ident.name.as_str())
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_crypto = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "crypto", "Crypto"])
+            } else {
+                false
+            };
+
+            if is_crypto
+                && let Some(arg) = args.first()
+                && is_const_expr(arg)
+            {
+                span_lint_and_help(
+                    cx,
+                    CRYPTO_HASH_OF_CONSTANT,
+                    expr.span,
+                    "cryptographic hash of a compile-time constant value",
+                    None,
+                    "precompute the digest once and embed it as a constant; the input does \
+                     not change between invocations, so re-hashing it is pure waste",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
 // vec_where_slice_could_be_used — Lint
 // =======================================================================
 
@@ -2587,6 +2666,65 @@ impl<'tcx> LateLintPass<'tcx> for FormattedPanicPayload {
     }
 }
 
+// =======================================================================
+// unwrap_on_storage_get — Lint
+// =======================================================================
+
+// Flags `.unwrap()` / `.expect()` called directly on a Soroban storage
+// read. A storage `get` returns an `Option` precisely because the key may
+// be absent or expired; unwrapping turns that expected case into a trap.
+// The cost dimension is what makes this a cost lint rather than a general
+// correctness one: everything the invocation metered before the trap —
+// including the storage reads themselves — has been paid for and delivered
+// nothing. Handling the `None` case explicitly turns a wasted invocation
+// into a cheap one.
+rustc_session::declare_lint! {
+    pub UNWRAP_ON_STORAGE_GET,
+    Warn,
+    "unwrap or expect directly on a storage read — panics on a missing or expired key"
+}
+
+/// Concrete pass that fires [`UNWRAP_ON_STORAGE_GET`].
+pub struct UnwrapOnStorageGet;
+rustc_session::impl_lint_pass!(UnwrapOnStorageGet => [UNWRAP_ON_STORAGE_GET]);
+
+impl<'tcx> LateLintPass<'tcx> for UnwrapOnStorageGet {
+    /// Flags `.unwrap()` / `.expect()` whose receiver is a `get` call on one
+    /// of [`SOROBAN_STORAGE_TYPES`] (`Instance`, `Persistent`, `Temporary`,
+    /// `Storage`).
+    ///
+    /// Only unwraps *directly* on a storage read are flagged: `unwrap` on any
+    /// other `Option`/`Result` is out of scope, as is a read whose `Option`
+    /// is matched or handled with `unwrap_or`/`unwrap_or_else`. Skipped
+    /// entirely under `#[cfg(test)]` or inside a test module, via
+    /// `clippy_utils::is_in_test` — unwrap in tests is idiomatic.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && matches!(path_segment.ident.name.as_str(), "unwrap" | "expect")
+            && !is_in_test(cx.tcx, expr.hir_id)
+            && let hir::ExprKind::MethodCall(get_segment, storage_receiver, _get_args, _get_span) =
+                receiver.kind
+            && get_segment.ident.name.as_str() == "get"
+            && is_type_match(
+                cx,
+                cx.typeck_results().expr_ty(storage_receiver),
+                SOROBAN_STORAGE_TYPES,
+            )
+        {
+            span_lint_and_help(
+                cx,
+                UNWRAP_ON_STORAGE_GET,
+                expr.span,
+                "unwrap on a storage read traps the contract when the key is missing or expired",
+                None,
+                "handle the None case explicitly with unwrap_or, unwrap_or_else, or an early \
+                 return carrying a proper error — work already metered before the trap is \
+                 charged to the caller while delivering nothing",
+            );
+        }
+    }
+}
+
 // Linux-only. The checked-in `.stderr` fixtures are byte-compared against the
 // driver's output, and that output embeds host path separators -- `$DIR/x.rs`
 // =======================================================================
@@ -2896,6 +3034,12 @@ fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
         hir::ExprKind::Binary(_, a, b) => is_const_expr(a) && is_const_expr(b),
         hir::ExprKind::AddrOf(_, _, e) => is_const_expr(e),
         hir::ExprKind::Tup(elems) => elems.iter().all(|e| is_const_expr(e)),
+        hir::ExprKind::Path(hir::QPath::Resolved(None, path)) => matches!(
+            path.res,
+            hir::def::Res::Def(rustc_hir::def::DefKind::Const { .. }, _)
+                | hir::def::Res::Def(rustc_hir::def::DefKind::AssocConst { .. }, _)
+                | hir::def::Res::Def(rustc_hir::def::DefKind::Static { .. }, _)
+        ),
         _ => false,
     }
 }

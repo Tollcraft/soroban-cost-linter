@@ -1,0 +1,30 @@
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get.rs:57:5
+   |
+LL |     env.storage().instance().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+   = note: `#[warn(unwrap_on_storage_get)]` on by default
+
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get.rs:62:5
+   |
+LL |     env.storage().persistent().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get.rs:67:5
+   |
+LL | /     env.storage()
+LL | |         .temporary()
+LL | |         .get::<_, i32>(&1)
+LL | |         .expect("key must exist") //~ WARNING unwrap on a storage read traps the contract
+   | |_________________________________^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+
+warning: 3 warnings emitted
+

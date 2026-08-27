@@ -112,6 +112,13 @@
     "name": "signature_verification_in_loop"
   },
   {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "cryptographic hash of a compile-time constant value",
+    "docs_path": "docs/lints/crypto_hash_of_constant.md",
+    "name": "crypto_hash_of_constant"
+  },
+  {
     "category": "Memory",
     "default_level": "warn",
     "description": "storage key constructed inside a loop body where it could be hoisted",
@@ -166,6 +173,13 @@
     "description": "format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract",
     "docs_path": "docs/lints/formatted_panic_payload.md",
     "name": "formatted_panic_payload"
+  },
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "unwrap or expect directly on a storage read — panics on a missing or expired key",
+    "docs_path": "docs/lints/unwrap_on_storage_get.md",
+    "name": "unwrap_on_storage_get"
   },
   {
     "category": "Compute",
