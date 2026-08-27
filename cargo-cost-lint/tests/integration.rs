@@ -326,3 +326,55 @@ fn test_list_lints_json_and_text_consistency_and_descriptions() {
         assert!(!url.is_empty(), "Empty doc url in lint entry: {}", name);
     }
 }
+
+/// Every `--format` value documented in README.md's "Output format" table
+/// must be accepted by the CLI. Clap rejects unknown values with an
+/// `invalid value ... for '--format'` usage error before any linting
+/// happens, so a documented format that stops being a valid `OutputFormat`
+/// variant fails this test immediately.
+///
+/// The negative control at the end proves the detection mechanism works:
+/// a value that is neither documented nor implemented must be rejected.
+#[test]
+fn documented_formats_are_accepted() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Keep in sync with the "Output format" table in README.md.
+    let documented_formats = ["text", "json", "sarif", "github"];
+
+    // Run outside any cargo workspace so the check is cheap: the point is
+    // clap argument validation, not linting. The spawned `cargo dylint` may
+    // fail here (missing tool or no workspace), but never with a clap
+    // parse rejection for the format value itself.
+    let run_dir = env::temp_dir();
+
+    for format in documented_formats {
+        let output = Command::new(bin_path)
+            .arg("--format")
+            .arg(format)
+            .current_dir(&run_dir)
+            .output()
+            .expect("Failed to execute cargo-cost-lint");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("invalid value"),
+            "--format {format} was rejected by clap:\n{stderr}"
+        );
+    }
+
+    // Negative control: a format that is neither documented nor implemented
+    // must be rejected by clap with an `invalid value` usage error.
+    let rejected = Command::new(bin_path)
+        .arg("--format")
+        .arg("xml")
+        .current_dir(&run_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
+    assert!(
+        stderr.contains("invalid value") && stderr.contains("xml"),
+        "Expected '--format xml' to be rejected by clap, but it was not:\n{stderr}"
+    );
+}

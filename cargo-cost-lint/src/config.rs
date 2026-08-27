@@ -307,4 +307,27 @@ functions = ["deposit", "swap", "withdraw"]
         let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
         assert!(config.lints.is_none());
     }
+
+    #[test]
+    fn from_file_validated_does_not_parse_obsolete_budget_wrapper_table() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(
+            &path,
+            r#"[budget]
+lints = { "soroban_storage_in_loop" = "deny" }
+"#,
+        );
+        let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
+        assert!(
+            config.lints.is_none(),
+            "obsolete [budget] wrapper schema should not be parsed as top-level [lints]"
+        );
+
+        let cfg = Config::from_file_or_default(&path).unwrap();
+        assert!(
+            cfg.to_lint_flags().is_empty(),
+            "obsolete [budget] wrapper schema should produce no lint flags"
+        );
+    }
 }

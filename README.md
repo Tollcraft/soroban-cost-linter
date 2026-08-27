@@ -142,7 +142,7 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--workspace` | Lint all packages in the workspace |
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
-| `--format <text\|json>` | Output format (default: `text`) |
+| `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
@@ -248,11 +248,12 @@ LL |         env.storage().instance().set(&i, &1);
 
 Use `--format` to choose the output format:
 
-| Format  | Description                                                  |
-| ------- | ------------------------------------------------------------ |
-| `text`  | Human-readable console output (default)                      |
-| `json`  | One JSON object per line, suitable for programmatic parsing  |
-| `sarif` | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+| Format   | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `text`   | Human-readable console output (default)                      |
+| `json`   | One JSON object per line, suitable for programmatic parsing  |
+| `sarif`  | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+| `github` | GitHub Actions workflow command annotations                  |
 
 Example — generate SARIF output for GitHub Advanced Security:
 

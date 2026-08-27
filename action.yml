@@ -76,3 +76,4 @@ runs:
           CONFIG_ARG="--config ${{ inputs.config }}"
         fi
         "${{ github.action_path }}/target/release/cargo-cost-lint" --format github $CONFIG_ARG ${{ inputs.args }}
+
