@@ -2550,6 +2550,7 @@ mod tests {
 
     #[test]
     fn resolve_color_auto_no_color_unset_resolves_to_auto() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // This test only makes sense when NO_COLOR is not already set in
         // the environment.  On some CI runners (notably Windows) the
         // variable is injected and cannot be reliably removed, so we
@@ -2561,6 +2562,9 @@ mod tests {
             );
             return;
         }
+        // Ensure NO_COLOR is definitely unset before calling the function,
+        // even if a concurrent test set and removed it.
+        unsafe { std::env::remove_var("NO_COLOR") };
         let resolved = resolve_color_choice(&ColorChoice::Auto);
         assert_eq!(resolved, ColorChoice::Auto);
     }
