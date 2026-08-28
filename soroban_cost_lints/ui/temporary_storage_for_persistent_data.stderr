@@ -16,3 +16,4 @@ LL |     env.storage().temporary().get::<_, i32>(&"key").expect("must exist") //
    = help: handle the None case with match, unwrap_or, or unwrap_or_else; or use persistent storage if the data must survive across ledger closes
 
 warning: 2 warnings emitted
+
