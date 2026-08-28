@@ -1,0 +1,75 @@
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:30:46
+   |
+LL |         let mut _map: HashMap<String, i32> = HashMap::new(); // Should Warn
+   |                                              ^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+   = note: `#[warn(std_collection_in_contract)]` on by default
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:31:20
+   |
+LL |         let _val = _map.get("key"); // Should Warn
+   |                    ^^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:35:34
+   |
+LL |         let mut _vec: Vec<i32> = Vec::new(); // Should Warn
+   |                                  ^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:36:9
+   |
+LL |         _vec.push(42); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:41:13
+   |
+LL |             std::collections::BTreeMap::new(); // Should Warn
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:45:42
+   |
+LL |         let _map: HashMap<String, i32> = HashMap::with_capacity(10); // Should Warn
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:49:45
+   |
+LL |         let mut map: HashMap<String, i32> = HashMap::new();
+   |                                             ^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:50:9
+   |
+LL |         map.insert("a".to_string(), 1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: std collection type used in contract code
+  --> $DIR/std_collection_in_contract.rs:51:29
+   |
+LL |         for (_key, _val) in map.iter() { // Should Warn
+   |                             ^^^^^^^^^^
+   |
+   = help: use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate in wasm linear memory, inflate the binary, and req$DIRre conversion at the host boundary
+
+warning: 9 warnings emitted
+

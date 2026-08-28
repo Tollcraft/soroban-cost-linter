@@ -7,7 +7,7 @@ for the soroban-cost-linter false-positive benchmarking corpus.
 - **License**: Apache-2.0 (same as the main project)
 - **Third-party code**: None. These fixtures are not derived from or copies of
   any existing open-source Soroban contracts. They are minimal examples that
-  exercise common Soroban contract patterns (token, timelock, swap) solely for
+  exercise common Soroban contract patterns (token, timelock, swap, storage, symbol keys, and memory/bytes operations) solely for
   the purpose of measuring lint false-positive rates.
 
 ## Rationale for Vendoring (vs. Fetching at CI Time)

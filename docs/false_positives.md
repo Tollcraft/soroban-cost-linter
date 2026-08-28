@@ -32,6 +32,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | `vec_where_slice_could_be_used` | 9 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
 | `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
 | `bytes_append_in_loop` | 3 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
+| `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 | `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
 | `soroban_inefficient_bytes_concat` | 1 | 0 | warn | String/bytes formatting in loop iterations |
 | `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
@@ -99,6 +100,14 @@ Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
 - **Host Reallocation Cost:** In Soroban, growing SDK containers allocates new host objects per iteration.
 - **Remedy:** Preallocate collections where length is known or accumulate natively before creating host objects. If incremental host appending is required, suppress with `#[allow(bytes_append_in_loop)]`.
 
+### `string_concat_in_loop`
+
+Flags `append` on (or `String + String` addition of) a `soroban_sdk::String` inside loops.
+
+- **Host Reallocation Cost:** Each concatenation allocates a fresh host buffer and copies the entire accumulated string, so building a string from `n` pieces inside a loop is O(n²) in the number of characters produced.
+- **Small Fixed-Bound Loops (Known False Positive):** The lint does **not** prove loop bounds — it fires on any syntactic loop, mirroring `bytes_append_in_loop`. A loop with a small, fixed iteration count (e.g. 2–3) is the documented false positive; suppress the specific call site with `#[allow(string_concat_in_loop)]` or accumulate the few pieces in a native `Vec` and construct the `String` once.
+- **Remedy:** Accumulate the pieces in a native collection (e.g. `Vec<String>` or `Vec<Bytes>`) inside the loop and construct the `String` a single time afterwards; pre-size where practical.
+
 ### `instance_storage_for_unbounded_data`
 
 Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an evident size bound.
@@ -155,6 +164,25 @@ Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
 Fires when `Symbol::new(&env, "short")` is used with a literal string <= 9 characters.
 
 - **Remedy:** Replace with `symbol_short!("short")` for zero host overhead at runtime.
+- **Boundary:** the fixture pins the length boundary — a literal of exactly 9 characters fires (the maximum accepted by `symbol_short!`), a 10-character literal does not.
+- **Near-miss — invalid characters:** literals containing characters outside `[a-zA-Z0-9_]` (e.g. `-`, spaces) are not flagged, because `symbol_short!` would not accept them either.
+- **Near-miss — non-literal argument:** `Symbol::new(&env, s)` where `s` is a variable is not flagged; the lint only matches string-literal arguments.
+- **Near-miss — empty literal:** `Symbol::new(&env, "")` is not flagged.
+
+### `map_insert_in_loop`
+
+Flags `Map::insert` calls on `soroban_sdk::Map` inside any loop body.
+
+- **Host reallocation cost:** each `insert` mutates a host-side map object, and per-iteration inserts are increasingly expensive as the map grows.
+- **Handling:** accumulate mutations in a native `Vec<(K, V)>` inside the loop and build the `Map` once after the loop, or suppress with `#[allow(map_insert_in_loop)]` when per-iteration insertion is intentional.
+
+### `storage_key_construction_in_loop`
+
+Flags `Symbol::new(&env, ...)` calls inside a loop body whose key does not depend on the loop variable.
+
+- **Genuine finding — loop-invariant key:** `let key = Symbol::new(&env, "my_key");` inside a loop reconstructs the same host object every iteration. Hoist the construction outside the loop.
+- **Near-miss — loop-variant key:** `Symbol::new(&env, &format!("key_{}", i))` inside a loop reads the loop variable `i`, so the lint correctly does not fire — the key genuinely varies per iteration.
+- **Handling:** hoist invariant key construction outside the loop. Suppress with `#[allow(storage_key_construction_in_loop)]` when per-iteration key construction is intentional.
 
 ### `unbounded_recursion`
 
@@ -179,6 +207,58 @@ Fires on persistent storage reads when the containing function does not invoke `
 Fires on `.unwrap()` / `.expect()` called directly on a storage read.
 
 - **Immediate Overwrite:** If a key was just set in the same transaction, suppress with `#[allow(unwrap_on_storage_get)]` or use pattern matching `if let Some(...)`.
+
+### `std_collection_in_contract`
+
+Fires on `std::collections::HashMap`, `std::collections::BTreeMap`, and `std::vec::Vec` usage inside a `#[contractimpl]` block.
+
+- **Known false positive — performance-critical inner loop with small, fixed-size data:** if the contract processes a tiny, fixed, contract-controlled collection (e.g. a 2–3 element lookup table that never grows), the overhead of host-boundary conversion may exceed the cost of wasm-linear-memory allocation. Suppress with `#[allow(std_collection_in_contract)]` for such cases.
+- **Near-miss 1 — helper function called from `#[contractimpl]`:** the lint only fires inside the `#[contractimpl]` block itself, not in helper functions called from it. A helper that uses `HashMap` for internal bookkeeping is not flagged, which is intentional — the boundary is narrow and correct.
+- **Near-miss 2 — non-collection std types:** `String`, `Box`, `Rc`, `Arc`, and other std types are not flagged. Only the three collection types listed above are in scope.
+- **Test code exclusion:** std collections in `#[test]` functions and `#[cfg(test)]` modules are never flagged, because they are idiomatic and correct in tests.
+
+---
+
+### `temporary_storage_for_persistent_data`
+
+Fires on an *unchecked* read after a write to temporary storage — a `.unwrap()`/
+`.expect()` on a `get` of a key that was written to `temporary()` earlier in the
+same function body.
+
+- **Cache-like temporary storage (intentional, must not fire):** temporary
+  storage is explicitly meant for data that "can be arbitrarily recreated".
+  A valid cache use case looks like this — the value may expire, the absence is
+  detected, and execution recomputes/refetches and continues safely:
+
+  ```
+  temporary value expires
+  → absence detected
+  → value recomputed/refetched
+  → execution continues safely
+  ```
+
+  In code:
+
+  ```rust
+  fn cached_balance(env: Env, key: i32) -> i128 {
+      if let Some(balance) = env.storage().temporary().get::<_, i128>(&key) {
+          return balance;
+      }
+      let recomputed = compute_balance();
+      env.storage().temporary().set(&key, &recomputed);
+      recomputed
+  }
+  ```
+
+  This is **not** a finding: the author is relying on the *absence* to be
+  handled (via the `if let`/`None` path), so an expired entry costs a
+  recomputation instead of a panic or data corruption. This is correct use of
+  temporary storage; only an *unchecked* read that assumes the value still
+  exists is flagged. Cases that handle absence — `unwrap_or`, explicit
+  `match`, or a `has()`-guarded read — never fire.
+- **A key the contract wrote to *persistent* or *instance* storage is never
+  reported** — the lint only tracks `temporary()` writes, so durable storage
+  reads remain quiet.
 
 ---
 

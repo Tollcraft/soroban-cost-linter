@@ -17,9 +17,11 @@ This document provides a concise reference for all lints supported by **soroban-
 | `host_in_loop` | warn | use of Host object inside a loop | [Link](lints/host_in_loop.md) |
 | `unnecessary_string_to_bytes` | warn | unnecessary String to Bytes conversion | [Link](lints/unnecessary_string_to_bytes.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
+| `token_transfer_in_loop` | warn | token transfer (transfer / transfer_from) on a contract client inside a loop | [Link](lints/token_transfer_in_loop.md) |
 | `symbol_new_for_short_literal` | warn | Symbol::new used with a short literal that could use symbol_short! macro | [Link](lints/symbol_new_for_short_literal.md) |
 | `unbounded_input_loop` | warn | loop bound derived from untrusted input with storage write in body | [Link](lints/unbounded_input_loop.md) |
 | `bytes_append_in_loop` | warn | repeatedly growing SDK containers inside loops | [Link](lints/bytes_append_in_loop.md) |
+| `string_concat_in_loop` | warn | repeatedly concatenating a soroban String inside a loop | [Link](lints/string_concat_in_loop.md) |
 | `storage_write_without_read` | warn | storage write without a corresponding read | [Link](lints/storage_write_without_read.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `map_insert_in_loop` | warn | Map::insert called inside a loop | [Link](lints/map_insert_in_loop.md) |
@@ -35,5 +37,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
+| `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
+| `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
 
 *Severities can be overridden via `budget.toml`.*
