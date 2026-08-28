@@ -1490,6 +1490,179 @@ mod tests {
         assert_eq!(LINT_INVENTORY.version, "1.0");
     }
 
+    // ----- Lint list parity (issue #346) -----
+    //
+    // Every lint must be declared exactly once in each of the four sources of
+    // truth in `soroban_cost_lints/src/lib.rs`, and the generated `LINT_NAMES`
+    // (built from `register_lints` by `build.rs`) must agree with all of them.
+    // A duplicate, a typo, or a missing entry in any one list must fail the
+    // test with a message naming the offending list and lint.
+
+    fn parse_declare_lint_names(content: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut search_from = 0;
+        while let Some(rel) = content[search_from..].find("declare_lint! {") {
+            let block_start = search_from + rel + "declare_lint! {".len();
+            let block_end = block_start
+                + content[block_start..]
+                    .find('}')
+                    .expect("unclosed declare_lint! block");
+            let block = &content[block_start..block_end];
+            if let Some(first) = block
+                .lines()
+                .map(|l| l.trim())
+                .find(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("*"))
+            {
+                let name = first
+                    .trim_start_matches("pub ")
+                    .trim_end_matches(',')
+                    .trim()
+                    .to_string();
+                if !name.is_empty() {
+                    names.push(name.to_lowercase());
+                }
+            }
+            search_from = block_end + 1;
+        }
+        names
+    }
+
+    fn parse_lint_metadata_names(content: &str) -> Vec<String> {
+        let start_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
+        let start = content
+            .find(start_marker)
+            .expect("LINT_METADATA must exist in lib.rs")
+            + start_marker.len();
+        let end = start
+            + content[start..]
+                .find("];")
+                .expect("end of LINT_METADATA must exist");
+        let block = &content[start..end];
+        let mut names = Vec::new();
+        for line in block.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("lint:") {
+                let name = rest.trim().trim_end_matches(',').trim().to_string();
+                if !name.is_empty() {
+                    names.push(name.to_lowercase());
+                }
+            }
+        }
+        names
+    }
+
+    fn parse_register_lints_names(content: &str) -> Vec<String> {
+        let start_marker = "lint_store.register_lints(&[";
+        let start = content
+            .find(start_marker)
+            .expect("register_lints must exist in lib.rs")
+            + start_marker.len();
+        let end = start
+            + content[start..]
+                .find("]);")
+                .expect("end of register_lints must exist");
+        let block = &content[start..end];
+        block
+            .lines()
+            .map(|l| l.trim().trim_end_matches(',').trim().to_lowercase())
+            .filter(|l| !l.is_empty() && !l.starts_with("//"))
+            .collect()
+    }
+
+    fn check_no_duplicates(label: &str, names: &[String]) {
+        let mut seen = std::collections::HashSet::new();
+        let mut dups = std::collections::HashSet::new();
+        for n in names {
+            if !seen.insert(n.clone()) {
+                dups.insert(n.clone());
+            }
+        }
+        assert!(
+            dups.is_empty(),
+            "duplicate lint name(s) in {}: {:?}",
+            label,
+            dups
+        );
+    }
+
+    fn assert_sets_match(
+        a: &std::collections::HashSet<String>,
+        a_label: &str,
+        b: &std::collections::HashSet<String>,
+        b_label: &str,
+    ) {
+        let missing: Vec<&String> = b.difference(a).collect();
+        let extra: Vec<&String> = a.difference(b).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "{} and {} disagree:\n  missing from {} (present in {}): {:?}\n  only in {} (absent from {}): {:?}",
+            a_label,
+            b_label,
+            a_label,
+            b_label,
+            missing,
+            a_label,
+            b_label,
+            extra
+        );
+    }
+
+    #[test]
+    fn lint_list_parity() {
+        let lib_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../soroban_cost_lints/src/lib.rs"
+        );
+        let content = std::fs::read_to_string(lib_path)
+            .expect("soroban_cost_lints/src/lib.rs must be readable");
+
+        let declare = parse_declare_lint_names(&content);
+        let metadata = parse_lint_metadata_names(&content);
+        let registered = parse_register_lints_names(&content);
+        let generated: Vec<String> = LINT_NAMES.iter().map(|s| s.to_string()).collect();
+
+        // No list may contain the same lint twice (e.g. a copy-paste duplicate
+        // of a LintMetadata row).
+        check_no_duplicates("declare_lint!", &declare);
+        check_no_duplicates("LINT_METADATA", &metadata);
+        check_no_duplicates("register_lints", &registered);
+        check_no_duplicates("LINT_NAMES", &generated);
+
+        let declare_set: std::collections::HashSet<String> = declare.iter().cloned().collect();
+        let metadata_set: std::collections::HashSet<String> = metadata.iter().cloned().collect();
+        let registered_set: std::collections::HashSet<String> =
+            registered.iter().cloned().collect();
+        let generated_set: std::collections::HashSet<String> = generated.iter().cloned().collect();
+
+        // Every declared lint must be registered, and vice versa — no missing or
+        // orphan entries.
+        assert_sets_match(
+            &declare_set,
+            "declare_lint!",
+            &registered_set,
+            "register_lints",
+        );
+        assert_sets_match(
+            &metadata_set,
+            "LINT_METADATA",
+            &registered_set,
+            "register_lints",
+        );
+        assert_sets_match(
+            &generated_set,
+            "LINT_NAMES",
+            &registered_set,
+            "register_lints",
+        );
+
+        // LINT_NAMES is generated from register_lints by build.rs, so it must
+        // also match it exactly in order, not just as a set.
+        assert_eq!(
+            registered, generated,
+            "LINT_NAMES must be generated from register_lints in the same order"
+        );
+    }
+
     #[test]
     fn lint_info_matches_lint_inventory() {
         assert_eq!(

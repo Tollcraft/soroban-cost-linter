@@ -555,10 +555,6 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
-        lint: LOOP_INVARIANT_STORAGE_ACCESS,
-        category: LintCategory::StorageOperations,
-    },
-    LintMetadata {
         lint: SOROBAN_INEFFICIENT_BYTES_CONCAT,
         category: LintCategory::Memory,
     },
