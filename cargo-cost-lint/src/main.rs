@@ -1503,14 +1503,15 @@ mod tests {
         let mut search_from = 0;
         while let Some(rel) = content[search_from..].find("declare_lint! {") {
             let block_start = search_from + rel + "declare_lint! {".len();
-            let block_end =
-                block_start + content[block_start..].find('}').expect("unclosed declare_lint! block");
+            let block_end = block_start
+                + content[block_start..]
+                    .find('}')
+                    .expect("unclosed declare_lint! block");
             let block = &content[block_start..block_end];
             if let Some(first) = block
                 .lines()
                 .map(|l| l.trim())
-                .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("*"))
-                .next()
+                .find(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("*"))
             {
                 let name = first
                     .trim_start_matches("pub ")
@@ -1532,7 +1533,10 @@ mod tests {
             .find(start_marker)
             .expect("LINT_METADATA must exist in lib.rs")
             + start_marker.len();
-        let end = start + content[start..].find("];").expect("end of LINT_METADATA must exist");
+        let end = start
+            + content[start..]
+                .find("];")
+                .expect("end of LINT_METADATA must exist");
         let block = &content[start..end];
         let mut names = Vec::new();
         for line in block.lines() {
@@ -1553,7 +1557,10 @@ mod tests {
             .find(start_marker)
             .expect("register_lints must exist in lib.rs")
             + start_marker.len();
-        let end = start + content[start..].find("]);").expect("end of register_lints must exist");
+        let end = start
+            + content[start..]
+                .find("]);")
+                .expect("end of register_lints must exist");
         let block = &content[start..end];
         block
             .lines()
@@ -1606,8 +1613,8 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../soroban_cost_lints/src/lib.rs"
         );
-        let content =
-            std::fs::read_to_string(lib_path).expect("soroban_cost_lints/src/lib.rs must be readable");
+        let content = std::fs::read_to_string(lib_path)
+            .expect("soroban_cost_lints/src/lib.rs must be readable");
 
         let declare = parse_declare_lint_names(&content);
         let metadata = parse_lint_metadata_names(&content);
@@ -1623,14 +1630,30 @@ mod tests {
 
         let declare_set: std::collections::HashSet<String> = declare.iter().cloned().collect();
         let metadata_set: std::collections::HashSet<String> = metadata.iter().cloned().collect();
-        let registered_set: std::collections::HashSet<String> = registered.iter().cloned().collect();
+        let registered_set: std::collections::HashSet<String> =
+            registered.iter().cloned().collect();
         let generated_set: std::collections::HashSet<String> = generated.iter().cloned().collect();
 
         // Every declared lint must be registered, and vice versa — no missing or
         // orphan entries.
-        assert_sets_match(&declare_set, "declare_lint!", &registered_set, "register_lints");
-        assert_sets_match(&metadata_set, "LINT_METADATA", &registered_set, "register_lints");
-        assert_sets_match(&generated_set, "LINT_NAMES", &registered_set, "register_lints");
+        assert_sets_match(
+            &declare_set,
+            "declare_lint!",
+            &registered_set,
+            "register_lints",
+        );
+        assert_sets_match(
+            &metadata_set,
+            "LINT_METADATA",
+            &registered_set,
+            "register_lints",
+        );
+        assert_sets_match(
+            &generated_set,
+            "LINT_NAMES",
+            &registered_set,
+            "register_lints",
+        );
 
         // LINT_NAMES is generated from register_lints by build.rs, so it must
         // also match it exactly in order, not just as a set.
