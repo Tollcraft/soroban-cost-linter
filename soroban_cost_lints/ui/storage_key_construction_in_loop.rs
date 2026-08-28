@@ -1,4 +1,4 @@
-#![allow(symbol_new_for_short_literal, soroban_storage_in_loop, loop_invariant_storage_access, storage_write_without_read)]
+#![allow(symbol_new_for_short_literal, soroban_storage_in_loop, loop_invariant_storage_access, storage_write_without_read, formatted_panic_payload)]
 
 pub mod soroban_sdk {
     pub struct Env;

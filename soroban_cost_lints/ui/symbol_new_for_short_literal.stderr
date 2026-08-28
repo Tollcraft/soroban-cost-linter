@@ -10,19 +10,19 @@ warning: Symbol::new called with a short literal that could use symbol_short! ma
   --> $DIR/symbol_new_for_short_literal.rs:40:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn — exactly 9 chars
-   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/symbol_new_for_short_literal.rs:44:16
    |
 LL |     let _sym = Symbol::new(&env, "x"); // Should Warn — 1 char
-   |                ^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("x")`
+   |                ^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("x")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/symbol_new_for_short_literal.rs:48:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn — 9 chars with underscore
-   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: 4 warnings emitted
 
