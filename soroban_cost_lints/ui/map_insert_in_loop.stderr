@@ -1,0 +1,27 @@
+warning: Map::insert inside a loop is expensive
+  --> $DIR/map_insert_in_loop.rs:43:9
+   |
+LL |         map.insert(i, i * 2); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate mutations in memory first and write once after the loop
+   = note: `#[warn(map_insert_in_loop)]` on by default
+
+warning: Map::insert inside a loop is expensive
+  --> $DIR/map_insert_in_loop.rs:52:9
+   |
+LL |         map.insert(i, i + 1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate mutations in memory first and write once after the loop
+
+warning: Map::insert inside a loop is expensive
+  --> $DIR/map_insert_in_loop.rs:62:9
+   |
+LL |         map.insert(count, count); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate mutations in memory first and write once after the loop
+
+warning: 3 warnings emitted
+

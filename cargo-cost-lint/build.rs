@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 enum Error {
@@ -15,7 +15,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Io(e) => write!(f, "I/O error: {}", e),
-            Error::MissingEnv => write!(f, "OUT_DIR environment variable not set"),
+            Error::MissingEnv => write!(
+                f,
+                "OUT_DIR or CARGO_MANIFEST_DIR environment variable not set"
+            ),
             Error::Parse(msg) => write!(f, "Parse error: {}", msg),
         }
     }
@@ -249,13 +252,34 @@ fn parse_toolchain_channel(toolchain_path: &Path) -> Result<String> {
 const DYLINT_VERSION_CONSTRAINT: &str = "^6.0.1";
 
 fn run() -> Result<()> {
+    // cargo-cost-lint is an internal workspace tool that embeds compile-time metadata,
+    // documentation explanations, and the pinned toolchain version directly from sibling
+    // workspace paths (`../soroban_cost_lints`, `../docs/lints`, and `../rust-toolchain`).
+    // It is not published independently to crates.io (`publish = false` in Cargo.toml).
+    let manifest_dir_str = env::var("CARGO_MANIFEST_DIR").map_err(|_| Error::MissingEnv)?;
+    let manifest_dir = PathBuf::from(manifest_dir_str);
+
+    let lib_rs_path = manifest_dir.join("../soroban_cost_lints/src/lib.rs");
+    let docs_dir = manifest_dir.join("../docs/lints");
+    let toolchain_path = manifest_dir.join("../rust-toolchain");
+
     println!("cargo:rerun-if-changed=../soroban_cost_lints/src/lib.rs");
     println!("cargo:rerun-if-changed=../docs/lints");
     println!("cargo:rerun-if-changed=../rust-toolchain");
 
-    let content = fs::read_to_string("../soroban_cost_lints/src/lib.rs").map_err(|e| {
+    if !lib_rs_path.exists() {
+        return Err(Error::Parse(
+            "cargo-cost-lint cannot be built outside the soroban-cost-linter workspace \
+             because it relies on compile-time metadata from sibling workspace crates. \
+             This crate is not intended for standalone publishing (publish = false)."
+                .to_string(),
+        ));
+    }
+
+    let content = fs::read_to_string(&lib_rs_path).map_err(|e| {
         Error::Parse(format!(
-            "Failed to read source file ../soroban_cost_lints/src/lib.rs: {}",
+            "Failed to read source file {}: {}",
+            lib_rs_path.display(),
             e
         ))
     })?;
@@ -296,22 +320,21 @@ fn run() -> Result<()> {
     }
 
     // --- Verify every registered lint has a corresponding doc file ---
-    let docs_dir = "../docs/lints";
     for name in &names {
-        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_path = docs_dir.join(format!("{}.md", name));
         assert!(
-            Path::new(&doc_path).exists(),
+            doc_path.exists(),
             "lint '{}' is registered but has no doc file at '{}'. \
              Create a documentation page at docs/lints/{}.md to explain \
              what the lint does, why it is expensive, and how to fix it.",
             name,
-            doc_path,
+            doc_path.display(),
             name
         );
     }
 
     // --- Verify no orphaned docs/lints/*.md exist without a registered lint ---
-    if let Ok(read_dir) = fs::read_dir(docs_dir) {
+    if let Ok(read_dir) = fs::read_dir(&docs_dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.extension().and_then(|ext| ext.to_str()) == Some("md")
@@ -331,15 +354,16 @@ fn run() -> Result<()> {
     // --- Read each doc file and embed as raw string literals ---
     let mut explanations: Vec<(String, String)> = Vec::new();
     for name in &names {
-        let doc_path = format!("{}/{}.md", docs_dir, name);
+        let doc_path = docs_dir.join(format!("{}.md", name));
         let doc_content = fs::read_to_string(&doc_path).unwrap_or_else(|e| {
             panic!(
                 "Failed to read doc file '{}': expected it to be readable, got {}",
-                doc_path, e
+                doc_path.display(),
+                e
             )
         });
         // Notify cargo to re-run build.rs when any doc file changes
-        println!("cargo:rerun-if-changed={}", doc_path);
+        println!("cargo:rerun-if-changed=../docs/lints/{}.md", name);
         explanations.push((name.clone(), doc_content));
     }
 
@@ -389,8 +413,7 @@ fn run() -> Result<()> {
     }
 
     // --- Parse the pinned toolchain and emit version metadata ---
-    let toolchain_path = Path::new("../rust-toolchain");
-    let toolchain_channel = parse_toolchain_channel(toolchain_path)?;
+    let toolchain_channel = parse_toolchain_channel(&toolchain_path)?;
 
     let out_dir = env::var_os("OUT_DIR").ok_or(Error::MissingEnv)?;
     let names_path = Path::new(&out_dir).join("lint_names.rs");

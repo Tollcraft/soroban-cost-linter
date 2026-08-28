@@ -37,3 +37,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Pull and smoke test published container image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}-dev:latest"
+          echo "Pulling published image: $IMAGE"
+          docker pull "$IMAGE"
+          
+          echo "Running smoke test against test_fixtures/smoke_test/ inside container"
+          OUTPUT=$(docker run --rm -v "$(pwd)/test_fixtures/smoke_test:/workspace/smoke_test" -w /workspace/smoke_test "$IMAGE" cargo cost-lint --format json 2>&1 || true)
+          echo "Container output:"
+          echo "$OUTPUT"
+          
+          echo "Asserting expected findings are present..."
+          echo "$OUTPUT" | grep -q "soroban_storage_in_loop"

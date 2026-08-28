@@ -27,6 +27,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
+| [`token_transfer_in_loop`](token_transfer_in_loop.md) | `warn` | token transfer (transfer / transfer_from) on a contract client inside a loop |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
 | [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
@@ -43,10 +44,12 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | unnecessary String to Bytes conversion |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
+| [`string_concat_in_loop`](string_concat_in_loop.md) | `warn` | repeatedly concatenating a soroban String inside a loop |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
+| [`std_collection_in_contract`](std_collection_in_contract.md) | `warn` | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec |
 
 ## Entry Lifecycle
 
@@ -54,6 +57,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
+| [`temporary_storage_for_persistent_data`](temporary_storage_for_persistent_data.md) | `warn` | temporary storage write followed by an unsafe read that assumes the value persists |
 
 ## Symbol Operations
 

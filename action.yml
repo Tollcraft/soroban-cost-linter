@@ -47,7 +47,8 @@ runs:
       env:
         RUSTFLAGS: -C linker=dylint-link
         CARGO_NET_RETRY: '10'
-      run: cargo build --release --locked --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/soroban_cost_lints/Cargo.toml"
 
     - name: Register lint library with dylint
       shell: bash
@@ -62,7 +63,8 @@ runs:
       shell: bash
       env:
         CARGO_NET_RETRY: '10'
-      run: cargo build --release --locked --manifest-path "${{ github.action_path }}/cargo-cost-lint/Cargo.toml"
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/cargo-cost-lint/Cargo.toml"
 
     - name: Run Cost Linter
       shell: bash
@@ -70,9 +72,17 @@ runs:
       env:
         DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
         CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ARGS: ${{ inputs.args }}
       run: |
-        CONFIG_ARG=""
-        if [ -n "${{ inputs.config }}" ]; then
-          CONFIG_ARG="--config ${{ inputs.config }}"
+        ARGS_ARRAY=()
+        if [ -n "$INPUT_CONFIG" ]; then
+          ARGS_ARRAY+=(--config "$INPUT_CONFIG")
         fi
-        "${{ github.action_path }}/target/release/cargo-cost-lint" --format github $CONFIG_ARG ${{ inputs.args }}
+        if [ -n "$INPUT_ARGS" ]; then
+          read -ra EXTRA_ARGS <<< "$INPUT_ARGS"
+          ARGS_ARRAY+=("${EXTRA_ARGS[@]}")
+        fi
+        "$ACTION_PATH/target/release/cargo-cost-lint" --format github "${ARGS_ARRAY[@]}"
+

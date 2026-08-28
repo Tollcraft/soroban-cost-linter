@@ -104,6 +104,7 @@ Each key under `[lints]` must match a lint name **exactly** as shown in the comp
 | `unnecessary_host_function_call`    | `warn`        |
 | `symbol_new_for_short_literal`      | `warn`        |
 | `bytes_append_in_loop`              | `warn`        |
+| `string_concat_in_loop`            | `warn`        |
 | `storage_write_without_read`        | `warn`        |
 | `inefficient_bytes_concat`          | `warn`        |
 | `map_insert_in_loop`                | `warn`        |
