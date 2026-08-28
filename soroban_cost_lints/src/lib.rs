@@ -2043,9 +2043,7 @@ impl<'tcx> LateLintPass<'tcx> for BlindStorageWrite {
                         false
                     };
                     let method = path_segment.ident.name.as_str();
-                    if is_storage
-                        && BLIND_WRITE_READ_METHODS.contains(&method)
-                        && !args.is_empty()
+                    if is_storage && BLIND_WRITE_READ_METHODS.contains(&method) && !args.is_empty()
                     {
                         let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
                         let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
