@@ -3,6 +3,7 @@ warning: redundant clone on Env object
    |
 LL |     let _cloned = env.clone(); //~ WARNING redundant clone on Env object
    |                   ^^^^^^^^^^^ help: pass Env by reference or value instead of cloning: `env`
+   |
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: redundant clone on Env object
