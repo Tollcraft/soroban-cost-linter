@@ -646,6 +646,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
         category: LintCategory::EntryLifecycle,
     },
+    LintMetadata {
+        lint: EXCESSIVE_VEC_CAPACITY,
+        category: LintCategory::Memory,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -690,6 +694,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNWRAP_ON_STORAGE_GET,
         STD_COLLECTION_IN_CONTRACT,
         TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        EXCESSIVE_VEC_CAPACITY,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -722,6 +727,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
     lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
     lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
+    lint_store.register_late_pass(|_| Box::new(ExcessiveVecCapacity));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -3672,7 +3678,120 @@ fn peel_addr_of<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> 
     }
     expr
 }
+// =======================================================================
+// excessive_vec_capacity — Lint
+// =======================================================================
 
+/// Pre-allocation threshold (in number of elements). Soroban contracts run
+/// inside a WASM linear-memory sandbox with a per-transaction memory cap.
+/// Excessive pre-allocation wastes host memory and inflates the metered cost
+/// of the allocation without providing a meaningful performance benefit for
+/// typical Soroban workloads.
+///
+/// **Rationale for 4 096:** Soroban's Host-backed Vec meters each element
+/// individually. A 4 096-element pre-allocation for a4-byte element type
+/// (e.g. `i32`) reserves roughly 16 KB of linear memory — generous for
+/// known-bound workloads while remaining well within the per-transaction
+/// memory cap. Values above this threshold are almost certainly over-
+/// estimated and should be revisited. Smaller capacities (<=4 096) are
+/// common for fixed-size buffers, lookup tables, and small batch
+/// processing, and are not flagged.
+const EXCESSIVE_VEC_CAPACITY_THRESHOLD: u128 = 4_096;
+
+// Flags Soroban `Vec::with_capacity(n)` and `.reserve(n)` calls where the
+// capacity argument is a hard-coded literal exceeding a defensible threshold.
+//
+// Only `soroban_sdk::vec::Vec` is targeted — ordinary host-side
+// `std::vec::Vec` helper code is not flagged. Runtime-derived capacities
+// (variables, function calls, arithmetic expressions) are intentionally
+// ignored because the lint cannot determine their value statically.
+rustc_session::declare_lint! {
+    pub EXCESSIVE_VEC_CAPACITY,
+    Warn,
+    "excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve"
+}
+/// Concrete pass that fires [`EXCESSIVE_VEC_CAPACITY`].
+pub struct ExcessiveVecCapacity;
+rustc_session::impl_lint_pass!(ExcessiveVecCapacity => [EXCESSIVE_VEC_CAPACITY]);
+
+impl<'tcx> LateLintPass<'tcx> for ExcessiveVecCapacity {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        match expr.kind {
+            // Vec::with_capacity(n) — static associated function call.
+            hir::ExprKind::Call(callee, args) if !args.is_empty() => {
+                let callee_ty = cx.typeck_results().expr_ty(callee);
+                if let rustc_middle::ty::FnDef(callee_did, _) = callee_ty.kind() {
+                    let method_name_sym = cx.tcx.item_name(*callee_did);
+                    let method_name = method_name_sym.as_str();
+                    if method_name == "with_capacity" {
+                        let callee_path = cached_def_path_str(cx.tcx, *callee_did);
+                        if is_soroban_vec_def_path(&callee_path) && exceeds_threshold(&args[0]) {
+                            span_lint_and_sugg(
+                                cx,
+                                EXCESSIVE_VEC_CAPACITY,
+                                expr.span,
+                                "excessive pre-allocation capacity in Soroban Vec",
+                                "reduce the capacity",
+                                "Vec::new()".to_string(),
+                                Applicability::MaybeIncorrect,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // vec.reserve(n) — instance method call.
+            hir::ExprKind::MethodCall(path_segment, receiver, args, _) if !args.is_empty() => {
+                let method_name = path_segment.ident.name.as_str();
+                if method_name == "reserve" {
+                    let receiver_ty = cx.typeck_results().expr_ty(receiver);
+                    if let rustc_middle::ty::Adt(adt_def, _) = receiver_ty.kind()
+                        && is_soroban_vec_adt(cx, adt_def.did())
+                        && exceeds_threshold(&args[0])
+                    {
+                        span_lint_and_help(
+                            cx,
+                            EXCESSIVE_VEC_CAPACITY,
+                            expr.span,
+                            "excessive pre-allocation capacity in Soroban Vec",
+                            None,
+                            "consider reducing the reserve amount or using Vec::new()",
+                        );
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+}
+
+/// Returns `true` if `callee_path` ends with `soroban_sdk::vec::Vec`.
+fn is_soroban_vec_def_path(callee_path: &str) -> bool {
+    callee_path.contains("soroban_sdk::vec::Vec")
+}
+
+/// Returns `true` if `def_id` belongs to `soroban_sdk::vec::Vec`.
+fn is_soroban_vec_adt<'tcx>(cx: &LateContext<'tcx>, def_id: DefId) -> bool {
+    match_soroban_def_path(cx, def_id, &["soroban_sdk", "vec", "Vec"])
+}
+
+/// Returns `true` if `expr` is a numeric literal whose value exceeds
+/// [`EXCESSIVE_VEC_CAPACITY_THRESHOLD`]. Handles both `LitKind::Int` and
+/// negative literals.
+fn exceeds_threshold<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+    match expr.kind {
+        hir::ExprKind::Lit(lit) => match lit.node {
+            LitKind::Int(val, _) => val > EXCESSIVE_VEC_CAPACITY_THRESHOLD,
+            _ => false,
+        },
+        // Handle unary negation: -1_000_000
+        hir::ExprKind::Unary(hir::UnOp::Neg, inner) => matches!(inner.kind,
+            hir::ExprKind::Lit(lit) if matches!(lit.node, LitKind::Int(val, _) if val > EXCESSIVE_VEC_CAPACITY_THRESHOLD)
+        ),
+        _ => false,
+    }
+}
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
 // satisfy both. This never surfaced before because the Windows job failed at
 // checkout and never reached the test step.

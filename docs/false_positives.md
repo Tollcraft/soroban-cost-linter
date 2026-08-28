@@ -454,3 +454,13 @@ Fixtures live in `soroban_cost_lints/ui/linear_scan_in_loop.rs`.
 - **Genuine near-miss 2 — impure argument:** `v.contains(&wrapper.0.clone())` has a method call in the argument, so the lint conservatively treats it as loop-variant and stays silent.
 - **Loop shapes:** `for`, `while`, and iterator-closure all fire for invariant scans; `Option::map` single-call sites are not loops and never fire.
 
+
+### `excessive_vec_capacity`
+
+Fixtures live in `soroban_cost_lints/ui/excessive_vec_capacity.rs`.
+
+- **Firing cases:** `Vec::with_capacity(n)` and `.reserve(n)` where `n` is a hard-coded integer literal exceeding the threshold (4 096 elements) -- the lint fires on both associated function and method-call forms.
+- **Genuine near-miss 1 -- below threshold:** `Vec::with_capacity(100)` / `.reserve(100)` do not fire because the value is within the 4 096-element threshold.
+- **Genuine near-miss 2 -- runtime-derived capacity:** `Vec::with_capacity(n)` / `.reserve(n)` where `n` is a variable or function result are never flagged because the lint cannot determine their value statically.
+- **Genuine near-miss 3 -- at threshold:** `Vec::with_capacity(4096)` does not fire (the threshold is exclusive).
+- **Known false positives:** None at this time. The lint only targets `soroban_sdk::vec::Vec` -- ordinary `std::vec::Vec` usage is never flagged.

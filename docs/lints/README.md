@@ -50,6 +50,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`std_collection_in_contract`](std_collection_in_contract.md) | `warn` | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md) | `warn` | excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve |
 
 ## Entry Lifecycle
 
