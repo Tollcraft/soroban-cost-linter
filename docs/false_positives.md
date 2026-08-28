@@ -147,6 +147,25 @@ Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
 Fires when `Symbol::new(&env, "short")` is used with a literal string <= 9 characters.
 
 - **Remedy:** Replace with `symbol_short!("short")` for zero host overhead at runtime.
+- **Boundary:** the fixture pins the length boundary — a literal of exactly 9 characters fires (the maximum accepted by `symbol_short!`), a 10-character literal does not.
+- **Near-miss — invalid characters:** literals containing characters outside `[a-zA-Z0-9_]` (e.g. `-`, spaces) are not flagged, because `symbol_short!` would not accept them either.
+- **Near-miss — non-literal argument:** `Symbol::new(&env, s)` where `s` is a variable is not flagged; the lint only matches string-literal arguments.
+- **Near-miss — empty literal:** `Symbol::new(&env, "")` is not flagged.
+
+### `map_insert_in_loop`
+
+Flags `Map::insert` calls on `soroban_sdk::Map` inside any loop body.
+
+- **Host reallocation cost:** each `insert` mutates a host-side map object, and per-iteration inserts are increasingly expensive as the map grows.
+- **Handling:** accumulate mutations in a native `Vec<(K, V)>` inside the loop and build the `Map` once after the loop, or suppress with `#[allow(map_insert_in_loop)]` when per-iteration insertion is intentional.
+
+### `storage_key_construction_in_loop`
+
+Flags `Symbol::new(&env, ...)` calls inside a loop body whose key does not depend on the loop variable.
+
+- **Genuine finding — loop-invariant key:** `let key = Symbol::new(&env, "my_key");` inside a loop reconstructs the same host object every iteration. Hoist the construction outside the loop.
+- **Near-miss — loop-variant key:** `Symbol::new(&env, &format!("key_{}", i))` inside a loop reads the loop variable `i`, so the lint correctly does not fire — the key genuinely varies per iteration.
+- **Handling:** hoist invariant key construction outside the loop. Suppress with `#[allow(storage_key_construction_in_loop)]` when per-iteration key construction is intentional.
 
 ### `unbounded_recursion`
 
