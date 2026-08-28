@@ -1,0 +1,43 @@
+warning: repeatedly concatenating a soroban String inside a loop
+  --> $DIR/string_concat_in_loop.rs:45:18
+   |
+LL |         result = result.append(&piece); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect the pieces in a native collection (e.g. `Vec<String>` or byte slices) inside the loop and construct the `String` a single time afterwards; pre-size where practical
+   = note: `#[warn(string_concat_in_loop)]` on by default
+
+warning: repeatedly concatenating a soroban String inside a loop
+  --> $DIR/string_concat_in_loop.rs:55:18
+   |
+LL |         result = result.append(&piece); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect the pieces in a native collection (e.g. `Vec<String>` or byte slices) inside the loop and construct the `String` a single time afterwards; pre-size where practical
+
+warning: repeatedly concatenating a soroban String inside a loop
+  --> $DIR/string_concat_in_loop.rs:65:18
+   |
+LL |         result = result.append(&piece); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect the pieces in a native collection (e.g. `Vec<String>` or byte slices) inside the loop and construct the `String` a single time afterwards; pre-size where practical
+
+warning: repeatedly concatenating a soroban String inside a loop
+  --> $DIR/string_concat_in_loop.rs:75:18
+   |
+LL |         result = result + piece; // Should Warn
+   |                  ^^^^^^^^^^^^^^
+   |
+   = help: collect the pieces in a native collection (e.g. `Vec<String>` or byte slices) inside the loop and construct the `String` a single time afterwards; pre-size where practical
+
+warning: repeatedly concatenating a soroban String inside a loop
+  --> $DIR/string_concat_in_loop.rs:85:17
+   |
+LL |         let _ = r.append(&piece); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^
+   |
+   = help: collect the pieces in a native collection (e.g. `Vec<String>` or byte slices) inside the loop and construct the `String` a single time afterwards; pre-size where practical
+
+warning: 5 warnings emitted
+

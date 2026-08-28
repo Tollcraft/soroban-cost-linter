@@ -208,6 +208,12 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 /// buffer, causing increasingly expensive host-side work per call.
 const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
 
+/// Methods on `soroban_sdk::String` that concatenate another string onto the
+/// receiver, returning a fresh `String`. Each call reallocates a host-side
+/// buffer and copies the entire accumulated string, so repeating it inside a
+/// loop is O(n²) in the number of characters produced.
+const STRING_CONCAT_METHODS: &[&str] = &["append"];
+
 fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str]]) -> bool {
     paths
         .iter()
@@ -573,6 +579,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Memory,
     },
     LintMetadata {
+        lint: STRING_CONCAT_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
         lint: STORAGE_WRITE_WITHOUT_READ,
         category: LintCategory::StorageOperations,
     },
@@ -632,6 +642,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: STD_COLLECTION_IN_CONTRACT,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        category: LintCategory::EntryLifecycle,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -658,6 +672,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_STRING_TO_BYTES,
         UNBOUNDED_INPUT_LOOP,
         BYTES_APPEND_IN_LOOP,
+        STRING_CONCAT_IN_LOOP,
         STORAGE_WRITE_WITHOUT_READ,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
@@ -673,6 +688,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
         STD_COLLECTION_IN_CONTRACT,
+        TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -688,6 +704,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(StringConcatInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
@@ -702,6 +719,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
     lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
+    lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -1089,13 +1107,16 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 return;
             }
 
-            span_lint_and_help(
+            let receiver_snippet =
+                snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
+            span_lint_and_sugg(
                 cx,
                 REDUNDANT_ENV_CLONE,
                 expr.span,
                 "redundant clone on Env object",
-                None,
                 "pass Env by reference or value instead of cloning",
+                receiver_snippet,
+                Applicability::MachineApplicable,
             );
         }
     }
@@ -1716,6 +1737,93 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
                     "accumulate values in native Rust collections first, then batch host \
                      operations or convert to SDK containers once after the loop; \
                      pre-size where practical",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// string_concat_in_loop — Lint
+// =======================================================================
+
+// Flags repeated `append` calls (or `String + String` additions) on a Soroban
+// `String` inside a loop. Each call allocates a fresh host-side buffer and
+// copies the entire accumulated string, so building a string from `n` pieces
+// inside a loop performs O(n²) byte copies — exactly the same quadratic
+// growth that [`BYTES_APPEND_IN_LOOP`] catches for `Bytes`/`Vec`/`Map`.
+rustc_session::declare_lint! {
+    pub STRING_CONCAT_IN_LOOP,
+    Warn,
+    "repeatedly concatenating a soroban String inside a loop"
+}
+/// Concrete pass that fires [`STRING_CONCAT_IN_LOOP`].
+pub struct StringConcatInLoop;
+rustc_session::impl_lint_pass!(StringConcatInLoop => [STRING_CONCAT_IN_LOOP]);
+
+/// Whether `ty` resolves to `soroban_sdk::String` (references peeled).
+fn is_string_type<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
+    let peeled = ty.peel_refs();
+    if let Some(adt_def) = ty_adt_def(peeled) {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "String"])
+    } else {
+        false
+    }
+}
+
+/// Detection: for every `MethodCall` whose segment is in
+/// [`STRING_CONCAT_METHODS`], peel references off the receiver and confirm the
+/// ADT is `soroban_sdk::String`.  A match is reported only when
+/// [`enclosing_loop`] returns `Some`.  We also catch `String + String`
+/// (`Add`) binary expressions inside a loop, since they perform the same
+/// host-side copy.  As with [`BYTES_APPEND_IN_LOOP`] we deliberately do
+/// **not** attempt to detect whether the loop could be batched — that
+/// reasoning is runtime-dependent and would inflate the false-positive rate.
+impl<'tcx> LateLintPass<'tcx> for StringConcatInLoop {
+    /// Flags a concatenation on a `soroban_sdk::String` inside a loop.
+    ///
+    /// Matching is done two ways: a method call named `append` whose receiver
+    /// is a `soroban_sdk::String`, and a `String + String` binary `Add` whose
+    /// either operand is a `soroban_sdk::String`.  Only syntactic loops are
+    /// considered; multi-call closures are not flagged here.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // `append` method on a `String` receiver inside a loop.
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if STRING_CONCAT_METHODS.contains(&method_name)
+                && is_string_type(cx, cx.typeck_results().expr_ty(receiver))
+                && enclosing_loop(cx, expr).is_some()
+            {
+                span_lint_and_help(
+                    cx,
+                    STRING_CONCAT_IN_LOOP,
+                    expr.span,
+                    "repeatedly concatenating a soroban String inside a loop",
+                    None,
+                    "collect the pieces in a native collection (e.g. `Vec<String>` or byte \
+                     slices) inside the loop and construct the `String` a single time \
+                     afterwards; pre-size where practical",
+                );
+                return;
+            }
+        }
+
+        // `String + String` (Add) inside a loop.
+        if let hir::ExprKind::Binary(op, lhs, rhs) = &expr.kind
+            && matches!(op.node, hir::BinOpKind::Add)
+        {
+            let is_string = is_string_type(cx, cx.typeck_results().expr_ty(lhs))
+                || is_string_type(cx, cx.typeck_results().expr_ty(rhs));
+            if is_string && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    STRING_CONCAT_IN_LOOP,
+                    expr.span,
+                    "repeatedly concatenating a soroban String inside a loop",
+                    None,
+                    "collect the pieces in a native collection (e.g. `Vec<String>` or byte \
+                     slices) inside the loop and construct the `String` a single time \
+                     afterwards; pre-size where practical",
                 );
             }
         }
@@ -3259,6 +3367,162 @@ impl<'tcx> LateLintPass<'tcx> for StdCollectionInContract {
             );
         }
     }
+}
+
+// =======================================================================
+// temporary_storage_for_persistent_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+    Warn,
+    "temporary storage write followed by an unsafe read that assumes the value persists"
+}
+/// Concrete pass that fires [`TEMPORARY_STORAGE_FOR_PERSISTENT_DATA`].
+pub struct TemporaryStorageForPersistentData;
+rustc_session::impl_lint_pass!(TemporaryStorageForPersistentData => [TEMPORARY_STORAGE_FOR_PERSISTENT_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for TemporaryStorageForPersistentData {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _kind: intravisit::FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _hir_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let mut collector = TempWriteCollector {
+            cx,
+            writes: Vec::new(),
+        };
+        collector.visit_body(body);
+
+        let mut unsafe_reader = TempUnsafeReadDetector {
+            cx,
+            writes: &collector.writes,
+            reported: HashSet::new(),
+        };
+        unsafe_reader.visit_body(body);
+    }
+}
+
+/// Collects temporary storage write calls (`.set()` on `Temporary`) within a
+/// function body, recording the key snippet and span of each write.
+struct TempWriteCollector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: Vec<(String, rustc_span::Span)>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempWriteCollector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "set"
+            && args.len() >= 2
+            && is_temporary_storage_write(self.cx, expr)
+        {
+            let key_inner = peel_addr_of(&args[0]);
+            if let Some(key_snippet) = snippet_opt(self.cx, key_inner.span) {
+                self.writes.push((key_snippet, expr.span));
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Detects unsafe reads (`.unwrap()` / `.expect()` on `.get()`) of the same
+/// keys previously written to temporary storage in the same function body.
+struct TempUnsafeReadDetector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: &'a [(String, rustc_span::Span)],
+    reported: HashSet<rustc_span::Span>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempUnsafeReadDetector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if ((method_name == "unwrap" && args.is_empty())
+                || (method_name == "expect" && args.len() == 1))
+                && let Some(temp_read) = is_temp_get(self.cx, receiver)
+            {
+                let read_key_inner = peel_addr_of(temp_read);
+                if let Some(read_key_snippet) = snippet_opt(self.cx, read_key_inner.span) {
+                    for &(ref write_key, write_span) in self.writes {
+                        if read_key_snippet == *write_key && !self.reported.contains(&write_span) {
+                            self.reported.insert(write_span);
+                            span_lint_and_help(
+                                self.cx,
+                                TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+                                expr.span,
+                                "unsafe read from temporary storage after a write — temporary \
+                                 entries are permanently deleted when their TTL expires, so \
+                                 this read will panic if the value has expired",
+                                None,
+                                "handle the None case with match, unwrap_or, or \
+                                 unwrap_or_else; or use persistent storage if the data must \
+                                 survive across ledger closes",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Checks whether `expr` is a `set()` call on a `Temporary` storage receiver.
+fn is_temporary_storage_write<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, _, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name != "set" {
+            return false;
+        }
+        let receiver_ty = cx.typeck_results().expr_ty(receiver);
+        let peeled = receiver_ty.peel_refs();
+        if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+            match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Temporary"])
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+/// Checks whether `expr` is a `get()` call on a `Temporary` storage receiver.
+/// Returns `Some(key_expr)` if so.
+fn is_temp_get<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, args, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name == "get" && !args.is_empty() {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled = receiver_ty.peel_refs();
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind()
+                && match_soroban_def_path(
+                    cx,
+                    adt_def.did(),
+                    &["soroban_sdk", "storage", "Temporary"],
+                )
+            {
+                return Some(&args[0]);
+            }
+        }
+    }
+    None
+}
+
+/// Strips any number of leading `AddrOf` wrappers, returning the innermost
+/// expression.  Handles `&key`, `&&key`, etc.
+fn peel_addr_of<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
+    }
+    expr
 }
 
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot

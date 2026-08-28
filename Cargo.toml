@@ -21,5 +21,8 @@ exclude = [
     "tests/corpus/contracts/symbol_key_boundary",
     "tests/corpus/contracts/symbol_key_enum_storage",
     "tests/corpus/contracts/symbol_key_event_topics",
+    "tests/corpus/contracts/memory_payload_serializer",
+    "tests/corpus/contracts/memory_input_decoder",
+    "tests/corpus/contracts/memory_clean_processor",
 ]
 resolver = "2"

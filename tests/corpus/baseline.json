@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1787773179 with 90 findings (17 TP, 73 FP, 81.11% FP rate) across 15 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1787898780 with 98 findings (19 TP, 79 FP, 80.61% FP rate) across 22 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 90,
-    "total_true_positives": 17,
-    "total_false_positives": 73,
-    "false_positive_rate_percent": 81.11
+    "total_findings": 98,
+    "total_true_positives": 19,
+    "total_false_positives": 79,
+    "false_positive_rate_percent": 80.61
   },
   "contracts": {
     "compute_batch_contract_call": {
@@ -77,6 +77,95 @@
           "file": "src/lib.rs",
           "line": 24,
           "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+        }
+      ]
+    },
+    "lifecycle_basic": {
+      "total": 0,
+      "true_positives": [],
+      "false_positives": []
+    },
+    "lifecycle_storage_churn": {
+      "total": 0,
+      "true_positives": [],
+      "false_positives": []
+    },
+    "lifecycle_ttl": {
+      "total": 1,
+      "true_positives": [],
+      "false_positives": [
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 17,
+          "message": "storage write without a corresponding read"
+        }
+      ]
+    },
+    "memory_clean_processor": {
+      "total": 0,
+      "true_positives": [],
+      "false_positives": []
+    },
+    "memory_input_decoder": {
+      "total": 2,
+      "true_positives": [
+        {
+          "lint_name": "symbol_new_for_short_literal",
+          "file": "src/lib.rs",
+          "line": 18,
+          "message": "short symbol literal passed to Symbol::new; use symbol_short! macro instead"
+        }
+      ],
+      "false_positives": [
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 8,
+          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+        }
+      ]
+    },
+    "memory_payload_serializer": {
+      "total": 4,
+      "true_positives": [
+        {
+          "lint_name": "symbol_new_for_short_literal",
+          "file": "src/lib.rs",
+          "line": 23,
+          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
+        }
+      ],
+      "false_positives": [
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 11,
+          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+        },
+        {
+          "lint_name": "soroban_inefficient_bytes_concat",
+          "file": "src/lib.rs",
+          "line": 14,
+          "message": "inefficient Bytes concatenation inside a loop"
+        },
+        {
+          "lint_name": "bytes_append_in_loop",
+          "file": "src/lib.rs",
+          "line": 14,
+          "message": "repeatedly growing SDK container inside a loop"
+        }
+      ]
+    },
+    "negative_control": {
+      "total": 1,
+      "true_positives": [],
+      "false_positives": [
+        {
+          "lint_name": "persistent_read_without_ttl_extension",
+          "file": "src/lib.rs",
+          "line": 36,
+          "message": "persistent storage read without TTL extension — archival cost cliff"
         }
       ]
     },

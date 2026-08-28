@@ -34,7 +34,8 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
-*   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
+ *   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
+ *   **[`string_concat_in_loop`](docs/lints/string_concat_in_loop.md):** Flags `String::append`/`String + String` on a `soroban_sdk::String` inside loops, since each concatenation reallocates and copies the whole accumulated string (O(n²)).
 *   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
 *   **[`crypto_hash_of_constant`](docs/lints/crypto_hash_of_constant.md):** Flags `env.crypto().sha256`/`keccak256` calls whose input is a literal or `const` item, since re-hashing a compile-time constant at runtime is pure wasted host cost — precompute and embed the digest instead.
 *   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
