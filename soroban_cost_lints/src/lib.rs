@@ -1101,7 +1101,8 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 return;
             }
 
-            let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
+            let receiver_snippet =
+                snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
             span_lint_and_sugg(
                 cx,
                 REDUNDANT_ENV_CLONE,
