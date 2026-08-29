@@ -8,6 +8,13 @@
   },
   {
     "category": "StorageOperations",
+    "default_level": "deny",
+    "description": "storage operation inside a nested loop — O(n·m) cost",
+    "docs_path": "docs/lints/nested_loop_storage_access.md",
+    "name": "nested_loop_storage_access"
+  },
+  {
+    "category": "StorageOperations",
     "default_level": "warn",
     "description": "storage operation inside a loop whose operands are provably loop-invariant",
     "docs_path": "docs/lints/loop_invariant_storage_access.md",
@@ -103,6 +110,13 @@
     "description": "storage write without a corresponding read",
     "docs_path": "docs/lints/storage_write_without_read.md",
     "name": "storage_write_without_read"
+  },
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "storage write that blindly overwrites a previously written key without reading it back",
+    "docs_path": "docs/lints/blind_storage_write.md",
+    "name": "blind_storage_write"
   },
   {
     "category": "Memory",
@@ -205,6 +219,13 @@
   {
     "category": "Compute",
     "default_level": "warn",
+    "description": "redundant conversion across the native-Rust/Val boundary",
+    "docs_path": "docs/lints/redundant_val_conversion.md",
+    "name": "redundant_val_conversion"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
@@ -215,5 +236,19 @@
     "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
     "docs_path": "docs/lints/std_collection_in_contract.md",
     "name": "std_collection_in_contract"
+  },
+  {
+    "category": "EntryLifecycle",
+    "default_level": "warn",
+    "description": "temporary storage write followed by an unsafe read that assumes the value persists",
+    "docs_path": "docs/lints/temporary_storage_for_persistent_data.md",
+    "name": "temporary_storage_for_persistent_data"
+  },
+  {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve",
+    "docs_path": "docs/lints/excessive_vec_capacity.md",
+    "name": "excessive_vec_capacity"
   }
 ]

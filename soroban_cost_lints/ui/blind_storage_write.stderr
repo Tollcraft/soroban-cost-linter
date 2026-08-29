@@ -1,0 +1,28 @@
+warning: blind storage write overwrites a previously written key without reading it back
+  --> $DIR/blind_storage_write.rs:56:30
+   |
+LL |     env.storage().instance().set(&1, &3); // Should Warn: blind overwrite
+   |                              ^^^^^^^^^^^
+   |
+   = help: read the previous value (or guard with `.has()`) before overwriting, otherwise the earlier store is silently discarded
+   = note: `#[warn(blind_storage_write)]` on by default
+
+warning: storage write without a corresponding read
+  --> $DIR/blind_storage_write.rs:63:30
+   |
+LL |     env.storage().instance().set(&1, &2); // storage_write_without_read warns
+   |                              ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+   = note: `#[warn(storage_write_without_read)]` on by default
+
+warning: storage write without a corresponding read
+  --> $DIR/blind_storage_write.rs:64:30
+   |
+LL |     env.storage().instance().set(&1, &3); // storage_write_without_read warns
+   |                              ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: 3 warnings emitted
+

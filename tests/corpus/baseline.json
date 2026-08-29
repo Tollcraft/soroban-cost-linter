@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1787866592 with 102 findings (26 TP, 76 FP, 74.51% FP rate) across 22 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1787898780 with 98 findings (19 TP, 79 FP, 80.61% FP rate) across 22 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 102,
-    "total_true_positives": 26,
-    "total_false_positives": 76,
-    "false_positive_rate_percent": 74.51
+    "total_findings": 98,
+    "total_true_positives": 19,
+    "total_false_positives": 79,
+    "false_positive_rate_percent": 80.61
   },
   "contracts": {
     "compute_batch_contract_call": {
@@ -143,12 +143,6 @@
       "total": 4,
       "true_positives": [
         {
-          "lint_name": "soroban_inefficient_bytes_concat",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "inefficient Bytes concatenation inside a loop"
-        },
-        {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
           "line": 23,
@@ -163,6 +157,12 @@
           "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
         },
         {
+          "lint_name": "soroban_inefficient_bytes_concat",
+          "file": "src/lib.rs",
+          "line": 14,
+          "message": "inefficient Bytes concatenation inside a loop"
+        },
+        {
           "lint_name": "bytes_append_in_loop",
           "file": "src/lib.rs",
           "line": 14,
@@ -172,15 +172,15 @@
     },
     "negative_control": {
       "total": 1,
-      "true_positives": [
+      "true_positives": [],
+      "false_positives": [
         {
           "lint_name": "persistent_read_without_ttl_extension",
           "file": "src/lib.rs",
           "line": 36,
           "message": "persistent storage read without TTL extension — archival cost cliff"
         }
-      ],
-      "false_positives": []
+      ]
     },
     "storage_iter_closure": {
       "total": 3,

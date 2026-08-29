@@ -1,6 +1,6 @@
-// Note: at this point four of the lints referenced in
-// `#[allow(...)]` markers below (`excessive_vec_capacity`,
-// `expensive_crypto_in_loop`, `redundant_storage_read`,
+// Note: at this point three of the lints referenced in
+// `#[allow(...)]` markers below (`expensive_crypto_in_loop`,
+// `redundant_storage_read`,
 // `unnecessary_vec_allocation`) are not yet implemented — they exist as
 // community-proposed follow-ups tracked in GitHub issues #59/#60/#61/#62.
 // The unknown-lint allow forward-suppresses rustc warnings on those markers
@@ -153,6 +153,7 @@ pub mod soroban_sdk {
         pub fn new() -> Vec { Vec }
         pub fn with_capacity(_n: u32) -> Vec { Vec }
         pub fn push_back(&mut self, _v: i32) {}
+        pub fn reserve(&mut self, _additional: u32) {}
     }
 
     // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
@@ -525,14 +526,14 @@ fn allowed_map_insert_in_loop(env: Env) {
 
 fn bad_invoke_contract_in_for_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     for _ in 0..10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
     }
 }
 
 fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     let mut i = 0;
     while i < 10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
         i += 1;
     }
 }
@@ -659,25 +660,41 @@ fn allowed_signature_verification_in_loop(env: Env) {
 // Negative (good): request no / little capacity up front and let growth
 // happen naturally, or use Vec::new() for an empty container.
 
-#[allow(excessive_vec_capacity)]
+// Should Warn — wildly excessive capacity
 fn bad_excessive_vec_capacity() {
-    let _v = Vec::with_capacity(1_000_000); // Should Warn — wildly excessive capacity
+    let _v = Vec::with_capacity(1_000_000); // above threshold
+}
+
+// Should Warn — excessive reserve
+fn bad_excessive_reserve() {
+    let mut v = Vec::new();
+    v.reserve(500_000); // above threshold
+}
+
+// Good — below threshold, no warning
+fn good_small_capacity() {
+    let _v = Vec::with_capacity(100); // below threshold
+}
+
+// Good — runtime-derived capacity, no warning
+fn good_runtime_capacity(n: u32) {
+    let _v = Vec::with_capacity(n); // runtime value, ignored
 }
 fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     loop {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
         break;
     }
 }
 
 fn good_invoke_contract_outside_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
-    let _: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
+    let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
 }
 
 #[allow(contract_call_in_loop)]
 fn allowed_invoke_contract_in_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     for _ in 0..10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
     }
 }
 

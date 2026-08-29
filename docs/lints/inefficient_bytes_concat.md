@@ -47,3 +47,7 @@ fn build_message(env: Env) {
 ## Fix
 
 Replace `+` concatenation of `Bytes` values with a `Vec<u8>` buffer that accumulates bytes, then convert to `Bytes` once after the loop using `Bytes::from`.
+
+## Relationship to other lints
+
+Note that this lint (`inefficient_bytes_concat`) specifically flags the binary `+` operator (`b1 + b2`). A related lint, `soroban_inefficient_bytes_concat`, flags the `.push_back()` and `.append()` method calls on `Bytes`. They detect genuinely different code shapes, but both enforce the same best practice: accumulate bytes in a `Vec<u8>` instead of using host objects in a loop.

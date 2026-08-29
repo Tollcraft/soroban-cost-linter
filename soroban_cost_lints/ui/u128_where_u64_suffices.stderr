@@ -1,0 +1,14 @@
+error: 128-bit arithmetic used where 64 bits would suffice; wasm32 is a 32-bit target and emulated 128-bit operations are significantly more expensive.
+  --> $DIR/u128_where_u64_suffices.rs:5:9
+   |
+ 5 |     i = i + 1;
+   |         ^^^^^
+
+error: 128-bit arithmetic used where 64 bits would suffice; wasm32 is a 32-bit target and emulated 128-bit operations are significantly more expensive.
+  --> $DIR/u128_where_u64_suffices.rs:10:14
+   |
+10 |     let _y = x * 2;
+   |              ^^^^^
+
+error: aborting due to 2 previous errors
+

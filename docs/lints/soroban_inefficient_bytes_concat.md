@@ -43,3 +43,7 @@ let bytes = Bytes::from_slice(&env, &v); // single host call
 - Fires when the call is inside any loop body (`for`, `while`, `loop`).
 - Does not fire on `Vec<u8>` operations — only Soroban `Bytes`.
 - The `#[allow(soroban_inefficient_bytes_concat)]` attribute can suppress the lint.
+
+## Relationship to other lints
+
+Note that this lint (`soroban_inefficient_bytes_concat`) specifically flags the `.push_back()` and `.append()` method calls. A related lint, `inefficient_bytes_concat`, flags the binary `+` operator (`b1 + b2`). They detect genuinely different code shapes, but both enforce the same best practice: accumulate bytes in a `Vec<u8>` instead of using host objects in a loop.

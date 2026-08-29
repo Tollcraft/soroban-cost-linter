@@ -1,0 +1,35 @@
+warning: repeatedly copying a sub-slice of `Bytes` inside a loop
+  --> $DIR/bytes_slice_copy_in_loop.rs:32:22
+   |
+LL |         let _chunk = payload.slice(i, i + 4); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: prefer index-based access (e.g. `Bytes::get`) for per-byte reads, or take the full slice once and iterate it outside the loop; only slice once, not on every iteration
+   = note: `#[warn(bytes_slice_copy_in_loop)]` on by default
+
+warning: repeatedly copying a sub-slice of `Bytes` inside a loop
+  --> $DIR/bytes_slice_copy_in_loop.rs:40:22
+   |
+LL |         let _chunk = payload.slice(i, i + 4); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: prefer index-based access (e.g. `Bytes::get`) for per-byte reads, or take the full slice once and iterate it outside the loop; only slice once, not on every iteration
+
+warning: repeatedly copying a sub-slice of `Bytes` inside a loop
+  --> $DIR/bytes_slice_copy_in_loop.rs:49:9
+   |
+LL |         payload.copy_to_slice(&mut buf); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: prefer index-based access (e.g. `Bytes::get`) for per-byte reads, or take the full slice once and iterate it outside the loop; only slice once, not on every iteration
+
+warning: repeatedly copying a sub-slice of `Bytes` inside a loop
+  --> $DIR/bytes_slice_copy_in_loop.rs:57:9
+   |
+LL |         buf.copy_from_slice(&[0u8, 1, 2, 3]); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: prefer index-based access (e.g. `Bytes::get`) for per-byte reads, or take the full slice once and iterate it outside the loop; only slice once, not on every iteration
+
+warning: 4 warnings emitted
+

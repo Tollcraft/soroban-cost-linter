@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Thirteen lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Thirty lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -42,6 +42,7 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
 *   **[`instance_storage_for_unbounded_data`](docs/lints/instance_storage_for_unbounded_data.md):** Flags `env.storage().instance().set(...)` calls where the value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten in full on every contract invocation.
 *   **[`formatted_panic_payload`](docs/lints/formatted_panic_payload.md):** Flags `format!`, a formatted `panic!`, or `.expect(&format!(..))`, all of which pull `core::fmt` into the contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+*   **[`val_conversion_chain`](docs/lints/val_conversion_chain.md):** Flags a chain of three or more `soroban_sdk` conversions (`into_val`/`try_into_val`/`from_val`/`try_from_val`) that bounce the same local value through `Val` across a `let` sequence, where converting directly to the needed shape would cost a single host call.
 
 ## How it Fits into Tollcraft
 
