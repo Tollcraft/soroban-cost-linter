@@ -8,6 +8,13 @@
   },
   {
     "category": "StorageOperations",
+    "default_level": "deny",
+    "description": "storage operation inside a nested loop — O(n·m) cost",
+    "docs_path": "docs/lints/nested_loop_storage_access.md",
+    "name": "nested_loop_storage_access"
+  },
+  {
+    "category": "StorageOperations",
     "default_level": "warn",
     "description": "storage operation inside a loop whose operands are provably loop-invariant",
     "docs_path": "docs/lints/loop_invariant_storage_access.md",
@@ -201,6 +208,13 @@
     "description": "unwrap or expect directly on a storage read — panics on a missing or expired key",
     "docs_path": "docs/lints/unwrap_on_storage_get.md",
     "name": "unwrap_on_storage_get"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "redundant conversion across the native-Rust/Val boundary",
+    "docs_path": "docs/lints/redundant_val_conversion.md",
+    "name": "redundant_val_conversion"
   },
   {
     "category": "Compute",

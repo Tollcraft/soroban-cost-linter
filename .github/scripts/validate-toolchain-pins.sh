@@ -73,6 +73,9 @@ else
       COMMIT_DATE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['commit']['committer']['date'].split('T')[0])" 2>/dev/null)
     fi
   fi
+  if [ -z "$COMMIT_DATE" ] || [ "$COMMIT_DATE" = "null" ]; then
+    COMMIT_DATE=$(echo "$RESPONSE" | sed -n '/"committer": {/,/}/ s/.*"date": "\([^"]*\)".*/\1/p' | head -n 1 | cut -d'T' -f1)
+  fi
 
   if [ -z "$COMMIT_DATE" ] || [ "$COMMIT_DATE" = "null" ]; then
     echo "::error file=soroban_cost_lints/Cargo.toml::Invalid or unreachable clippy_utils rev ${CLIPPY_REV}. Update the rev in soroban_cost_lints/Cargo.toml."

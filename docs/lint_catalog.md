@@ -9,6 +9,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | Lint | Default Severity | Description | Docs |
 |------|------------------|-------------|------|
 | `soroban_storage_in_loop` | warn | storage operations inside a loop | [Link](lints/soroban_storage_in_loop.md) |
+| `nested_loop_storage_access` | deny | storage operation inside a nested loop — O(n·m) cost | [Link](lints/nested_loop_storage_access.md) |
 | `loop_invariant_storage_access` | warn | storage operation inside a loop whose operands are provably loop-invariant | [Link](lints/loop_invariant_storage_access.md) |
 | `soroban_inefficient_bytes_concat` | warn | inefficient Bytes concatenation inside a loop | [Link](lints/soroban_inefficient_bytes_concat.md) |
 | `soroban_redundant_storage_read` | warn | multiple sequential reads of the same storage key without modification | [Link](lints/soroban_redundant_storage_read.md) |
@@ -37,6 +38,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
 | `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
+| `redundant_val_conversion` | warn | redundant conversion across the native-Rust/Val boundary | [Link](lints/redundant_val_conversion.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
 | `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
 | `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |

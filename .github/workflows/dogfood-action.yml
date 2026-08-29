@@ -5,9 +5,21 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # The real corpus under tests/corpus/contracts/ is 15 independent Soroban
+  # workspaces. Running the composite action against each one means a full
+  # Rust toolchain install, a `cargo install` of dylint, and an SDK build per
+  # contract -- too heavy for every-PR execution. It is therefore gated to a
+  # nightly schedule (and manual dispatch) rather than running on every push.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
 
 jobs:
-  dogfood:
+  # Lightweight, zero-findings path. This genuinely different test proves the
+  # action starts, runs, and exits cleanly against code that produces no
+  # findings. It stays on every PR because it is cheap.
+  dogfood-smoke:
+    name: Dogfood action (zero-findings fixture)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -16,3 +28,103 @@ jobs:
         with:
           working-directory: soroban_cost_lints/test_fixtures/real_sdk
           config: budget.toml
+
+  # Discover the corpus contracts dynamically so the job stays correct as new
+  # contracts land (they are excluded from the workspace, so they are not
+  # enumerated anywhere else). Other PRs add contracts; this job must not list
+  # them by hand.
+  discover-corpus:
+    name: Discover corpus contracts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    outputs:
+      contracts: ${{ steps.list.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        shell: bash
+        run: |
+          cd tests/corpus/contracts
+          names=()
+          for d in */; do
+            if [ -f "$d/Cargo.toml" ]; then
+              names+=("${d%/}")
+            fi
+          done
+          printf '%s\n' "${names[@]}" \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))' \
+            > contracts.json
+          cat contracts.json
+          echo "contracts=$(cat contracts.json)" >> "$GITHUB_OUTPUT"
+
+  # Heavy, real-findings path. The composite action is exercised against each
+  # corpus contract, and the run is asserted against tests/corpus/baseline.json
+  # (the same source of truth the `real_world_corpus` test reuses) rather than a
+  # second hand-kept list.
+  dogfood-corpus:
+    name: Dogfood action (corpus contract ${{ matrix.contract }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: discover-corpus
+    strategy:
+      fail-fast: false
+      matrix:
+        contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run composite action against corpus contract
+        uses: ./
+        with:
+          working-directory: tests/corpus/contracts/${{ matrix.contract }}
+
+      - name: Assert findings against baseline
+        shell: bash
+        env:
+          CONTRACT: ${{ matrix.contract }}
+          REPO: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          BIN="$REPO/target/release/cargo-cost-lint"
+          export DYLINT_LIBRARY_PATH="$REPO/target/release"
+          # The lint library and CLI are already built by the composite action
+          # above into the default target dir.
+
+          cd "$REPO/tests/corpus/contracts/$CONTRACT"
+
+          # Re-run the same binary the action builds, in JSON so we can assert
+          # on the result. Corpus lints default to `warn`, so this exits 0.
+          RAW="$("$BIN" --format json 2>/dev/null)" || true
+
+          mapfile -t LINES < <(printf '%s\n' "$RAW" | grep -v '^$')
+          CURRENT_TOTAL=${#LINES[@]}
+
+          # Mirror real_world_corpus.rs: lints with no known false-positive
+          # pattern are always treated as true positives.
+          ALWAYS_TP=" redundant_env_clone symbol_new_for_short_literal inefficient_bytes_concat map_insert_in_loop unnecessary_host_function_call unwrap_on_storage_get "
+          CURRENT_FP=0
+          for line in "${LINES[@]}"; do
+            name="$(printf '%s' "$line" | jq -r '.name')"
+            if [[ " $ALWAYS_TP " != *" $name "* ]]; then
+              CURRENT_FP=$((CURRENT_FP + 1))
+            fi
+          done
+
+          BASE_TOTAL="$(jq -r --arg c "$CONTRACT" '.contracts[$c].total' "$REPO/tests/corpus/baseline.json")"
+          BASE_FP="$(jq -r --arg c "$CONTRACT" '.contracts[$c].false_positives | length' "$REPO/tests/corpus/baseline.json")"
+
+          echo "Contract $CONTRACT: current total=$CURRENT_TOTAL (baseline $BASE_TOTAL), current FP=$CURRENT_FP (baseline $BASE_FP)"
+
+          if [ "$CURRENT_TOTAL" -eq 0 ]; then
+            echo "::error::Expected corpus contract $CONTRACT to produce findings, got 0"
+            exit 1
+          fi
+
+          if [ "$BASE_TOTAL" = "null" ]; then
+            echo "::warning::No baseline entry for $CONTRACT yet; skipping FP regression check (add it via BLESS and commit baseline.json)"
+          elif [ "$CURRENT_FP" -gt "$BASE_FP" ]; then
+            echo "::error::False-positive count for $CONTRACT increased: $CURRENT_FP (baseline $BASE_FP)"
+            exit 1
+          fi
+
+          echo "OK: $CONTRACT findings are consistent with baseline"

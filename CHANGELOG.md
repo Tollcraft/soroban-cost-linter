@@ -32,6 +32,7 @@ and this project adheres to Semantic Versioning.
 - New lint `persistent_read_without_ttl_extension` detecting reads of persistent storage without a TTL extension, avoiding the archival cost cliff.
 - New lint `unnecessary_string_to_bytes` detecting unnecessary `String` to `Bytes` conversions.
 - New lint `unbounded_recursion` detecting direct and mutual recursion whose depth is driven by caller-supplied input (e.g. recursion over a caller-supplied `Vec`/`&[T]` length), reporting the full call cycle (`process -> process_child -> process`).
+- New lint `cross_contract_result_discarded` detecting `Env::invoke_contract` calls whose non-unit return value is discarded (bound to `_` or dropped as a bare statement), since a cross-contract invocation pays for a full host dispatch, metered execution, and the return value's conversion back across the boundary.
 
 ### Changed
 

@@ -301,8 +301,8 @@ LL |         map.insert(&i, &1); // Good (allowed)
 warning: cross-contract call inside a loop
   --> $DIR/main.rs:529:22
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
    = note: `#[warn(contract_call_in_loop)]` on by default
@@ -310,8 +310,8 @@ LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
 warning: cross-contract call inside a loop
   --> $DIR/main.rs:536:22
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 
@@ -424,8 +424,8 @@ LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
 warning: cross-contract call inside a loop
   --> $DIR/main.rs:685:22
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 

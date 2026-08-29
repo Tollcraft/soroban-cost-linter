@@ -1,0 +1,19 @@
+warning: cross-contract call result discarded
+  --> $DIR/cross_contract_result_discarded.rs:30:13
+   |
+LL |     let _ = env.invoke_contract::<i32>(&addr, &func, ()); //~ WARNING cross-contract call result discarded
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: a cross-contract invocation pays for a full host dispatch, its own metered execution, and converting the return value back across the boundary; if the call is made for its side effect and the return value is not needed, bind it to a named variable (e.g. `let _result = ...`) or silence this lint with `#[allow(cross_contract_result_discarded)]`
+   = note: `#[warn(cross_contract_result_discarded)]` on by default
+
+warning: cross-contract call result discarded
+  --> $DIR/cross_contract_result_discarded.rs:35:5
+   |
+LL |     env.invoke_contract::<i32>(&addr, &func, ()); //~ WARNING cross-contract call result discarded
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: a cross-contract invocation pays for a full host dispatch, its own metered execution, and converting the return value back across the boundary; if the call is made for its side effect and the return value is not needed, bind it to a named variable (e.g. `let _result = ...`) or silence this lint with `#[allow(cross_contract_result_discarded)]`
+
+warning: 2 warnings emitted
+

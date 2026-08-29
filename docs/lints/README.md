@@ -13,6 +13,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `warn` | storage operations inside a loop |
+| [`nested_loop_storage_access`](nested_loop_storage_access.md) | `deny` | storage operation inside a nested loop — O(n·m) cost |
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
@@ -34,6 +35,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
 | [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
+| [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | redundant conversion across the native-Rust/Val boundary |
 | [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 
 ## Memory
@@ -66,6 +68,12 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
+
+## Other
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).

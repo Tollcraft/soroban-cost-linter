@@ -526,14 +526,14 @@ fn allowed_map_insert_in_loop(env: Env) {
 
 fn bad_invoke_contract_in_for_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     for _ in 0..10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
     }
 }
 
 fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     let mut i = 0;
     while i < 10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
         i += 1;
     }
 }
@@ -682,19 +682,19 @@ fn good_runtime_capacity(n: u32) {
 }
 fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     loop {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
         break;
     }
 }
 
 fn good_invoke_contract_outside_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
-    let _: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
+    let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
 }
 
 #[allow(contract_call_in_loop)]
 fn allowed_invoke_contract_in_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
     for _ in 0..10 {
-        let _: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
     }
 }
 
