@@ -20,11 +20,22 @@ pub struct BaselineEntry {
     pub false_positives: Vec<Finding>,
 }
 
+/// Summary statistics for corpus baseline.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct BaselineSummary {
+    pub total_findings: usize,
+    pub total_true_positives: usize,
+    pub total_false_positives: usize,
+    pub false_positive_rate_percent: f64,
+}
+
 /// Full baseline file format.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Baseline {
     pub version: u32,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<BaselineSummary>,
     pub contracts: BTreeMap<String, BaselineEntry>,
 }
 
@@ -34,8 +45,12 @@ const ALWAYS_TP: &[&str] = &[
     "redundant_env_clone",
     "symbol_new_for_short_literal",
     "inefficient_bytes_concat",
+    "soroban_inefficient_bytes_concat",
+    "vec_index_in_loop",
     "map_insert_in_loop",
     "unnecessary_host_function_call",
+    "unwrap_on_storage_get",
+    "persistent_read_without_ttl_extension",
 ];
 
 fn workspace_root() -> PathBuf {
@@ -179,9 +194,95 @@ fn load_baseline() -> Baseline {
         Baseline {
             version: 1,
             description: String::new(),
+            summary: None,
             contracts: BTreeMap::new(),
         }
     }
+}
+
+fn compute_summary(all_findings: &BTreeMap<String, Vec<Finding>>) -> BaselineSummary {
+    let mut total_tp = 0usize;
+    let mut total_fp = 0usize;
+
+    for findings in all_findings.values() {
+        let (tps, fps) = triage_findings(findings);
+        total_tp += tps.len();
+        total_fp += fps.len();
+    }
+
+    let total = total_tp + total_fp;
+    let fp_rate = if total > 0 {
+        ((total_fp as f64 / total as f64) * 10000.0).round() / 100.0
+    } else {
+        0.0
+    };
+
+    BaselineSummary {
+        total_findings: total,
+        total_true_positives: total_tp,
+        total_false_positives: total_fp,
+        false_positive_rate_percent: fp_rate,
+    }
+}
+
+fn print_corpus_summary(all_findings: &BTreeMap<String, Vec<Finding>>) {
+    let mut total_tp = 0usize;
+    let mut total_fp = 0usize;
+    let mut per_lint_stats: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+
+    for findings in all_findings.values() {
+        let (tps, fps) = triage_findings(findings);
+        total_tp += tps.len();
+        total_fp += fps.len();
+        for tp in &tps {
+            let entry = per_lint_stats.entry(tp.lint_name.clone()).or_insert((0, 0));
+            entry.0 += 1;
+        }
+        for fp in &fps {
+            let entry = per_lint_stats.entry(fp.lint_name.clone()).or_insert((0, 0));
+            entry.1 += 1;
+        }
+    }
+
+    let total = total_tp + total_fp;
+    let fp_pct = if total > 0 {
+        (total_fp as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let tp_pct = if total > 0 {
+        (total_tp as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    eprintln!("\n================================================================================");
+    eprintln!("Corpus False-Positive vs True-Positive Summary:");
+    eprintln!("  Total Findings:       {}", total);
+    eprintln!("  True Positives (TP):  {} ({:.2}%)", total_tp, tp_pct);
+    eprintln!("  False Positives (FP): {} ({:.2}%)", total_fp, fp_pct);
+    eprintln!("--------------------------------------------------------------------------------");
+    eprintln!(
+        "{:<40} {:>6} {:>6} {:>8} {:>8}",
+        "Lint Name", "TP", "FP", "Total", "% FP"
+    );
+    eprintln!(
+        "{:<40} {:>6} {:>6} {:>8} {:>8}",
+        "---------", "--", "--", "-----", "----"
+    );
+    for (lint_name, (tp, fp)) in &per_lint_stats {
+        let lint_total = tp + fp;
+        let lint_fp_pct = if lint_total > 0 {
+            (*fp as f64 / lint_total as f64) * 100.0
+        } else {
+            0.0
+        };
+        eprintln!(
+            "{:<40} {:>6} {:>6} {:>8} {:>7.1}%",
+            lint_name, tp, fp, lint_total, lint_fp_pct
+        );
+    }
+    eprintln!("================================================================================\n");
 }
 
 fn save_baseline(baseline: &Baseline) {
@@ -226,17 +327,24 @@ fn real_world_corpus_triage() {
         entries.len()
     );
 
+    print_corpus_summary(&all_findings);
+
     let baseline = load_baseline();
 
     if bless {
+        let summary = compute_summary(&all_findings);
         let mut new_baseline = Baseline {
             version: 1,
             description: format!(
-                "Baseline lint findings for real-world corpus. Generated on {} with {} findings across {} contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+                "Baseline lint findings for real-world corpus. Generated on {} with {} findings ({} TP, {} FP, {:.2}% FP rate) across {} contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
                 now_stamp(),
                 grand_total,
+                summary.total_true_positives,
+                summary.total_false_positives,
+                summary.false_positive_rate_percent,
                 entries.len()
             ),
+            summary: Some(summary),
             contracts: BTreeMap::new(),
         };
 

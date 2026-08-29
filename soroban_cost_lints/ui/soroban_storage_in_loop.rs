@@ -68,6 +68,7 @@ fn bad_storage_in_loop_loop(env: Env) {
     }
 }
 
+#[allow(nested_loop_storage_access)]
 fn bad_storage_in_nested_loop(env: Env) {
     for i in 0..5 {
         for _ in 0..5 {

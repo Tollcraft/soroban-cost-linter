@@ -1,0 +1,36 @@
+warning: cross-contract call inside a loop
+  --> $DIR/contract_call_in_loop.rs:46:21
+   |
+LL |         let _: () = env.invoke_contract(&addr, &sym, ()); // Should Warn
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+   = note: `#[warn(contract_call_in_loop)]` on by default
+
+warning: cross-contract call inside a loop
+  --> $DIR/contract_call_in_loop.rs:55:21
+   |
+LL |         let _: () = env.invoke_contract(&addr, &sym, ()); // Should Warn
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: cross-contract call inside a loop
+  --> $DIR/contract_call_in_loop.rs:102:21
+   |
+LL |         let _: () = env.invoke_contract(&addr, &sym, ()); // Should Warn (contract_call_in_loop)
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: use of Host object inside a loop
+  --> $DIR/contract_call_in_loop.rs:103:9
+   |
+LL |         env.host().invoke_contract(); // Should Warn (host_in_loop)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider moving the Host usage outside the loop if possible
+   = note: `#[warn(host_in_loop)]` on by default
+
+warning: 4 warnings emitted
+

@@ -1,0 +1,18 @@
+warning: excessive pre-allocation capacity in Soroban Vec
+  --> $DIR/excessive_vec_capacity.rs:22:14
+   |
+LL |     let _v = Vec::with_capacity(1_000_000); //~ ERROR excessive pre-allocation capacity in Soroban Vec
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: reduce the capacity: `Vec::new()`
+   |
+   = note: `#[warn(excessive_vec_capacity)]` on by default
+
+warning: excessive pre-allocation capacity in Soroban Vec
+  --> $DIR/excessive_vec_capacity.rs:28:5
+   |
+LL |     v.reserve(500_000); //~ ERROR excessive pre-allocation capacity in Soroban Vec
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reducing the reserve amount or using Vec::new()
+
+warning: 2 warnings emitted
+

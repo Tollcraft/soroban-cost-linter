@@ -1,6 +1,23 @@
 # Integration Guide
 
-`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.## Local Configuration (`budget.toml`)
+`soroban-cost-linter` integrates directly into your workspace and CI/CD pipelines.
+
+## Colour Control
+
+`soroban-cost-linter` forwards rustc's own coloured diagnostics to the terminal.
+You can control this behaviour with the `--color` flag or the `NO_COLOR`
+environment variable.
+
+| Scenario | Result |
+|---|---|
+| `cargo cost-lint` (no flags) | Colours when stdout is a terminal, none otherwise |
+| `cargo cost-lint --color always` | Colours always, even when piped |
+| `cargo cost-lint --color never` | No colours ever |
+| `NO_COLOR=1 cargo cost-lint` | No colours (same as `--color never`) |
+| `NO_COLOR=1 cargo cost-lint --color always` | Colours (`--color` takes precedence) |
+
+The [NO_COLOR](https://no-color.org/) convention is respected: any non-empty
+value forces uncoloured output unless `--color` is passed explicitly.
 
 ## Local Configuration (`budget.toml`)
 
@@ -87,6 +104,7 @@ Each key under `[lints]` must match a lint name **exactly** as shown in the comp
 | `unnecessary_host_function_call`    | `warn`        |
 | `symbol_new_for_short_literal`      | `warn`        |
 | `bytes_append_in_loop`              | `warn`        |
+| `string_concat_in_loop`            | `warn`        |
 | `storage_write_without_read`        | `warn`        |
 | `inefficient_bytes_concat`          | `warn`        |
 | `map_insert_in_loop`                | `warn`        |
@@ -236,7 +254,24 @@ The action defaults to the toolchain that matches the release. Override it only 
 | `args` | No | `''` | Extra arguments forwarded to `cargo cost-lint` |
 | `working-directory` | No | `'.'` | Directory containing the Soroban workspace |
 
-## JSON Output and CI Annotations
+## GitHub Actions Annotations (`--format github`)
+
+Pass `--format github` to output GitHub Actions workflow commands directly. Findings will appear as inline PR annotations on the Files Changed diff and Checks interface without requiring external tools like `jq`.
+
+```bash
+cargo cost-lint --format github
+```
+
+### Annotation format and severity mapping
+
+- `deny` lints emit `::error file=…,line=…,col=…::message`
+- `warn` lints emit `::warning file=…,line=…,col=…::message`
+
+File paths are output relative to the repository working directory, and special characters (`%`, `\r`, `\n`, `:`, `,`) are escaped per GitHub workflow command specifications so multi-line diagnostic messages and diagnostics containing colons render cleanly in GitHub's UI.
+
+The composite action (`action.yml`) uses `--format github` by default.
+
+## JSON Output (`--format json`)
 
 For machine-readable output, pass `--format json`. `cargo cost-lint` will emit JSON lines (NDJSON) detailing each lint finding. The exit code remains non-zero if a `deny` level lint fires.
 
@@ -258,18 +293,3 @@ Each line of stdout is a JSON object with the following schema:
 }
 ```
 
-### GitHub Actions Annotations Example
-You can pipe the JSON output into a tool like `jq` to create GitHub annotations (which show up directly on your PR's Files Changed tab).
-
-```yaml
-      - uses: Tollcraft/soroban-cost-linter@v1
-        with:
-          args: '--format json'
-      - name: Create GitHub annotations
-        if: always()
-        run: |
-          # If you captured the JSON output to a file, parse it:
-          # cargo cost-lint --format json > lint-results.json
-          # jq -r '. | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"' lint-results.json
-```
-*(Note: If the linter returns a non-zero exit code due to a `deny` lint, the step will still fail correctly in Actions).*

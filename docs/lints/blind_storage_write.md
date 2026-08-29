@@ -1,82 +1,59 @@
+---
+description: Blind storage write — overwrite of a previously written key without reading it back
+sidebar_position: 5
+---
+
 # `blind_storage_write`
 
-**Default Severity:** `warn`
-
-**Category:** Storage Operations
+| Default Severity | Category     |
+| ---------------- | ------------ |
+| `warn`           | StorageOperations |
 
 ## What it does
 
-Detects a storage write (`.set()`) on a Soroban storage bucket (`Instance`, `Persistent`, or `Temporary`) when the same key has not been read (via `.get()`, `.try_get()`, `.has()`, `.remove()`, or `.update()`) anywhere in the same function.
+Flags `set` calls on a storage accessor (`instance`, `persistent`, `temporary`) that overwrite a key which was **already written earlier in the same function**, when the code in between never read that key's value back. The overwrite silently discards the previous store.
 
-A HIR-level walk of the function body tracks which `(bucket, key)` pairs have been observed by a non-write call, and flags each `.set()` whose key is unknown.
+This lint is distinct from [`storage_write_without_read`](storage_write_without_read.md): that lint fires when a key is **never** read anywhere in the function (the written value is unused), whereas `blind_storage_write` fires only when the key **is** read somewhere in the function — so the write is plausibly meaningful — but this specific overwrite happens without consulting the prior value.
 
-## Why is this bad?
+## Why is this bad
 
-{% hint style="danger" %}
-Soroban storage writes are **the most expensive ledger operation**. A blind write — one that has not been preceded by a read on the same key — risks two failure modes that cost real money:
-
-1. **Silent overwrite.** If the contract is the only writer, an unexamined `.set()` can overwrite existing data (counter increments, accumulated state, balances) without the contract noticing. The state change is committed; nothing the user or the contract learns afterwards will reveal the data loss.
-2. **Key collisions.** Without a prior read, the contract cannot distinguish between "fresh key" and "reuse of an already-populated key by another path". A name collision is a contract bug that is **structurally undetectable from tests alone** unless the test seeds both writes.
-
-A read-before-write pattern makes both failure modes surface at compile-time as intentional choices, not silent regressions.
-{% endhint %}
+Each `set` pays a Soroban storage write fee and consumes CPU/memory budget. When you write a key, then write it again without having read the first value, the first write was wasted: its result is discarded before anything could observe it. This is a classic "blind overwrite" that usually indicates either dead work or a missing read (e.g. you meant to update a derived value based on the existing one).
 
 ## Example
 
+**Bad** — writing the same key twice in one function without reading it back between writes:
+
 ```rust
-// ❌ Bad: a storage write with no preceding read of the same key
-fn record_total(env: Env, total: u32) {
-    env.storage()
-        .persistent()
-        .set(&"total", &total);
+// ❌ Triggers: blind_storage_write
+fn refresh(env: Env, key: &str) {
+    let previous: Option<i32> = env.storage().instance().get(key); // read happens elsewhere
+    env.storage().instance().set(key, &1);
+    // ... later, blind overwrite: the earlier `set` is discarded ...
+    env.storage().instance().set(key, &2);
 }
 ```
 
-## Suggested Fix
-
-{% hint style="success" %}
-Read the key first with `.get()`, `.has()`, `.try_get()`, `.remove()`, or `.update()`, and only write when the contract has intentionally inspected the existing state.
-{% endhint %}
+**Good** — read the value back immediately before overwriting so the write is informed:
 
 ```rust
-// ✅ Good: explicitly read the existing value before deciding to write
-fn record_total(env: Env, total: u32) {
-    let prior: Option<u32> = env.storage().persistent().get(&"total");
-    if prior.is_some() {
-        env.storage()
-            .persistent()
-            .set(&"total", &total);
-    }
+// ✅ Fixed: the second write consults the current value
+fn refresh(env: Env, key: &str) {
+    let previous: Option<i32> = env.storage().instance().get(key);
+    env.storage().instance().set(key, &1);
+    let current: Option<i32> = env.storage().instance().get(key); // informed overwrite
+    env.storage().instance().set(key, &compute_next(current));
 }
 ```
 
-## Non-Flagged Cases
-
-The lint does **not** trigger when:
-
-- A `.get()`, `.try_get()`, `.has()`, `.remove()`, or `.update()` call on the same storage bucket and with the same key appears anywhere in the same function body.
-- The key expression cannot be safely compared (complex expressions whose source text we cannot match literally — we conservatively assume a read occurred).
-- The write targets a different storage bucket than the read (e.g., a read on `Instance` does **not** authorise a write on `Persistent` for the same textual key).
-- The function is annotated with `#[allow(blind_storage_write)]`.
-
-## HIR-Level Limitations
-
-The lint performs a single HIR-level walk of each function body, so reads that happen in a **different** function — for example, a read performed inside a helper that the current function calls — are **not** tracked. If your contract relies on a helper to check the key first, suppress the lint at the call site with `#[allow(blind_storage_write)]` (or use a `budget.toml` allow). Macro-expanded reads and reads inside closures invoked from the function are likewise not visible to this lint.
-
-## Severity & Suppression
-
-Default severity is `warn`. Adjust per-workspace via `budget.toml`:
-
-```toml
-[lints]
-blind_storage_write = "deny"   # or "allow", "warn"
-```
-
-Suppress a single function with the standard Rust attribute:
+**Also fine** — initialising a brand-new key with a single `set` is never flagged (there is no prior write to discard):
 
 ```rust
-#[allow(blind_storage_write)]
-fn initialise_default_state(env: Env) {
-    env.storage().instance().set(&"total", &0u32);
+// ✅ No warning: first/only write to a new key
+fn init(env: Env, key: &str) {
+    env.storage().instance().set(key, &1);
 }
 ```
+
+## Fix
+
+Before overwriting a key that you have already written in the same function, read its current value (via `get`/`try_get`/`has`) so the new value derives from it. If the prior write is genuinely dead, remove it instead of overwriting.

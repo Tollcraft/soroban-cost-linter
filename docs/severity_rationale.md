@@ -119,6 +119,4 @@ This is a deliberately narrow exception. If a future lint catches something that
 
 ---
 
-## Discrepancy Note
-
-The [Lint Catalog](lint_catalog.md) currently lists `soroban_storage_in_loop` as `warn`. This is incorrect — the actual default in `declare_lint!` is `Deny`. That catalog is being brought under the doc generator tracked separately; this page reflects the source-of-truth defaults from the code.
+The [Lint Catalog](lint_catalog.md) is generated directly from the source `declare_lint!` definitions via `tools/generate-lint-docs` and reflects exact default severities (such as `soroban_storage_in_loop` defaulting to `deny`).

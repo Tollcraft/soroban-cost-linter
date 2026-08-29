@@ -1,0 +1,27 @@
+warning: use of Host object inside a loop
+  --> $DIR/host_in_loop.rs:29:9
+   |
+LL |         env.host().invoke_contract(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider moving the Host usage outside the loop if possible
+   = note: `#[warn(host_in_loop)]` on by default
+
+warning: use of Host object inside a loop
+  --> $DIR/host_in_loop.rs:36:9
+   |
+LL |         env.host().budget_cloned(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider moving the Host usage outside the loop if possible
+
+warning: use of Host object inside a loop
+  --> $DIR/host_in_loop.rs:43:9
+   |
+LL |         env.host().invoke_contract(); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider moving the Host usage outside the loop if possible
+
+warning: 3 warnings emitted
+

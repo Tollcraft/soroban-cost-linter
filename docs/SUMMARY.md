@@ -25,6 +25,7 @@
   * [unnecessary\_host\_function\_call](lints/unnecessary_host_function_call.md)
   * [symbol\_new\_for\_short\_literal](lints/symbol_new_for_short_literal.md)
   * [bytes\_append\_in\_loop](lints/bytes_append_in_loop.md)
+  * [string\_concat\_in\_loop](lints/string_concat_in_loop.md)
   * [contract\_call\_in\_loop](lints/contract_call_in_loop.md)
   * [vec\_where\_slice\_could\_be\_used](lints/vec_where_slice_could_be_used.md)
   * [extend\_ttl\_in\_loop](lints/extend_ttl_in_loop.md)
@@ -34,3 +35,10 @@
 ## Branding
 
 * [Brand & Design Guide](branding.md)
+
+## History
+
+* [Phase 1 Analysis (Task 27)](history/PHASE_1_ANALYSIS_TASK_27.md)
+* [Phase 1 Reconnaissance Analysis](history/PHASE_1_RECONNAISSANCE_ANALYSIS.md)
+* [Roadmap MVP](history/roadmap_mvp.md)
+

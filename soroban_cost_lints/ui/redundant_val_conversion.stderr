@@ -1,16 +1,23 @@
-warning: unknown lint: `redundant_val_conversion`
+warning: redundant conversion to the same type
+  --> $DIR/redundant_val_conversion.rs:43:18
+   |
+LL |     let _: u32 = num.into_val(&env); //~ WARNING redundant conversion to the same type
+   |                  ^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this conversion since the value is already the target type
+note: the lint level is defined here
   --> $DIR/redundant_val_conversion.rs:2:9
    |
 LL | #![warn(redundant_val_conversion)]
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: `#[warn(unknown_lints)]` on by default
 
-warning: unknown lint: `redundant_val_conversion`
-  --> $DIR/redundant_val_conversion.rs:45:9
+warning: redundant round-trip conversion across the Val boundary
+  --> $DIR/redundant_val_conversion.rs:49:30
    |
-LL | #[allow(redundant_val_conversion)]
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let _: Result<u32, ()> = u32::try_from_val(&env, &num.into_val(&env)); //~ WARNING redundant round-trip conversion
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove these conversions and use the original value directly
 
 warning: 2 warnings emitted
 

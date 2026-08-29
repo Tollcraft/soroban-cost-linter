@@ -1,39 +1,72 @@
 # `redundant_val_conversion`
 
-**Default Severity:** `warn`  
-**Category:** Compute
+**Default Severity:** `warn`
+
+**Target Resource:** [CPU — metered host calls across the native-Rust/Val boundary](../cost_rationale.md#per-lint-resource-summary)
 
 ## What it does
 
-Detects unnecessary conversions to and from Soroban's `Val` type. Specifically, it flags:
-1. Converting a value into a type it already is (e.g. converting a `u32` to a `u32` via `.into_val()`).
-2. Round-trip conversions where a value is converted into a `Val` and immediately back into its original type within the same expression chain (e.g. `u32::try_from_val(env, &num.into_val(env))`).
+Detects conversions that cross the Soroban native-Rust/`Val` boundary without
+producing anything new:
+
+1. **Same-type conversion** — a value converted into the type it already is
+   (e.g. a `u32` `.into_val()`'d back to a `u32`).
+2. **Round trip** — a value converted into `Val` and immediately converted back
+   to its original type within the same expression chain (e.g.
+   `u32::try_from_val(env, &num.into_val(env))`).
 
 ## Why is this bad?
 
-In Soroban, converting cross-boundary types between native Rust types and the host environment's `Val` type requires metered host calls. 
-A round-trip conversion produces the exact same value you started with but consumes unnecessary compute gas along the way. These often accumulate quietly when passing values between helper functions.
+{% hint style="danger" %}
+Crossing the `Val` boundary is a *metered* operation: each `into_val` /
+`try_from_val` call is a host call that the network charges for. A conversion
+that lands on the same type — or that goes `T -> Val -> T` in one shot — pays
+for two boundary crossings to hand back the value it started with. These add up
+quietly when values are passed between helper functions, which is exactly the
+structurally-expensive, input-independent pattern this linter exists to catch.
+{% endhint %}
+
+## Cost impact
+
+Each redundant hop is a metered host call (and, for `try_from_val`, the
+`Result` unwrap path) that contributes CPU budget with zero behavioural
+benefit. The cost is independent of input, so it is pure, repeatable waste on
+every invocation — see the [Cost Rationale — Metered
+Resources](../cost_rationale.md#1-cpu-instructions) for the cost types involved.
 
 ## Example
 
-**Bad:**
 ```rust
-let num = 5u32;
-let same_num = u32::try_from_val(env, &num.into_val(env));
+// ❌ Bad: converting a u32 into a u32
+let same: u32 = num.into_val(&env);
+
+// ❌ Bad: round trip through Val
+let same: u32 = u32::try_from_val(&env, &num.into_val(&env)).unwrap();
 ```
 
-**Good:**
+## Known False Positives (Not Flagged)
+
+The lint compares the *concrete source and target types* through `LateContext`,
+so it deliberately stays silent in the following situations:
+
+1. **Generic contexts** — a conversion like `t.into_val(env)` inside a generic
+   helper `fn f<T: IntoVal<Env, T>>(t: T) -> T` is *not* flagged. The source and
+   target line up only because the type parameter happens to be equal; that is
+   not a real round trip and reporting it would be a false positive.
+2. **Inference-variable types** — when either side is still an unresolved
+   inference variable (a conversion that merely pins an inference variable),
+   the lint defers rather than guessing.
+
 ```rust
-let num = 5u32;
-let same_num = num;
+// ✅ Not flagged: generic helper, the equality is incidental
+fn pass_through<T: IntoVal<Env, T>>(t: T, env: &Env) -> T {
+    t.into_val(env)
+}
 ```
 
-## Known False Positives & Limitations
+## Suggested Fix
 
-This lint strictly analyzes direct inline expression chains to avoid false positives related to generic bounds and macros. 
-It will not flag round-trip conversions that occur across multiple statements due to dataflow separation.
-```rust
-// This multi-statement round-trip is currently NOT flagged
-let val: Val = num.into_val(env);
-let same_num = u32::try_from_val(env, &val);
-```
+{% hint style="success" %}
+Remove the redundant conversion and use the original value directly, or convert
+only once to the type you actually need to send across the boundary.
+{% endhint %}

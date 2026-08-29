@@ -1,0 +1,27 @@
+warning: conversion chain through `Val`: 3 hops to move one value
+  --> $DIR/val_conversion_chain.rs:80:19
+   |
+LL |     let _f: Val = mid.into_val(env); // VecU32 -> Val
+   |                   ^^^^^^^^^^^^^^^^^
+   |
+   = help: the value is bounced through `Val` and back multiple times; convert it directly to the final representation instead of hopping through `Val` at each call site — every hop is a metered host call
+   = note: `#[warn(val_conversion_chain)]` on by default
+
+warning: conversion chain through `Val`: 3 hops to move one value
+  --> $DIR/val_conversion_chain.rs:99:19
+   |
+LL |     let _f: Val = mid.into_val(env); // VecU32 -> Val
+   |                   ^^^^^^^^^^^^^^^^^
+   |
+   = help: the value is bounced through `Val` and back multiple times; convert it directly to the final representation instead of hopping through `Val` at each call site — every hop is a metered host call
+
+warning: conversion chain through `Val`: 4 hops to move one value
+  --> $DIR/val_conversion_chain.rs:109:5
+   |
+LL |     v2.try_into_val(env).unwrap() // Val -> u32 (tail)
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: the value is bounced through `Val` and back multiple times; convert it directly to the final representation instead of hopping through `Val` at each call site — every hop is a metered host call
+
+warning: 3 warnings emitted
+

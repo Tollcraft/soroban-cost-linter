@@ -15,5 +15,14 @@ exclude = [
     "tests/corpus/contracts/storage_iter_closure",
     "tests/corpus/contracts/storage_iter_good",
     "tests/corpus/contracts/storage_iter_mixed",
+    "tests/corpus/contracts/compute_input_validation",
+    "tests/corpus/contracts/compute_batch_contract_call",
+    "tests/corpus/contracts/compute_collection_search",
+    "tests/corpus/contracts/symbol_key_boundary",
+    "tests/corpus/contracts/symbol_key_enum_storage",
+    "tests/corpus/contracts/symbol_key_event_topics",
+    "tests/corpus/contracts/memory_payload_serializer",
+    "tests/corpus/contracts/memory_input_decoder",
+    "tests/corpus/contracts/memory_clean_processor",
 ]
 resolver = "2"

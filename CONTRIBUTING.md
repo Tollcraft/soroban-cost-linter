@@ -95,15 +95,16 @@ If you prefer to set up the toolchain on your machine directly:
     make check
     ```
 
-    This runs `fmt`, `lint`, and `test` in sequence. See the [`Makefile`](./Makefile) for all available targets.
+    This runs `fmt-check` (`cargo fmt --all -- --check`), `lint` (`cargo clippy --workspace --all-targets -- -D warnings`), `test` (`cargo test --workspace`), and `check-docs` (`cargo run -p generate-lint-docs -- --check`) matching CI gates. See the [`Makefile`](./Makefile) for all available targets.
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](./docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
 - Find a structural anti-pattern in Soroban that is input-independent and costly, and that is **not** already covered by a Clippy lint with the same cost-relevant semantics.
 - Assign the lint to one of the five [lint categories](docs/lint_categories.md) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
-- Write a failing test case in the `ui` tests directory.
+- Add a UI test fixture in `soroban_cost_lints/ui/<lint_name>.rs` with its blessed `.stderr` output (covering both positive triggering cases and negative non-triggering cases).
 - Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
 - Update the `LINT_METADATA` entry with the correct category.
+- Measure linter overhead with `cargo bench -p cargo-cost-lint`.
 - Run `cargo run -p generate-lint-docs` from the workspace root to regenerate `docs/lints/README.md` and `docs/lints/lint-registry.json`.
 
 ### Lint Naming Convention
@@ -137,12 +138,18 @@ are already part of the public interface. Although they do not fully match the c
 
 ### 4. Code Quality Standards
 
-All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing:
+All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing with `make check`:
 
-1. Format your code with rustfmt (CI rejects unformatted code):
+```bash
+make check
+```
+
+Or run the individual commands:
+
+1. Check formatting with rustfmt (or run `make fmt` to automatically fix formatting):
 
    ```bash
-   cargo fmt --all
+   cargo fmt --all -- --check
    ```
 
 2. Make sure Clippy passes with no warnings:
@@ -157,7 +164,13 @@ All PRs are checked by CI (Linux and Windows), and these checks must pass before
    cargo test --workspace
    ```
 
-> **Windows tip:** All three commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
+4. Make sure documentation is up to date:
+
+   ```bash
+   cargo run -p generate-lint-docs -- --check
+   ```
+
+> **Windows tip:** All commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 

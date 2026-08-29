@@ -18,6 +18,7 @@ and this project adheres to Semantic Versioning.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
 - New lint `instance_storage_for_unbounded_data` detecting `env.storage().instance().set(...)` calls where the written value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten as a single blob on every contract invocation regardless of which call touches it.
 - New lint `formatted_panic_payload` detecting `format!(...)`, `panic!(...)` with formatting arguments, and `.expect(&format!(...))`, all of which pull `core::fmt` string-formatting machinery into a `#![no_std]` contract; the diagnostic points at `panic_with_error!` with a `#[contracterror]` enum as the cheap alternative. Skips `#[cfg(test)]` code.
+- Integration test `documented_formats_are_accepted` asserting every `--format` value documented in the README (`text`, `json`, `sarif`, `github`) is accepted by the CLI, with a negative control to prevent future docs/CLI drift.
 - New lint `loop_invariant_storage_access` detecting storage operations inside loops whose operands are provably loop-invariant, so the access can be hoisted out of the loop.
 - New lint `soroban_redundant_storage_read` detecting multiple sequential reads of the same storage key without an intervening modification.
 - New lint `soroban_inefficient_bytes_concat` detecting inefficient `Bytes` concatenation inside loop bodies.
@@ -31,6 +32,7 @@ and this project adheres to Semantic Versioning.
 - New lint `persistent_read_without_ttl_extension` detecting reads of persistent storage without a TTL extension, avoiding the archival cost cliff.
 - New lint `unnecessary_string_to_bytes` detecting unnecessary `String` to `Bytes` conversions.
 - New lint `unbounded_recursion` detecting direct and mutual recursion whose depth is driven by caller-supplied input (e.g. recursion over a caller-supplied `Vec`/`&[T]` length), reporting the full call cycle (`process -> process_child -> process`).
+- New lint `cross_contract_result_discarded` detecting `Env::invoke_contract` calls whose non-unit return value is discarded (bound to `_` or dropped as a bare statement), since a cross-contract invocation pays for a full host dispatch, metered execution, and the return value's conversion back across the boundary.
 
 ### Changed
 

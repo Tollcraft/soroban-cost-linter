@@ -1,0 +1,11 @@
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/persistent_read_without_ttl_extension.rs:57:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
+warning: 1 warning emitted
+

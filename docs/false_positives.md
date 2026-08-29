@@ -1,146 +1,131 @@
 # Handling False Positives
 
-Static analysis tools occasionally flag code that is intentionally written the way it is. This guide explains how to recognize, suppress, and report false positives in `soroban-cost-linter`.
+Static analysis tools occasionally flag code that is intentionally written the way it is. This guide explains how to recognize, suppress, evaluate, and track false positives in `soroban-cost-linter`.
 
 ## What is a False Positive?
 
-A false positive is a lint warning that fires on code that does not actually contain the problem the lint is designed to catch.
+A false positive is a lint warning that fires on code that does not actually contain the problem the lint is designed to catch, or where the flagged cost is intentional, unavoidable, or inherent to the contract's business logic.
 
 For example, `soroban_storage_in_loop` warns when a storage operation appears inside a loop body. In most code this is an expensive anti-pattern, but if you are intentionally writing different keys on each iteration (e.g., writing a batch of entries), the warning is a false positive — the code is correct, and the cost is inherent to the operation.
 
+---
+
+## Real-World Corpus Baseline & Tracking
+
+The project runs continuous regression and triage checks against real-world Soroban contracts in `tests/corpus/` via `cargo-cost-lint/tests/real_world_corpus.rs`. The findings are recorded in `tests/corpus/baseline.json`.
+
+### Current Corpus Baseline Statistics
+
+| Metric | Count | Percentage |
+|---|---:|---:|
+| **Total Findings** | 102 | 100.0% |
+| **True Positives (TP)** | 26 | 25.5% |
+| **False Positives (FP)** | 76 | 74.5% |
+
+### Breakdown by Lint
+
+| Lint | False Positives | True Positives | Default Level | Tracking / Decision |
+|---|---:|---:|---|---|
+| `loop_invariant_storage_access` | 23 | 0 | warn | Tracking precision enhancements for receiver-chain hoisting and loop-variant arguments |
+| `soroban_storage_in_loop` | 16 | 0 | warn | Intentional batch-write patterns; key variance analysis under design |
+| `storage_write_without_read` | 14 | 0 | warn | Blind overwrites and initialization flows across multi-tx invocations |
+| `vec_where_slice_could_be_used` | 11 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
+| `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
+| `bytes_append_in_loop` | 4 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
+| `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+| `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
+| `soroban_inefficient_bytes_concat` | 0 | 2 | warn | True positive: inefficient Bytes concatenation inside a loop |
+| `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
+| `symbol_new_for_short_literal` | 0 | 10 | warn | True positive: short literals should use `symbol_short!` |
+| `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
+| `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
+| `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
+| `u128_where_u64_suffices` | 0 | 0 | warn | True positive: provably narrow 128-bit arithmetic operations on wasm32 |
+
+### Target False-Positive Ratio & Policy
+
+1. **Long-Term Target Ratio:**
+   Our goal is to reduce the corpus false-positive rate below **20%** across real-world contracts as dataflow, alias, and AST/HIR precision analyses mature.
+2. **Regression Guard (CI Gate):**
+   The baseline test (`real_world_corpus`) acts as a regression gate in CI.
+   - **FP Increases:** Any change that increases the number of false positives across the corpus will fail CI. Such changes must either be refined or accompanied by an explicit issue and maintainer approval.
+   - **FP Reductions:** When a lint precision improvement reduces false positives, the contributor must re-bless the baseline with `BLESS=1 cargo test --test real_world_corpus --workspace` and commit the updated `tests/corpus/baseline.json`.
+
+---
+
 ## Known False Positive Patterns by Lint
+
+### `loop_invariant_storage_access`
+
+Flags storage method calls (`env.storage()`, `.instance()`/`.persistent()`/`.temporary()`, and the terminal `get`/`has`/`set`) inside a loop whose operands are provably loop-invariant.
+
+- **Chain Warnings:** A single logical access `env.storage().instance().get(&1)` emits three warnings (one each for `storage()`, `instance()`, `get()`) because each call in the chain is evaluated independently.
+- **Loop-Variant Arguments with Constant Receivers:** When a call like `get(item)` varies with the loop variable `item`, the terminal `get` call is suppressed, but `env.storage().instance()` calls are still flagged if `env` is invariant. Hoist `let instance = env.storage().instance();` outside the loop to resolve.
+- **Intentional Dynamic Storage:** When storage access within a loop is intentional, suppress with `#[allow(loop_invariant_storage_access)]`.
 
 ### `soroban_storage_in_loop`
 
-Every storage read or write inside any loop body is flagged. This is correct for the dominant case, but false positives arise when:
+Every storage read or write inside any loop body is flagged.
 
 - **Batch writes with different keys** — iterating over a collection and writing each element under a different storage key.
 - **Storage reads that depend on the loop variable** — reading a value for each item in a collection, where the key changes per iteration.
 - **Counting or scanning patterns** — using a loop to count entries or scan through storage with `has()`.
+- **Handling:** Suppress intentional batch operations using `#[allow(soroban_storage_in_loop)]`.
 
-The lint does not analyse whether the key changes between iterations; it errs on the side of reporting.
+### `nested_loop_storage_access`
 
-### `unnecessary_host_function_call`
+Fires on storage operations at loop nesting depth ≥ 2 — i.e., a storage access inside two or more nested loops.
 
-This lint uses mutation analysis to leave calls alone when their arguments depend on loop state. Known gaps that produce false positives:
+- **Nested loop with intentional per-iteration writes** — writing to different keys in both loops where the multiplicative cost is inherent to the algorithm.
+- **Closures inside nested loops** — a closure body inside a nested loop that performs a storage access; the closure is the inner loop's body, not a separate nesting level.
+- **Handling:** If the nested storage access is intentional and the multiplicative cost is acceptable, suppress with `#[allow(nested_loop_storage_access)]`.
 
-- **Bindings and mutations inside a closure body** nested in the loop are not tracked.
-- **Mutation through a raw pointer or interior mutability** (`Cell`, `RefCell`) is not tracked.
-- **Intentional per-iteration calls** like `env.prng().u64_in_range()` or `env.events().publish()` with constant arguments are still reported — the lint cannot distinguish intent from waste.
+### `storage_write_without_read`
 
-### `redundant_env_clone`
+Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` anywhere in the same function.
 
-This lint fires for every `.clone()` call on `Env`. False positives occur when:
+- **Near-miss — initializer skip:** Functions named `init` or `set_admin` are intentionally skipped.
+- **Cross-Function & Multi-Transaction Overwrites:** Storage written blindly as an update or status reset without reading first within the same function is flagged. If the overwrite is intentional, suppress with `#[allow(storage_write_without_read)]`.
+- **Syntactic Snippet Mismatch:** If the key expression in `has(&key)` is written differently from `set(key)` (e.g. referencing with/without `&`), the syntactic matcher will not correlate them.
 
-- The `Env` is consumed before the clone site and you genuinely need a second handle.
-- The code is generic over a trait that does not guarantee `Env`-like cheap pass-by-value semantics.
+### `vec_where_slice_could_be_used`
 
-### `symbol_new_for_short_literal`
+Fires when a function parameter takes `soroban_sdk::Vec<T>` by value rather than a native Rust slice `&[T]`.
 
-This lint fires when `Symbol::new(&env, literal)` is called with a short literal. False positives occur when:
+- **Public Contract Entrypoints:** Contract trait methods and exported functions must accept `soroban_sdk::Vec` to be callable across Soroban boundaries. For public interface entrypoints, suppress with `#[allow(vec_where_slice_could_be_used)]`.
+- **Internal Helper Functions:** Internal helpers should take `&[T]` or `&Vec<T>` to avoid host object creation and cloning overhead.
 
-- The literal is constructed dynamically (non-literal argument) — the lint already handles this.
-- The macro `symbol_short!` is unavailable in your environment (e.g., an older SDK version).
+### `storage_key_construction_in_loop`
 
-### `unbounded_recursion`
+Flags constructing storage keys (such as `Symbol::new`, enum data keys, or tuple keys) inside loop bodies where the key is invariant.
 
-This lint flags a recursive call cycle (direct or mutual) whose depth is driven by
-caller-supplied input — a caller-supplied `Vec`/`&[T]` length, a tail slice, or a
-slicing/`to_vec` operation on caller data. False positives and accepted gaps:
+- **Hoisting:** Where the key is constant across iterations, hoist its construction outside the loop.
+- **Iteration-Dependent Keys:** If key construction depends on the loop index or element, suppress with `#[allow(storage_key_construction_in_loop)]`.
 
-- **Structurally-bounded recursion reported as unbounded:** a collection consumed by a method *not* in the recognized tail set (e.g. a custom `fn rest(&self) -> Self` returning a strict sub-slice) may not be recognized as progress. Prefer `#[allow(unbounded_recursion)]` for such intentional, provably-bounded cases.
-- **Constant-argument "infinite-looking" recursion:** `fn f(n: u32) { if n == 0 { return; } f(3); }` passes a constant argument, so the lint treats it as bounded and stays silent even though `n` never decreases. The lint keys off the *argument shape*, not the actual termination proof, to stay sound and simple.
-- **Plain integer parameters threaded through the recursion:** `fn process(n: u32) { if n == 0 { return; } process(n - 1); }` is structurally a countdown, but the *initial* value of `n` is caller-supplied, so the depth is not provably constant. The lint treats it as *unknown* and stays silent.
-- **Recursion through trait objects, function pointers, or closures:** the call target cannot be resolved to a single local `DefId`, so these calls are never recorded as graph edges and never form a cycle the lint reports.
-- **Recursion whose bound the analysis cannot determine:** generics, complex control flow, or arguments that are neither a constant nor a caller-supplied collection with a tail operation are all left alone.
+### `bytes_append_in_loop`
 
-## Suppression Methods
+Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
 
-You have three layers of suppression, each suited to a different scope.
+- **Host Reallocation Cost:** In Soroban, growing SDK containers allocates new host objects per iteration.
+- **Remedy:** Preallocate collections where length is known or accumulate natively before creating host objects. If incremental host appending is required, suppress with `#[allow(bytes_append_in_loop)]`.
 
-### 1. Per-site: `#[allow(...)]` Attribute
+### `string_concat_in_loop`
 
-Suppress the lint for a single function, expression, or block:
+Flags `append` on (or `String + String` addition of) a `soroban_sdk::String` inside loops.
 
-```rust
-#[allow(soroban_storage_in_loop)]
-fn batch_write(env: Env, items: Vec<u32>) {
-    for item in items {
-        env.storage().instance().set(&item, &1);
-    }
-}
-```
+- **Host Reallocation Cost:** Each concatenation allocates a fresh host buffer and copies the entire accumulated string, so building a string from `n` pieces inside a loop is O(n²) in the number of characters produced.
+- **Small Fixed-Bound Loops (Known False Positive):** The lint does **not** prove loop bounds — it fires on any syntactic loop, mirroring `bytes_append_in_loop`. A loop with a small, fixed iteration count (e.g. 2–3) is the documented false positive; suppress the specific call site with `#[allow(string_concat_in_loop)]` or accumulate the few pieces in a native `Vec` and construct the `String` once.
+- **Remedy:** Accumulate the pieces in a native collection (e.g. `Vec<String>` or `Vec<Bytes>`) inside the loop and construct the `String` a single time afterwards; pre-size where practical.
 
-This is the most targeted suppression. Use it when the flagged code is intentional and the lint gives no other way to express that intent.
+### `instance_storage_for_unbounded_data`
 
-You can also use `#[expect(...)]` (nightly Rust) to suppress and verify that the lint fires — the compiler will warn if the lint _stops_ firing, which is useful when a future version of the lint might no longer flag the pattern:
+Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an evident size bound.
 
-```rust
-// Will warn if soroban_storage_in_loop no longer fires on this code
-#[expect(soroban_storage_in_loop)]
-fn batch_write(env: Env, items: Vec<u32>) {
-    for item in items {
-        env.storage().instance().set(&item, &1);
-    }
-}
-```
+- **Footprint Risk:** Instance storage is limited to 64KB per contract and shares a single TTL with the contract executable.
 
-### 2. Per-file: `.lintignore`
+### `u128_where_u64_suffices`
 
-Create a `.lintignore` file in your workspace root (next to `Cargo.toml`). The linter respects the same patterns as `.gitignore`:
+Flags 128-bit arithmetic on values provably within 64 bits.
 
-```gitignore
-# Ignore all lint warnings in a generated file
-src/generated/constants.rs
-
-# Ignore a deliberately expensive module
-src/costly_but_intentional.rs
-```
-
-Entries in `.lintignore` cause every lint finding in matching files to be silently dropped. This is useful for generated code, vendored dependencies, or files where you have decided the lint does not apply.
-
-### 3. Per-workspace: `budget.toml`
-
-Set a lint's severity to `"allow"` in `budget.toml` to suppress it project-wide:
-
-```toml
-[lints]
-soroban_storage_in_loop = "allow"
-```
-
-This is the broadest suppression. Use it sparingly — it disables the lint for the entire workspace. Prefer `#[allow(...)]` or `.lintignore` when you need to suppress only specific sites.
-
-## How to Evaluate a False Positive
-
-Before suppressing, ask:
-
-1. **Is the cost real?** — Does removing the warning require changing the algorithm, or is it just adding an attribute? If the cost is inherent to what the code does, suppress. If the code can be restructured to avoid the cost, fix it instead.
-2. **Is the pattern covered by a different lint?** — For example, a storage read inside a loop that depends on the loop variable is real work. But a storage write inside a loop that writes the same key on every iteration is a bug.
-3. **Is there a Clippy lint that handles this better?** — Some patterns that `soroban-cost-linter` flags may be general Rust inefficiencies already caught by Clippy. See the [Scope Boundary](scope_boundary.md) guide.
-
-## Reporting False Positives Upstream
-
-If a lint produces a false positive that cannot be worked around with the suppression methods above, please open an issue:
-
-1. Check existing issues to see if the pattern is already reported.
-2. Include a minimal reproduction — a self-contained Rust function that triggers the false positive.
-3. State which lint fired and why the code is correct despite the warning.
-4. Mention the `soroban-cost-linter` version and the Rust toolchain version.
-
-The lint's mutation analysis (used by `unnecessary_host_function_call`) is the area most likely to improve; regression tests from real-world false positives are particularly valuable.
-
-## Verifying Suppression in Tests
-
-When you suppress a lint, verify that the suppression works correctly:
-
-1. **With `#[allow(...)]`** — compile with the attribute. The lint should not fire. Remove the attribute and confirm the lint does fire (to prove the code would have been flagged).
-2. **With `.lintignore`** — run `cargo cost-lint` with and without the `.lintignore` entry to confirm the finding appears or disappears.
-3. **With `budget.toml`** — set the level to `"allow"` and confirm `cargo cost-lint` exits with code 0 even when the pattern is present.
-
-## Summary
-
-| Scope | Method | Best for |
-|-------|--------|----------|
-| Per-site | `#[allow(lint_name)]` | Intentional patterns at specific call sites |
-| Per-file | `.lintignore` | Generated code, vendored deps, entire files |
-| Per-workspace | `budget.toml` `"allow"` | Project-wide decisions (use sparingly) |
+- **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
+- **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.

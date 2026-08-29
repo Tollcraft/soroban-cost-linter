@@ -1,0 +1,35 @@
+error: storage operation inside a nested loop — cost is O(n·m)
+  --> $DIR/nested_loop_storage_access.rs:63:13
+   |
+LL |             env.storage().instance().set(&(i + j), &1); // Should Warn (depth 2)
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: this storage access runs on every iteration of both loops, so its cost is multiplicative rather than linear; hoist it out of at least one loop or accumulate mutations in memory
+   = note: `#[deny(nested_loop_storage_access)]` on by default
+
+error: storage operation inside a nested loop — cost is O(n·m)
+  --> $DIR/nested_loop_storage_access.rs:72:34
+   |
+LL |             let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn (depth 2)
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: this storage access runs on every iteration of both loops, so its cost is multiplicative rather than linear; hoist it out of at least one loop or accumulate mutations in memory
+
+error: storage operation inside a nested loop — cost is O(n·m)
+  --> $DIR/nested_loop_storage_access.rs:82:13
+   |
+LL |             env.storage().instance().has(&(i + j)); // Should Warn (depth 2)
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: this storage access runs on every iteration of both loops, so its cost is multiplicative rather than linear; hoist it out of at least one loop or accumulate mutations in memory
+
+error: storage operation inside a nested loop — cost is O(n·m)
+  --> $DIR/nested_loop_storage_access.rs:91:16
+   |
+LL |             if env.storage().temporary().has(&1) { // Should Warn (depth 2)
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: this storage access runs on every iteration of both loops, so its cost is multiplicative rather than linear; hoist it out of at least one loop or accumulate mutations in memory
+
+error: aborting due to 4 previous errors
+

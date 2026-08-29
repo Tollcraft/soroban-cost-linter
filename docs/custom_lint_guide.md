@@ -124,11 +124,7 @@ cargo test --test ui_my_new_lint
 
 ## 6️⃣  Update Documentation
 
-1. **Add an entry to the lint catalog** (`docs/lint_catalog.md`):
-
-```markdown
-| `my_new_lint` | warn | Detects ... | `lints/my_new_lint.md` |
-```
+1. **Regenerate documentation**: Run `cargo run -p generate-lint-docs` from the workspace root to automatically update `docs/lint_catalog.md`, `docs/lints/README.md`, and `docs/lints/lint-registry.json`.
 
 2. **Create a lint reference page** (`docs/lints/my_new_lint.md`):
 
