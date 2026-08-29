@@ -116,9 +116,11 @@ constraints; nothing else in this repo needs changing.
 Install via [`rustup`](https://rustup.rs):
 
 1. Download [`rustup-init.exe`](https://win.rustup.rs/x86_64).
-2. Run it and accept the default **MSVC** toolchain (`stable-x86_64-pc-windows-msvc`).
-   Pick the GNU toolchain only if you have a specific reason — the Soroban ecosystem
-   defaults to MSVC on Windows.
+2. Run it and install the repository-pinned nightly toolchain (`nightly-2026-04-16`) with required components:
+   ```powershell
+   rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
+   rustup default nightly-2026-04-16
+   ```
 3. Confirm rustup added `%USERPROFILE%\.cargo\bin` to your user `Path` environment
    variable (it normally does this automatically).
 
@@ -168,7 +170,7 @@ Then enable long-path support (many Rust crates generate deeply-nested paths):
 git config --global core.longpaths true
 ```
 
-#### 1.4. (Optional) Disable CRLF autotranslation for Rust checkouts
+#### 1.4. Disable CRLF autotranslation for Rust checkouts
 
 Git for Windows defaults to converting line endings to CRLF on checkout. Rust
 source files should stay LF. Configure per-checkout:
@@ -238,42 +240,19 @@ cd path\to\my-soroban-contract
 cargo cost-lint
 ```
 
-PowerShell preserves the standard cargo subcommand form (`cargo-<name>`), so
-`cargo cost-lint` works without any further configuration.
-
-When you invoke `cargo cost-lint --fix`, the tool writes updated source files
-in-place — make sure your editor saves them with **LF** line endings, not CRLF,
-or `git diff` will show spurious whitespace churn.
-
 ---
 
 ## Common Windows issues
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| `error: linker 'link.exe' not found` | Visual Studio Build Tools missing or installed without the C++ workload. | Install Build Tools with the **Desktop development with C++** workload, restart PowerShell, and confirm `where.exe link.exe`. |
-| `link.exe` not found even though Build Tools is installed | The Visual Studio environment variables are not active in your shell. | Open the **x64 Native Tools Command Prompt for VS 2022** from the Start menu and run `cargo` from there, or load VsDevCmd into PowerShell via `Enter-VsDevShell` (see Section 1.2). |
-| `cargo install` prints `failed to fetch` / network errors | Corporate proxy or antivirus blocking outbound HTTPS. | Set `HTTPS_PROXY` per your policy; whitelist `crates.io` and `github.com` in your antimalware product. |
-| `cargo-dylint` errors with `could not find libstd` | Host toolchain doesn't match the pinned nightly. | Keep your host `rustup default` and the linter's pinned nightly in sync — see [Toolchain upgrade guide](../CONTRIBUTING.md#5-upgrading-the-nightly-toolchain). |
-| Crate dependency fails on `openssl-sys` or similar C-bindgen crates | Missing C library headers. | Prefer crates that already target `rustls` (no native OpenSSL dependency), or install OpenSSL headers via `vcpkg` (`vcpkg install openssl:x64-windows-static-md`). |
-| Antivirus quarantines `target/` or `%USERPROFILE%\.cargo` | Defender heuristic on scripts / dynamic libraries. | Add Windows Defender exclusions for `%USERPROFILE%\.cargo` and your project's `target\` directory. |
-| `crate `X`` doesn't build on Windows | Upstream crate without upstream Windows support. | This is an upstream issue — please open an issue against the crate's repo, then fall back to **Option A (WSL2)** on your machine. |
-| `cargo cost-lint --fix` writes files with CRLF endings | Your editor or PowerShell redirect added CRLF. | Configure your editor to preserve LF. To normalise an existing checkout **without losing uncommitted work**, install `dos2unix` (e.g. via `choco install dos2unix` or scoop) and run it on the affected files. For a repo-wide guarantee, add a `.gitattributes` with `* text=auto eol=lf`, then re-clone once. |
-| Slow compile times on spinning-disk machines | Many small files + pagefile thrash. | Move the project's `target\` directory to a faster drive; add a Windows Defender exclusion for the new location (see "Antivirus quarantines" row above). |
-
-## When in doubt
-
-1. **Try WSL2 first** — it removes ~90% of Windows-only friction and matches CI.
-2. If you must stay on native Windows, install the **MSVC** toolchain plus
-   **Visual Studio Build Tools**, use **PowerShell** (not `cmd.exe`), and keep
-   `rustup default` aligned with the project's pinned nightly
-   (`nightly-2026-04-16` at the time of writing).
-3. File any Windows-specific issues at
-   <https://github.com/Tollcraft/soroban-cost-linter/issues> with the
-   `windows` label so this guide can be kept up to date.
-
-## See also
-
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md) — Linux/macOS contributor setup and code quality standards.
-- [`docs/integration.md`](integration.md) — Editor and CI integration (largely OS-agnostic).
-- [`docs/false_positives.md`](false_positives.md) — How to suppress, configure, or report false positives.
+- **`LINK : fatal error LNK1104: cannot open file 'kernel32.lib'`**: The MSVC linker
+  cannot find the Windows SDK libraries. Ensure that the "Desktop development with C++"
+  workload is fully installed via the Visual Studio Installer and that you are using
+  the MSVC toolchain (`-msvc` target).
+- **`error: unloaded library` or dynamic loading errors on native Windows**: This
+  happens if `dylint-link` or the toolchain components are mismatched or if mixed
+  GNU/MSVC toolchains are used. Ensure both rustup and Visual Studio Build Tools
+  are consistently targeting `x86_64-pc-windows-msvc`. If issues persist, switch to
+  **Option A (WSL2)**.
+- **Line endings (`CRLF` vs `LF`)**: Ensure `core.autocrlf` is set to `false` or `input`
+  before cloning the repository to prevent git from converting LF line endings in Rust
+  source files to CRLF, which can cause compiler or macro parsing discrepancies.
