@@ -40,6 +40,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
 | `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
 | `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
+| `persistent_storage_for_ephemeral_data` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 
 ### Target False-Positive Ratio & Policy
 
@@ -201,6 +202,24 @@ Fires when two reads of the same key appear with no intervening write in the sam
 Fires on persistent storage reads when the containing function does not invoke `extend_ttl`.
 
 - **Function-Wide Check:** A single `extend_ttl` call on persistent storage in the function satisfies the lint.
+
+### `persistent_storage_for_ephemeral_data`
+
+Fires when a `persistent().set` is followed by a `remove` of the same key on
+every path through the function, so the value provably never outlives the call.
+
+- **MIR may-analysis, not syntax:** the lint only fires when the `remove` is
+  unconditional in the dataflow sense. A `remove` that can be skipped is never
+  flagged:
+  - **Early return / panic before the `remove`** — the entry survives.
+  - **Guard-flag-gated `remove`** (`if cleanup { remove(&key) }`) — the author
+    deliberately keeps the entry in the common case.
+  - **`remove` inside a loop** whose body may never run (e.g. `for _ in
+    0..n`).
+  - **Removal of a different key** than the one written.
+- **Suppression:** if the persistent write is intentional despite the guaranteed
+  removal (e.g. interleaved with other functions that read the key in the same
+  transaction), suppress with `#[allow(persistent_storage_for_ephemeral_data)]`.
 
 ### `unwrap_on_storage_get`
 

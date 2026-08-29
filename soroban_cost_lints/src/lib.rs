@@ -79,6 +79,7 @@ extern crate rustc_ast;
 extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
+extern crate rustc_index;
 extern crate rustc_lint;
 extern crate rustc_middle;
 extern crate rustc_session;
@@ -98,13 +99,17 @@ use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
 use rustc_hir::{FnDecl, HirId, HirIdSet};
+use rustc_index::Idx;
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
+use rustc_middle::mir::{self, Terminator, TerminatorKind};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DesugaringKind;
 use rustc_span::def_id::{DefId, LocalDefId};
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 
 dylint_linting::dylint_library!();
 
@@ -650,6 +655,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: EXCESSIVE_VEC_CAPACITY,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        category: LintCategory::EntryLifecycle,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -695,6 +704,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         STD_COLLECTION_IN_CONTRACT,
         TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
         EXCESSIVE_VEC_CAPACITY,
+        PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -728,6 +738,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
     lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
     lint_store.register_late_pass(|_| Box::new(ExcessiveVecCapacity));
+    lint_store.register_late_pass(|_| Box::new(PersistentStorageForEphemeralData));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -3791,6 +3802,326 @@ fn exceeds_threshold<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
         ),
         _ => false,
     }
+}
+
+// =======================================================================
+// persistent_storage_for_ephemeral_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+    Warn,
+    "persistent storage write whose key is removed on every path through the function"
+}
+/// Concrete pass that fires [`PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA`].
+pub struct PersistentStorageForEphemeralData;
+rustc_session::impl_lint_pass!(PersistentStorageForEphemeralData => [PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for PersistentStorageForEphemeralData {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _kind: intravisit::FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        _body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        def_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let tcx = cx.tcx;
+        let mir = tcx.optimized_mir(def_id.to_def_id());
+        let n = mir.basic_blocks.len();
+        if n == 0 {
+            return;
+        }
+
+        // MIR is used instead of HIR because "removed on every path" is a
+        // control-flow property: it needs the CFG that early returns, `if`/
+        // `else`, and `match` arms desugar into. Panic/unwind edges are
+        // excluded because panicking aborts the whole ledger invocation and
+        // the host rolls back every write made by it, so a removal that only
+        // happens after a panic would never be observable anyway; only paths
+        // that can reach a normal return count.
+        let normal_succ: Vec<Vec<mir::BasicBlock>> = (0..n)
+            .map(|i| {
+                mir_normal_successors(
+                    mir.basic_blocks[mir::BasicBlock::new(i)]
+                        .terminator
+                        .as_ref(),
+                )
+            })
+            .collect();
+        let mut normal_pred: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for (i, succs) in normal_succ.iter().enumerate() {
+            for &succ in succs {
+                normal_pred[succ.index()].push(i);
+            }
+        }
+
+        // Reverse reachability from `Return`-terminated blocks over normal
+        // edges. A write on a path that never reaches a normal return (e.g.
+        // an infinite loop or a diverging call) can never be observed as
+        // "removed before the function returns", so such blocks contribute no
+        // removal guarantee. This also prevents loops that never exit from
+        // making a trivially true guarantee.
+        let mut exit_reachable = vec![false; n];
+        let mut stack: Vec<usize> = (0..n)
+            .filter(|&i| {
+                matches!(
+                    mir.basic_blocks[mir::BasicBlock::new(i)]
+                        .terminator
+                        .as_ref()
+                        .map(|t| &t.kind),
+                    Some(TerminatorKind::Return)
+                )
+            })
+            .collect();
+        for &i in &stack {
+            exit_reachable[i] = true;
+        }
+        while let Some(i) = stack.pop() {
+            for &pred in &normal_pred[i] {
+                if !exit_reachable[pred] {
+                    exit_reachable[pred] = true;
+                    stack.push(pred);
+                }
+            }
+        }
+
+        // Backward must-analysis. `labels[i]` holds the set of keys guaranteed
+        // to be removed on *every* path from block `i` to the function exit.
+        // `None` is TOP, the identity of the intersection meet; `Some(∅)` is
+        // the empty guarantee. Iteration is monotone decreasing, so the
+        // worklist reaches the greatest (meet-over-all-paths) fixpoint.
+        let mut labels: Vec<Option<BTreeSet<String>>> = vec![None; n];
+        let mut worklist: VecDeque<usize> = (0..n).filter(|&i| exit_reachable[i]).collect();
+        let mut steps = 0usize;
+        const MAX_DATAFLOW_STEPS: usize = 100_000;
+        while let Some(bb) = worklist.pop_front() {
+            steps += 1;
+            if steps > MAX_DATAFLOW_STEPS {
+                break;
+            }
+            let down = meet_of_successors(&normal_succ[bb], &labels, &exit_reachable);
+            let mut new_label = down;
+            if let Some(term) = mir.basic_blocks[mir::BasicBlock::new(bb)]
+                .terminator
+                .as_ref()
+                && let Some(call) = classify_persistent_call(cx, tcx, term)
+                && call.op == PersistentMirOp::Remove
+                && let Some(key) = persistent_key_snippet(cx, term, call.key_index)
+            {
+                // Backwards transfer for `remove(K)`: every path that reaches
+                // this block then removes `K`, so `K` joins the guarantee set.
+                new_label = mark_removed(new_label, key);
+            }
+            if new_label != labels[bb] {
+                labels[bb] = new_label;
+                for &pred in &normal_pred[bb] {
+                    if exit_reachable[pred] {
+                        worklist.push_back(pred);
+                    }
+                }
+            }
+        }
+
+        // Report every persistent `set` whose key is guaranteed removed, i.e.
+        // whose key is in the post-state of the block: the removal happens
+        // after the write on every observable path to the function exit.
+        for (i, data) in mir.basic_blocks.iter_enumerated() {
+            let Some(term) = data.terminator.as_ref() else {
+                continue;
+            };
+            let Some(call) = classify_persistent_call(cx, tcx, term) else {
+                continue;
+            };
+            if call.op != PersistentMirOp::Set {
+                continue;
+            }
+            let Some(key) = persistent_key_snippet(cx, term, call.key_index) else {
+                continue;
+            };
+            let down = meet_of_successors(&normal_succ[i.index()], &labels, &exit_reachable);
+            if let Some(removed) = &down
+                && removed.contains(&key)
+            {
+                span_lint_and_help(
+                    cx,
+                    PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+                    call.span,
+                    "persistent storage write is removed on every path through the function",
+                    None,
+                    "use temporary storage instead: the value is explicitly removed in this \
+                     function, so it never needs to outlive the call; temporary entries also \
+                     avoid the rent payments that keep persistent entries alive",
+                );
+            }
+        }
+    }
+}
+
+/// One `Persistent::set`/`Persistent::remove` call identified in MIR.
+struct PersistentMirCall {
+    op: PersistentMirOp,
+    /// Argument index of the key: `1` for both `set(self, key, value)` and
+    /// `remove(self, key)`.
+    key_index: usize,
+    /// Source span of the whole call, used for the diagnostic.
+    span: rustc_span::Span,
+}
+
+/// Which persistent-storage method a call targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PersistentMirOp {
+    Set,
+    Remove,
+}
+
+/// Returns `Some(..)` when `term` is a direct call to
+/// `soroban_sdk::storage::Persistent::set` or `::remove`.
+///
+/// Current rustc lowers *every* call to a block `TerminatorKind::Call`
+/// (`StatementKind` no longer has a `Call` variant), so only block
+/// terminators need inspecting. The callee is a `FnDef` constant; the
+/// signature is used to check that the receiver is a `&Persistent`, which
+/// disambiguates the `set`/`remove` methods shared by `Instance`,
+/// `Persistent`, and `Temporary`.
+fn classify_persistent_call<'tcx>(
+    cx: &LateContext<'tcx>,
+    tcx: TyCtxt<'tcx>,
+    term: &'tcx Terminator<'tcx>,
+) -> Option<PersistentMirCall> {
+    if let TerminatorKind::Call { func, args, .. } = &term.kind {
+        let (did, _) = func.const_fn_def()?;
+        let name = tcx.item_name(did).to_string();
+        if name != "set" && name != "remove" {
+            return None;
+        }
+        let receiver_ty = tcx.fn_sig(did).skip_binder().input(0).skip_binder();
+        let adt_def = match receiver_ty.peel_refs().kind() {
+            ty::Adt(adt_def, _) => adt_def,
+            _ => return None,
+        };
+        if !match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Persistent"]) {
+            return None;
+        }
+        let (op, key_index) = match name.as_str() {
+            // self, key, value
+            "set" if args.len() >= 3 => (PersistentMirOp::Set, 1),
+            // self, key
+            "remove" if args.len() >= 2 => (PersistentMirOp::Remove, 1),
+            _ => return None,
+        };
+        Some(PersistentMirCall {
+            op,
+            key_index,
+            span: term.source_info.span,
+        })
+    } else {
+        None
+    }
+}
+
+/// Yields the normal-flow successors of a block terminator — every block a
+/// non-panicking execution can reach next. `Call { target: None }` and other
+/// diverging terminators have none, so a path that goes through them dead-
+/// ends and never contributes a removal guarantee.
+fn mir_normal_successors<'tcx>(term: Option<&'tcx Terminator<'tcx>>) -> Vec<mir::BasicBlock> {
+    use TerminatorKind::*;
+    let Some(term) = term else {
+        return Vec::new();
+    };
+    match &term.kind {
+        Goto { target } => vec![*target],
+        SwitchInt { targets, .. } => targets.all_targets().to_vec(),
+        Assert { target, .. } => vec![*target],
+        Call {
+            target: Some(t), ..
+        } => vec![*t],
+        Call { target: None, .. } => Vec::new(),
+        Drop { target, .. } => vec![*target],
+        FalseEdge { real_target, .. } => vec![*real_target],
+        FalseUnwind { real_target, .. } => vec![*real_target],
+        _ => Vec::new(),
+    }
+}
+
+/// The meet of the guarantee lattice, intersecting the guaranteed-removed key
+/// sets. `None` is TOP, the identity; `Some(∅)` is the empty guarantee. A
+/// removal that must hold along *every* successor path is the intersection.
+fn meet_guarantees(
+    a: &Option<BTreeSet<String>>,
+    b: &Option<BTreeSet<String>>,
+) -> Option<BTreeSet<String>> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.intersection(y).cloned().collect()),
+        (Some(x), None) | (None, Some(x)) => Some(x.clone()),
+        (None, None) => None,
+    }
+}
+
+/// A block that is not on any return-reaching path guarantees nothing, so it
+/// contributes an empty set (`Some(∅)`) to the intersection meet.
+const EMPTY_GUARANTEES: Option<BTreeSet<String>> = Some(BTreeSet::new());
+
+/// Meets the labels of a block's normal-flow successors; blocks that can
+/// never reach a normal return are treated as guaranteeing nothing.
+fn meet_of_successors(
+    successors: &[mir::BasicBlock],
+    labels: &[Option<BTreeSet<String>>],
+    exit_reachable: &[bool],
+) -> Option<BTreeSet<String>> {
+    if successors.is_empty() {
+        // Explicit return or diverging call: no removal can be guaranteed
+        // after the function ends.
+        return Some(BTreeSet::new());
+    }
+    let mut acc: Option<BTreeSet<String>> = None; // TOP
+    for &succ in successors {
+        let succ_label = if exit_reachable[succ.index()] {
+            &labels[succ.index()]
+        } else {
+            &EMPTY_GUARANTEES
+        };
+        acc = meet_guarantees(&acc, succ_label);
+    }
+    acc
+}
+
+/// Backward transfer for `remove(K)`: every path through the block removes
+/// `K`, so `K` joins (and wraps a TOP or empty state into) the guarantee set.
+fn mark_removed(state: Option<BTreeSet<String>>, key: String) -> Option<BTreeSet<String>> {
+    let mut set = state.unwrap_or_default();
+    set.insert(key);
+    Some(set)
+}
+
+/// The normalized source snippet of the key argument (index `key_index`) of
+/// `term`'s call, or `None` when the argument has no usable snippet.
+fn persistent_key_snippet(
+    cx: &LateContext<'_>,
+    term: &Terminator<'_>,
+    key_index: usize,
+) -> Option<String> {
+    if let TerminatorKind::Call { args, .. } = &term.kind {
+        let span = args.get(key_index)?.span;
+        let raw = snippet_opt(cx, span)?;
+        let normalized = normalize_key_snippet(&raw);
+        if normalized.is_empty() {
+            return None;
+        }
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+/// Equates key snippets across `set`/`remove` while ignoring whitespace
+/// variation and the extra `&` on the `set` side (`set(&k)` vs `remove(&k)`
+/// both index `k`). Mirrors the sibling storage lints' key correlation by
+/// source text.
+fn normalize_key_snippet(snippet: &str) -> String {
+    let compact: String = snippet.chars().filter(|c| !c.is_whitespace()).collect();
+    compact.strip_prefix('&').unwrap_or(&compact).to_string()
 }
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
 // satisfy both. This never surfaced before because the Windows job failed at

@@ -41,5 +41,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
 | `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
 | `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve | [Link](lints/excessive_vec_capacity.md) |
+| `persistent_storage_for_ephemeral_data` | warn | persistent storage write whose key is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
 
 *Severities can be overridden via `budget.toml`.*

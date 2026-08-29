@@ -59,6 +59,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
 | [`temporary_storage_for_persistent_data`](temporary_storage_for_persistent_data.md) | `warn` | temporary storage write followed by an unsafe read that assumes the value persists |
+| [`persistent_storage_for_ephemeral_data`](persistent_storage_for_ephemeral_data.md) | `warn` | persistent storage write whose key is removed on every path through the function |
 
 ## Symbol Operations
 

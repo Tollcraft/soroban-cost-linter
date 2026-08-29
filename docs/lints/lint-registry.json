@@ -229,5 +229,12 @@
     "description": "excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve",
     "docs_path": "docs/lints/excessive_vec_capacity.md",
     "name": "excessive_vec_capacity"
+  },
+  {
+    "category": "EntryLifecycle",
+    "default_level": "warn",
+    "description": "persistent storage write whose key is removed on every path through the function",
+    "docs_path": "docs/lints/persistent_storage_for_ephemeral_data.md",
+    "name": "persistent_storage_for_ephemeral_data"
   }
 ]
