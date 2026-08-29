@@ -133,19 +133,18 @@ fn invoke_dylint(args: &[String]) -> LinterResult<Vec<LintFinding>> {
     // Forward user args
     cmd.args(args);
 
-    let output = cmd.output().map_err(|e| {
-        LinterError::Other(format!(
-            "Failed to execute cargo dylint. Ensure cargo-dylint is installed: {}",
-            e
-        ))
-    });
-
-    let output = match output {
+    let output = match cmd.output() {
         Ok(o) => o,
         Err(e) => {
-            // If cargo dylint is not installed or fails to launch in certain test contexts, return empty or error.
-            // But during cargo test, integration tests invoke the binary with proper environment.
-            return Err(e);
+            if e.kind() == io::ErrorKind::NotFound {
+                return Err(LinterError::MissingPrerequisite(
+                    "error: `cargo-dylint` is not installed.
+To install it, run:
+    cargo install cargo-dylint dylint-link --version \"^6.0.1\""
+                        .to_string(),
+                ));
+            }
+            return Err(LinterError::Io(e));
         }
     };
 
@@ -192,8 +191,8 @@ fn parse_dylint_output(output: &str) -> Vec<LintFinding> {
                                 span: output_formatters::Span {
                                     line_start,
                                     line_end,
-                                    column_start,
-                                    column_end,
+                                    column_start: col_start,
+                                    column_end: col_end,
                                 },
                                 message,
                                 help: None,
