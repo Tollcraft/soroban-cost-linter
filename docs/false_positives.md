@@ -198,3 +198,14 @@ Fires on `.unwrap()` / `.expect()` called *directly* on a storage `get` (on `Sto
 
 - **Read the contract has genuinely just written:** `env.storage().instance().set(&key, &value);` followed later by `env.storage().instance().get(&key).unwrap()`. Within one invocation the key was just written, so the read cannot miss and the unwrap cannot trap. The lint has no write-tracking across statements, so this shape still fires even though it is provably safe at runtime — suppress with `#[allow(unwrap_on_storage_get)]` or handle the `None` case anyway if the write can ever be removed.
 - **Anything not directly on a storage read is out of scope by construction:** `unwrap_or`, `unwrap_or_else`, an explicit `match` on the returned `Option`, and `unwrap` on any `Option`/`Result` that did not come from a storage `get` never fire.
+
+### `redundant_require_auth`
+
+Fires when `Address::require_auth` or `Address::require_auth_for_args` is called more than once on the same address within a single function body, with no cross-contract call (`env.invoke_contract` or `env.try_invoke_contract`) in between.
+
+**Security caveat:** This lint gives advice about authorization. A false positive here is worse than a false positive in any other lint, because acting on it would remove a security check. The lint is intentionally conservative:
+
+- **Address identity is compared by source-text snippet.** Two distinct variables that happen to hold the same address value are *not* flagged — the lint can only prove redundancy when the receiver expression is textually identical. This errs on the side of *not* flagging, so a genuine duplicate that uses different variable names will be missed.
+- **Cross-contract calls reset tracking.** Authorization context can legitimately change across an `env.invoke_contract` or `env.try_invoke_contract` boundary (the called contract may request additional authorizations). When two `require_auth` calls are separated by such a call, neither is flagged. This is the primary correctness requirement of the lint.
+- **Cross-function analysis is out of scope.** If `require_auth` is called in two separate functions that are both invoked in one contract call, the lint does not track across the function boundary.
+- **Nested blocks share the parent's tracking.** An `if`/`match`/loop block nested inside a function body does *not* reset the `require_auth` tracking — all top-level statements in the function body are scanned, including those in nested blocks. This is correct because authorization is per-invocation, not per-branch.

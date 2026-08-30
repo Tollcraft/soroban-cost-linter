@@ -47,6 +47,9 @@
 //!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
 //! - [`INSTANCE_STORAGE_WRITE_IN_LOOP`] — instance storage write inside a loop,
 //!   which serialises and rewrites the full instance entry on every iteration.
+//! - [`REDUNDANT_REQUIRE_AUTH`] — `require_auth` / `require_auth_for_args`
+//!   called more than once on the same address within one function body, with
+//!   no cross-contract call in between.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -622,6 +625,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: UNWRAP_ON_STORAGE_GET,
         category: LintCategory::StorageOperations,
     },
+    LintMetadata {
+        lint: REDUNDANT_REQUIRE_AUTH,
+        category: LintCategory::Compute,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -661,6 +668,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INSTANCE_STORAGE_WRITE_IN_LOOP,
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
+        REDUNDANT_REQUIRE_AUTH,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -688,6 +696,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageWriteInLoop));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
+    lint_store.register_late_pass(|_| Box::new(RedundantRequireAuth));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -2312,6 +2321,115 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
                 );
             }
         }
+    }
+}
+
+// =======================================================================
+// redundant_require_auth — Lint
+// =======================================================================
+
+// Flags `Address::require_auth` / `Address::require_auth_for_args` called
+// more than once on the same address value within one function body, with
+// no cross-contract call (`env.invoke_contract` / `env.try_invoke_contract`)
+// in between. `require_auth` walks the authorization tree, verifies
+// signatures, and records consumption — calling it twice on the same
+// address costs twice and proves nothing new.
+//
+// Authorization context can legitimately change across a cross-contract
+// call boundary, so tracking is reset whenever an `invoke_contract` or
+// `try_invoke_contract` is encountered. When two auth calls are separated
+// by such a call, neither is flagged.
+//
+// Address identity is compared by source-text snippet of the receiver
+// expression. This is conservative: it will not flag two distinct
+// variables that happen to hold the same address, but it will never
+// produce a false positive by conflating genuinely different expressions.
+rustc_session::declare_lint! {
+    pub REDUNDANT_REQUIRE_AUTH,
+    Warn,
+    "require_auth called more than once on the same address in a single function body"
+}
+/// Concrete pass that fires [`REDUNDANT_REQUIRE_AUTH`].
+pub struct RedundantRequireAuth;
+rustc_session::impl_lint_pass!(RedundantRequireAuth => [REDUNDANT_REQUIRE_AUTH]);
+
+impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
+    /// Scans each function body block's top-level statements for
+    /// `require_auth` / `require_auth_for_args` calls on `Address` values.
+    ///
+    /// Tracks which address source-texts have been seen. When the same
+    /// address appears a second time the second call is flagged. The
+    /// tracking is reset whenever a cross-contract call (`invoke_contract` /
+    /// `try_invoke_contract` on `Env`) is encountered, because authorization
+    /// context can legitimately change across a call boundary.
+    ///
+    /// # Scope
+    ///
+    /// Only the top-level statements of a single block are scanned. Auth
+    /// calls nested inside closures, `if`/`match` arms, or loops share the
+    /// block's tracking — this is intentional because authorization is
+    /// per-invocation, not per-branch.
+    fn check_block(&mut self, cx: &LateContext<'tcx>, block: &'tcx hir::Block<'tcx>) {
+        // source-text -> span of first require_auth call on that address
+        let mut first_auth: HashMap<String, rustc_span::Span> = HashMap::new();
+
+        for stmt in block.stmts {
+            let expr = match stmt.kind {
+                hir::StmtKind::Let(&hir::LetStmt { init: Some(init), .. }) => init,
+                hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => expr,
+                _ => continue,
+            };
+
+            if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+                let method = path_segment.ident.name.as_str();
+
+                // Cross-contract call resets authorization tracking.
+                if (method == "invoke_contract" || method == "try_invoke_contract")
+                    && is_env_receiver(cx, receiver)
+                {
+                    first_auth.clear();
+                    continue;
+                }
+
+                // require_auth / require_auth_for_args on an Address.
+                if REQUIRE_AUTH_METHODS.contains(&method) && is_address_receiver(cx, receiver) {
+                    if let Some(key_text) = snippet_opt(cx, receiver.span) {
+                        if let Some(&_prev_span) = first_auth.get(&key_text) {
+                            span_lint_and_help(
+                                cx,
+                                REDUNDANT_REQUIRE_AUTH,
+                                expr.span,
+                                "require_auth already called on this address in this function",
+                                None,
+                                "remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation",
+                            );
+                        } else {
+                            first_auth.entry(key_text).or_insert(expr.span);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Returns `true` if `receiver` has type `soroban_sdk::Env`.
+fn is_env_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'tcx>) -> bool {
+    let peeled = cx.typeck_results().expr_ty(receiver).peel_refs();
+    if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
+    } else {
+        false
+    }
+}
+
+/// Returns `true` if `receiver` has type `soroban_sdk::Address`.
+fn is_address_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'tcx>) -> bool {
+    let peeled = cx.typeck_results().expr_ty(receiver).peel_refs();
+    if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
+    } else {
+        false
     }
 }
 
