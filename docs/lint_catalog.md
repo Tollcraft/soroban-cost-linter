@@ -8,44 +8,37 @@ This document provides a concise reference for all lints supported by **soroban-
 
 | Lint | Default Severity | Description | Docs |
 |------|------------------|-------------|------|
-| `redundant_address_clone` | warn | redundant clone on Address object | [Link](lints/redundant_address_clone.md) |
-| `soroban_storage_in_loop` | warn | storage operations inside a loop | [Link](lints/soroban_storage_in_loop.md) |
-| `nested_loop_storage_access` | deny | storage operation inside a nested loop — O(n·m) cost | [Link](lints/nested_loop_storage_access.md) |
-| `loop_invariant_storage_access` | warn | storage operation inside a loop whose operands are provably loop-invariant | [Link](lints/loop_invariant_storage_access.md) |
-| `soroban_inefficient_bytes_concat` | warn | inefficient Bytes concatenation inside a loop | [Link](lints/soroban_inefficient_bytes_concat.md) |
-| `soroban_redundant_storage_read` | warn | multiple sequential reads of the same storage key without modification | [Link](lints/soroban_redundant_storage_read.md) |
-| `redundant_env_clone` | warn | redundant clone on Env object | [Link](lints/redundant_env_clone.md) |
-| `unnecessary_host_function_call` | warn | unnecessary host function call inside loop | [Link](lints/unnecessary_host_function_call.md) |
-| `host_in_loop` | warn | use of Host object inside a loop | [Link](lints/host_in_loop.md) |
-| `unnecessary_string_to_bytes` | warn | unnecessary String to Bytes conversion | [Link](lints/unnecessary_string_to_bytes.md) |
-| `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
-| `token_transfer_in_loop` | warn | token transfer (transfer / transfer_from) on a contract client inside a loop | [Link](lints/token_transfer_in_loop.md) |
-| `symbol_new_for_short_literal` | warn | Symbol::new used with a short literal that could use symbol_short! macro | [Link](lints/symbol_new_for_short_literal.md) |
-| `unbounded_input_loop` | warn | loop bound derived from untrusted input with storage write in body | [Link](lints/unbounded_input_loop.md) |
-| `bytes_append_in_loop` | warn | repeatedly growing SDK containers inside loops | [Link](lints/bytes_append_in_loop.md) |
-| `string_concat_in_loop` | warn | repeatedly concatenating a soroban String inside a loop | [Link](lints/string_concat_in_loop.md) |
-| `storage_write_without_read` | warn | storage write without a corresponding read | [Link](lints/storage_write_without_read.md) |
-| `storage_read_never_written` | warn | reads a storage key that is never written anywhere in this crate | [Link](lints/storage_read_never_written.md) |
-| `blind_storage_write` | warn | storage write that blindly overwrites a previously written key without reading it back | [Link](lints/blind_storage_write.md) |
+| `soroban_storage_in_loop` | deny | performs a storage read or write inside a loop body | [Link](lints/soroban_storage_in_loop.md) |
+| `redundant_env_clone` | warn | clones the Env handle redundantly | [Link](lints/redundant_env_clone.md) |
+| `unnecessary_host_function_call` | warn | calls host functions that could be hoisted or avoided | [Link](lints/unnecessary_host_function_call.md) |
+| `soroban_redundant_storage_read` | warn | performs sequential redundant reads or has/get checks on the same key | [Link](lints/soroban_redundant_storage_read.md) |
+| `storage_write_without_read` | warn | performs a storage set without any prior get or has in the function | [Link](lints/storage_write_without_read.md) |
+| `discarded_storage_read` | warn | reads from storage whose result is never used | [Link](lints/discarded_storage_read.md) |
+| `instance_storage_for_unbounded_data` | warn | stores unbounded collections like Vec, Map, or Bytes in instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
+| `persistent_read_without_ttl_extension` | warn | reads from persistent storage without extending its TTL in the same function | [Link](lints/persistent_read_without_ttl_extension.md) |
+| `loop_invariant_storage_access` | warn | performs storage access inside a loop with loop-invariant operands | [Link](lints/loop_invariant_storage_access.md) |
+| `storage_key_construction_in_loop` | warn | constructs storage keys inside loop bodies where the key is invariant | [Link](lints/storage_key_construction_in_loop.md) |
+| `bytes_append_in_loop` | warn | appends to Bytes or Vec inside loop bodies causing repeated host reallocations | [Link](lints/bytes_append_in_loop.md) |
+| `unbounded_input_loop` | warn | loops with iteration count derived from untrusted input performing storage writes | [Link](lints/unbounded_input_loop.md) |
+| `unnecessary_string_to_bytes` | warn | performs unnecessary string to bytes conversion | [Link](lints/unnecessary_string_to_bytes.md) |
+| `unnecessary_host_function_call_legacy` | warn | legacy unnecessary host function call | [Link](lints/unnecessary_host_function_call_legacy.md) |
+| `map_insert_in_loop` | warn | inserts into Map inside a loop | [Link](lints/map_insert_in_loop.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
-| `map_insert_in_loop` | warn | Map::insert called inside a loop | [Link](lints/map_insert_in_loop.md) |
-| `signature_verification_in_loop` | warn | signature verification performed inside a loop | [Link](lints/signature_verification_in_loop.md) |
-| `crypto_hash_of_constant` | warn | cryptographic hash of a compile-time constant value | [Link](lints/crypto_hash_of_constant.md) |
-| `storage_key_construction_in_loop` | warn | storage key constructed inside a loop body where it could be hoisted | [Link](lints/storage_key_construction_in_loop.md) |
-| `vec_where_slice_could_be_used` | warn | soroban_sdk::Vec passed by value where a native Rust slice would suffice | [Link](lints/vec_where_slice_could_be_used.md) |
-| `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |
-| `linear_scan_in_loop` | warn | linear scan on collection inside a loop — O(n²) cost | [Link](lints/linear_scan_in_loop.md) |
-| `vec_index_in_loop` | warn | indexing a Soroban Vec in a loop | [Link](lints/vec_index_in_loop.md) |
-| `persistent_read_without_ttl_extension` | warn | persistent storage read without TTL extension — archival cost cliff | [Link](lints/persistent_read_without_ttl_extension.md) |
-| `require_auth_in_loop` | warn | Address::require_auth or require_auth_for_args called inside a loop | [Link](lints/require_auth_in_loop.md) |
-| `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
-| `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
-| `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
-| `redundant_val_conversion` | warn | redundant conversion across the native-Rust/Val boundary | [Link](lints/redundant_val_conversion.md) |
-| `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
-| `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
-| `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
-| `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve | [Link](lints/excessive_vec_capacity.md) |
-| `persistent_storage_for_ephemeral_data` | warn | persistent storage write whose key is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
+| `contract_call_in_loop` | warn | performs contract call inside loop | [Link](lints/contract_call_in_loop.md) |
+| `extend_ttl_in_loop` | warn | extends ttl inside loop | [Link](lints/extend_ttl_in_loop.md) |
+| `formatted_panic_payload` | warn | formatted panic payload | [Link](lints/formatted_panic_payload.md) |
+| `linear_scan_in_loop` | warn | linear scan inside loop | [Link](lints/linear_scan_in_loop.md) |
+| `require_auth_in_loop` | warn | requires auth inside loop | [Link](lints/require_auth_in_loop.md) |
+| `signature_verification_in_loop` | warn | signature verification inside loop | [Link](lints/signature_verification_in_loop.md) |
+| `symbol_key_boundary` | warn | symbol key boundary | [Link](lints/symbol_key_boundary.md) |
+| `symbol_key_enum_storage` | warn | symbol key enum storage | [Link](lints/symbol_key_enum_storage.md) |
+| `symbol_key_event_topics` | warn | symbol key event topics | [Link](lints/symbol_key_event_topics.md) |
+| `symbol_new_for_short_literal` | warn | uses Symbol::new for short literal | [Link](lints/symbol_new_for_short_literal.md) |
+| `unbounded_recursion` | warn | unbounded recursion | [Link](lints/unbounded_recursion.md) |
+| `unwrap_on_storage_get` | warn | unwraps on storage get | [Link](lints/unwrap_on_storage_get.md) |
+| `vec_where_slice_could_be_used` | warn | uses Vec where slice could be used | [Link](lints/vec_where_slice_could_be_used.md) |
+| `soroban_inefficient_bytes_concat` | warn | soroban inefficient bytes concat | [Link](lints/soroban_inefficient_bytes_concat.md) |
+| `u128_where_u64_suffices` | warn | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 | [Link](lints/u128_where_u64_suffices.md) |
+| `option_wrapping_in_storage` | warn | stores an Option<T> in storage where the key already models absence | [Link](lints/option_wrapping_in_storage.md) |
 
 *Severities can be overridden via `budget.toml`.*

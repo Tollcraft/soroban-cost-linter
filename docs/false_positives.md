@@ -134,6 +134,13 @@ Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an e
 
 - **Footprint Risk:** Instance storage is limited to 64KB per contract and shares a single TTL with the contract executable.
 
+### `option_wrapping_in_storage`
+
+Fires when the value argument to a storage `.set()` call has type `Option<T>`.
+
+- **Intentional Tri-State Entry:** A contract deliberately stores a tri-state value: missing (key absent), `Some(T)` (present with value), and `None` (present but empty). This is the documented deliberate false positive. For example, a registry that tracks whether a participant has ever registered (missing), is currently active (`Some(active_config)`), or has been explicitly deactivated (`None`).
+- **Silencing:** Suppress at the call site with `#[allow(option_wrapping_in_storage)]`.
+
 ### `u128_where_u64_suffices`
 
 Flags 128-bit arithmetic on values provably within 64 bits.

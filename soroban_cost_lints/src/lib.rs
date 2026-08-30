@@ -5,13 +5,14 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_hir::{Crate, Expr, ExprKind, BinOpKind, UnOp, QPath};
+use rustc_hir::{BinOpKind, Crate, Expr, ExprKind, QPath, UnOp};
 use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
 use std::collections::HashSet;
 
 mod discarded_storage_read;
+mod option_wrapping_in_storage;
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -197,6 +198,12 @@ rustc_lint::declare_lint! {
     pub U128_WHERE_U64_SUFFICES,
     Warn,
     "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32"
+}
+
+rustc_lint::declare_lint! {
+    pub OPTION_WRAPPING_IN_STORAGE,
+    Warn,
+    "stores an Option<T> in storage where the key already models absence"
 }
 
 pub struct SorobanCostLints;
@@ -410,6 +417,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
         rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
     },
+    LintMeta {
+        name: "option_wrapping_in_storage",
+        category: LintCategory::Storage,
+        description: "Stores an Option<T> in storage where the key already models absence",
+        rationale: "Storage already models absence — a missing key returns None. Storing Option<T> creates a redundant three-state model.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -446,5 +459,6 @@ dylint_lint_impl! {
         VEC_WHERE_SLICE_COULD_BE_USED,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
+        OPTION_WRAPPING_IN_STORAGE,
     ]
 }
