@@ -45,6 +45,8 @@
 //! - [`FORMATTED_PANIC_PAYLOAD`] — `format!`, a formatted `panic!`, or
 //!   `.expect(&format!(..))`, all of which pull `core::fmt` into the
 //!   contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+//! - [`INSTANCE_STORAGE_WRITE_IN_LOOP`] — instance storage write inside a loop,
+//!   which serialises and rewrites the full instance entry on every iteration.
 //!
 //! Each lint is assigned a [`LintCategory`] and registered in [`LINT_METADATA`],
 //! the single source of truth the wrapper reads to describe available lints.
@@ -609,6 +611,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: INSTANCE_STORAGE_WRITE_IN_LOOP,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: FORMATTED_PANIC_PAYLOAD,
         category: LintCategory::Compute,
     },
@@ -652,6 +658,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+        INSTANCE_STORAGE_WRITE_IN_LOOP,
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
     ]);
@@ -679,6 +686,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
+    lint_store.register_late_pass(|_| Box::new(InstanceStorageWriteInLoop));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
@@ -2387,6 +2395,63 @@ impl<'tcx> LateLintPass<'tcx> for InstanceStorageForUnboundedData {
                      contract's life without showing up in any single-call test; persistent \
                      storage, keyed per entry, is the structurally correct shape for unbounded \
                      data",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// instance_storage_write_in_loop — Lint
+// =======================================================================
+
+// Flags `.instance().set(...)` calls inside a loop. Instance storage is
+// a single ledger entry holding the contract's whole instance map.
+// Writing to it does not update one field — it serialises and writes the
+// entire entry. Doing that inside a loop rewrites the full instance state
+// on every iteration, so a loop updating ten counters pays ten full
+// instance-entry writes where one write after the loop would do.
+rustc_session::declare_lint! {
+    pub INSTANCE_STORAGE_WRITE_IN_LOOP,
+    Warn,
+    "instance storage write inside a loop rewrites the full instance entry every iteration"
+}
+/// Concrete pass that fires [`INSTANCE_STORAGE_WRITE_IN_LOOP`].
+pub struct InstanceStorageWriteInLoop;
+rustc_session::impl_lint_pass!(InstanceStorageWriteInLoop => [INSTANCE_STORAGE_WRITE_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for InstanceStorageWriteInLoop {
+    /// Flags a `set` call whose receiver is `soroban_sdk::storage::Instance` when
+    /// it sits inside a loop.
+    ///
+    /// Instance storage is loaded and rewritten as a single blob on every
+    /// contract invocation. Writing to it inside a loop serialises the full
+    /// instance map on each iteration, paying the full instance-entry write
+    /// cost every time. The fix is to accumulate changes in local variables
+    /// and write once after the loop.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "set"
+        {
+            let is_instance_storage = if let rustc_middle::ty::Adt(adt_def, _) =
+                cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+            {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Instance"])
+            } else {
+                false
+            };
+
+            if is_instance_storage && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    INSTANCE_STORAGE_WRITE_IN_LOOP,
+                    expr.span,
+                    "instance storage write inside a loop",
+                    None,
+                    "instance storage serialises and writes the entire instance map on every \
+                     call, so writing inside a loop pays the full rewrite cost per \
+                     iteration; accumulate changes in local variables and write once \
+                     after the loop",
                 );
             }
         }

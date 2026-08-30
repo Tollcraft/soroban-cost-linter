@@ -183,6 +183,15 @@ Fires on every `get`/`has` on `persistent` storage when the function contains no
 - The lint collects reads via a visitor over the whole function body, so a read in a nested block still counts.
 - **No known false positives:** a persistent read with no `extend_ttl` in the function is always reported.
 
+### `instance_storage_write_in_loop`
+
+Fires on every `.instance().set(...)` call that sits inside a loop body.
+
+- **Interaction with `soroban_storage_in_loop`:** both lints fire on the same expression when instance storage is written inside a loop. `soroban_storage_in_loop` covers storage in general; `instance_storage_write_in_loop` fires specifically because instance storage serialises and rewrites the full entry map on every write, making the fix different (accumulate in locals, write once after the loop) from the general "move storage operations out of the loop" advice.
+- **Known near-miss — batch writes to different keys:** `for (k, v) in pairs { env.storage().instance().set(k, v); }` writes a different key each iteration. The full-instance rewrite still happens per iteration, so the cost is real — this is a genuine warning, not a false positive.
+- **No false positives from reads:** the lint only matches `set`, so `get` and `has` calls on instance storage inside a loop are never flagged by this lint (they are covered by other lints if applicable).
+- **No false positives from other storage types:** `Persistent` and `Temporary` writes inside loops are out of scope — those are per-entry stores, not the single-blob instance map.
+
 ### `unwrap_on_storage_get`
 
 Fires on `.unwrap()` / `.expect()` called *directly* on a storage `get` (on `Storage`, `Instance`, `Persistent`, or `Temporary` receivers).
