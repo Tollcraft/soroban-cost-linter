@@ -226,6 +226,13 @@
   {
     "category": "StorageOperations",
     "default_level": "warn",
+    "description": "instance storage write inside a loop rewrites the full instance entry every iteration",
+    "docs_path": "docs/lints/instance_storage_write_in_loop.md",
+    "name": "instance_storage_write_in_loop"
+  },
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
     "description": "unwrap or expect directly on a storage read — panics on a missing or expired key",
     "docs_path": "docs/lints/unwrap_on_storage_get.md",
     "name": "unwrap_on_storage_get"

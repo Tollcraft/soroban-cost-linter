@@ -20,6 +20,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`storage_read_never_written`](storage_read_never_written.md) | `warn` | reads a storage key that is never written anywhere in this crate |
 | [`blind_storage_write`](blind_storage_write.md) | `warn` | storage write that blindly overwrites a previously written key without reading it back |
 | [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |
+| [`instance_storage_write_in_loop`](instance_storage_write_in_loop.md) | `warn` | instance storage write inside a loop rewrites the full instance entry every iteration |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 
 ## CPU/Compute
