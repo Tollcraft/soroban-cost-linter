@@ -762,12 +762,16 @@ multiline description"
         fs::write(&readme_path, "STALE CONTENT").unwrap();
 
         let registry_path = root.join("docs/lints/lint-registry.json");
-        // Write the correct registry so only README is stale.
         let entries = parse_lib_rs(SINGLE_LINT);
         let correct_registry = generate_registry(&entries);
         let correct_catalog = generate_catalog(&entries);
         fs::write(&registry_path, &correct_registry).unwrap();
         let catalog_path = root.join("docs/lint_catalog.md");
+        fs::write(&catalog_path, &correct_catalog).unwrap();
+
+        let catalog_path = root.join("docs/lint_catalog.md");
+        fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+        let correct_catalog = generate_catalog(&entries);
         fs::write(&catalog_path, &correct_catalog).unwrap();
 
         let status = Command::new(&bin)
@@ -801,6 +805,11 @@ multiline description"
 
         let registry_path = root.join("docs/lints/lint-registry.json");
         fs::write(&registry_path, "STALE CONTENT").unwrap();
+
+        let catalog_path = root.join("docs/lint_catalog.md");
+        fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+        let correct_catalog = generate_catalog(&entries);
+        fs::write(&catalog_path, &correct_catalog).unwrap();
 
         let status = Command::new(&bin)
             .args(["--check", "--workspace-root", root.to_str().unwrap()])

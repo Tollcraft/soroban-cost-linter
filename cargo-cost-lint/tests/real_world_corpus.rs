@@ -43,6 +43,7 @@ pub struct Baseline {
 /// These are lints with no known false-positive patterns.
 const ALWAYS_TP: &[&str] = &[
     "redundant_env_clone",
+    "redundant_address_clone",
     "symbol_new_for_short_literal",
     "inefficient_bytes_concat",
     "soroban_inefficient_bytes_concat",

@@ -44,6 +44,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
+| [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | unnecessary String to Bytes conversion |

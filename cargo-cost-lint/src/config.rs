@@ -78,7 +78,11 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    const KNOWN_LINTS: &[&str] = &["soroban_storage_in_loop", "redundant_env_clone"];
+    const KNOWN_LINTS: &[&str] = &[
+        "soroban_storage_in_loop",
+        "redundant_env_clone",
+        "redundant_address_clone",
+    ];
 
     fn write_file(path: &Path, contents: &str) {
         let mut f = File::create(path).unwrap();

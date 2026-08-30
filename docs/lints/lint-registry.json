@@ -1,5 +1,12 @@
 [
   {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "redundant clone on Address object",
+    "docs_path": "docs/lints/redundant_address_clone.md",
+    "name": "redundant_address_clone"
+  },
+  {
     "category": "StorageOperations",
     "default_level": "warn",
     "description": "storage operations inside a loop",
