@@ -69,6 +69,33 @@ Events emitted by the contract and the top-level return value are included in tr
 
 Every ledger entry a contract creates or extends has a Time-To-Live (TTL). Extending TTL or increasing entry size incurs a **rent payment**, priced dynamically based on ledger size. This is a refundable fee component and depends on the state of the network, not just the contract's code structure.
 
+#### Entry Lifecycle & Durability: Temporary vs. Persistent vs. Instance
+
+How an entry behaves when its TTL hits zero depends entirely on which storage
+type it lives in[^7]:
+
+| Storage type | Behavior on TTL expiry | Cost | Intended for |
+|---|---|---|---|
+| `Temporary` | **Permanently deleted**, cannot be recovered | Cheapest | Time-bounded, *recreatable* data (oracles, signatures, allowances, cache) |
+| `Persistent` | **Archived**, restorable (usually automatically) | Most expensive | Data that must survive (e.g. token balances) |
+| `Instance` | **Archived** (shares the contract-instance TTL) | Most expensive | Small, fixed, contract-level data |
+
+Temporary entries are never moved to archival storage: **when a `TemporaryEntry`
+expires it is deleted forever and cannot be recovered**. The SDK documentation
+states explicitly that this storage type is "best for entries that are only
+relevant for short periods of time or for entries that can be **arbitrarily
+recreated**", and warns that "it is unsafe to rely on the extensions to preserve
+data — there is always a risk of losing temporary data."
+
+By contrast, Persistent and Instance entries are archived on expiry and can be
+restored, so they "behave as if stored forever". The consequence for contract
+authors: a value that must remain available forever must go into `persistent()`
+or `instance()` storage. Relying on a temporary entry to persist (e.g. reading
+it back with `.unwrap()` after writing it) is relying on data that can quietly
+vanish — this is exactly the anti-pattern the
+[`temporary_storage_for_persistent_data`](lints/temporary_storage_for_persistent_data.md)
+lint detects.
+
 ---
 
 ## What Dominates
@@ -120,6 +147,7 @@ Each lint in this repository targets a specific resource dimension. Every lint i
 | [`contract_call_in_loop`](lints/contract_call_in_loop.md) | **CPU** (cross-contract VM instantiation + dispatch) | Each `invoke_contract` call spins up a new VM context; repeating it per iteration multiplies that overhead by the loop count. |
 | [`excessive_vec_capacity`](lints/excessive_vec_capacity.md) | **Memory** (guest linear memory, hard-capped) | A large hard-coded capacity is charged against the guest's memory cap the moment it's allocated, whether or not it's ever filled. |
 | [`extend_ttl_in_loop`](lints/extend_ttl_in_loop.md) | **Storage** (ledger space rent) | `extend_ttl` is a metered host call that also pays rent; calling it once per iteration multiplies both costs by the loop count instead of batching the extension. |
+| [`temporary_storage_for_persistent_data`](lints/temporary_storage_for_persistent_data.md) | **Entry Lifecycle** (temporary-storage durability) | A temporary entry is permanently deleted when its TTL expires; reading it back with `.unwrap()`/`.expect()` assumes it persists and panics (or worse, compounds) once the entry is gone, wasting every metered call before the failure. |
 
 ---
 
@@ -147,3 +175,5 @@ Local measurements are available in the [`cost_benchmarks`](https://github.com/T
 [^5]: `soroban-budget-assert` — *Protocol Mechanics: The measured gap*. [https://github.com/Tollcraft/soroban-budget-assert/blob/main/docs/src/mechanics.md](https://github.com/Tollcraft/soroban-budget-assert/blob/main/docs/src/mechanics.md)
 
 [^6]: Stellar `rs-soroban-env` — host-side cost model definitions. [https://github.com/stellar/rs-soroban-env](https://github.com/stellar/rs-soroban-env)
+
+[^7]: Soroban SDK `Storage` documentation and Stellar *State Archival* guide — storage-type durability semantics (`Temporary` deleted forever, `Persistent`/`Instance` archived and restorable). [https://docs.rs/soroban-sdk/latest/soroban_sdk/storage/struct.Storage.html](https://docs.rs/soroban-sdk/latest/soroban_sdk/storage/struct.Storage.html) and [https://developers.stellar.org/docs/learn/fundamentals/contract-development/storage/state-archival](https://developers.stellar.org/docs/learn/fundamentals/contract-development/storage/state-archival)

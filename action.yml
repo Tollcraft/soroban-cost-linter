@@ -26,14 +26,16 @@ runs:
   using: 'composite'
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
       with:
         toolchain: ${{ inputs.toolchain }}
         components: rustc-dev, llvm-tools-preview
 
     - name: Install Dylint
       shell: bash
-      run: cargo install cargo-dylint dylint-link --version "^6.0.1"
+      env:
+        CARGO_NET_RETRY: '10'
+      run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
 
     - name: Build lint library
       shell: bash
@@ -44,27 +46,43 @@ runs:
       # library that the "Run Cost Linter" step could not find.
       env:
         RUSTFLAGS: -C linker=dylint-link
-      run: cargo build --release --manifest-path "${{ github.action_path }}/soroban_cost_lints/Cargo.toml"
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/soroban_cost_lints/Cargo.toml"
 
     - name: Register lint library with dylint
       shell: bash
       working-directory: ${{ github.action_path }}
+      env:
+        CARGO_NET_RETRY: '10'
       run: |
         cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > /tmp/dylint-register.log 2>&1 || true
         echo "dylint registration done ($(wc -l < /tmp/dylint-register.log) lines logged)"
 
     - name: Build CLI
       shell: bash
-      run: cargo build --release --manifest-path "${{ github.action_path }}/cargo-cost-lint/Cargo.toml"
+      env:
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/cargo-cost-lint/Cargo.toml"
 
     - name: Run Cost Linter
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ARGS: ${{ inputs.args }}
       run: |
-        CONFIG_ARG=""
-        if [ -n "${{ inputs.config }}" ]; then
-          CONFIG_ARG="--config ${{ inputs.config }}"
+        ARGS_ARRAY=()
+        if [ -n "$INPUT_CONFIG" ]; then
+          ARGS_ARRAY+=(--config "$INPUT_CONFIG")
         fi
-        "${{ github.action_path }}/target/release/cargo-cost-lint" --format github $CONFIG_ARG ${{ inputs.args }}
+        if [ -n "$INPUT_ARGS" ]; then
+          read -ra EXTRA_ARGS <<< "$INPUT_ARGS"
+          ARGS_ARRAY+=("${EXTRA_ARGS[@]}")
+        fi
+        "$ACTION_PATH/target/release/cargo-cost-lint" --format github "${ARGS_ARRAY[@]}"
+

@@ -7,17 +7,23 @@ repository = "https://github.com/Tollcraft/soroban-cost-linter"
 readme = "../README.md"
 keywords = ["soroban", "stellar", "wasm", "linter", "cost", "cargo"]
 categories = ["development-tools:cargo-plugins"]
+publish = false
 
 [dependencies]
+clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "1.1"
-clap = { version = "4.0", features = ["derive"] }
+tabled = "0.15"
 ignore = "0.4"
+toml = "0.8"
+anyhow = "1.0"
+indicatif = "0.17"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"
 
-[[bench]]
-name = "linter_performance"
-harness = false
+[[bin]]
+name = "cargo-cost-lint"
+path = "src/main.rs"

@@ -1,67 +1,46 @@
 ---
-description: Map insert inside a loop — flag Map::insert calls inside loops that drive up storage read/write costs unnecessarily
-sidebar_position: 6
+description: Map insert in loop — avoid inserting elements into maps inside loop bodies
+sidebar_position: 10
 ---
 
 # `map_insert_in_loop`
 
 | Default Severity | Category     |
 | ---------------- | ------------ |
-| `warn`           | StorageOperations |
+| `warn`           | Compute      |
 
 ## What it does
 
-Detects `Map::insert()` calls inside loops that incur storage read/write costs on every iteration.
+Flags `Map::insert` calls executed inside loop bodies.
 
 ## Why is this bad
 
-Calling `Map::insert()` inside a loop incurs storage read/write costs on every iteration. If the same map is being modified repeatedly, the costs accumulate quickly, consuming unnecessary CPU and memory budget.
+Inserting elements into a Soroban `Map` inside a loop repeatedly invokes host object mutation and re-allocations per iteration, driving up CPU costs.
 
 ## Example
 
-**Bad** — inserting into a Map on every loop iteration:
+**Bad** — inserting into a map inside a loop:
 
 ```rust
 // ❌ Triggers: map_insert_in_loop
-fn populate(env: Env) {
-    let mut map = Map;
-    for i in 0..10 {
-        map.insert(&i, &1); // Should Warn
-    }
+let mut map = Map::new(&env);
+for (k, v) in &items {
+    map.set(*k, *v);
 }
 ```
 
-**Good** — collect items in memory first, then insert once:
+**Good** — populate or construct the map outside or via batch initialization:
 
 ```rust
-// ✅ Fixed: accumulate in Vec, insert once
-fn populate(env: Env) {
-    let mut entries = Vec::new();
-    for i in 0..10 {
-        entries.push((i, 1u32));
-    }
-    let mut map = Map;
-    for (k, v) in entries {
-        map.insert(&k, &v);
-    }
-}
+// ✅ Fixed: construct map outside loop or batch insertions
+let mut map = Map::new(&env);
+// Populate items...
 ```
 
-## Fix
+## Suggested Fix
 
-Accumulate entries in a `Vec` or similar in-memory structure during the loop, then perform a single Map construction or batch insert after the loop.
+Avoid calling `.set()` or `.insert()` on host maps inside loop iterations where possible. Pre-populate or aggregate outside the loop.
 
-## Known limitations
+## Cost Impact
 
-This lint only recognizes `Map::insert` calls sitting directly inside a
-syntactic `for`, `while`, or `loop` body (via the internal `enclosing_loop`
-helper). It does **not** flag a `Map::insert` call made inside a multi-call
-iterator closure such as `.for_each(|x| { map.insert(...) })` or an
-`.iter().map(...)` argument, even though that closure body runs once per
-element just like a loop and incurs the same repeated storage cost.
-
-This is a narrower scope than [`unnecessary_host_function_call`](unnecessary_host_function_call.md),
-which uses a closure-aware helper (`enclosing_loop_or_closure`) to also catch
-repeated host calls inside iterator closures. Extending `map_insert_in_loop`
-to cover the closure case is tracked as a possible follow-up rather than
-implemented here.
+- **CPU instructions:** Repeated host map insertions incur continuous host function dispatch overhead and entry reallocation costs, significantly inflating CPU instruction consumption.

@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Thirteen lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Thirty lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -34,12 +34,15 @@ The linter hooks into the Rust compiler's AST to catch specific Soroban anti-pat
 *   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
 *   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
 *   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
-*   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
+ *   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
+ *   **[`string_concat_in_loop`](docs/lints/string_concat_in_loop.md):** Flags `String::append`/`String + String` on a `soroban_sdk::String` inside loops, since each concatenation reallocates and copies the whole accumulated string (O(n²)).
 *   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
+*   **[`crypto_hash_of_constant`](docs/lints/crypto_hash_of_constant.md):** Flags `env.crypto().sha256`/`keccak256` calls whose input is a literal or `const` item, since re-hashing a compile-time constant at runtime is pure wasted host cost — precompute and embed the digest instead.
 *   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
 *   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
 *   **[`instance_storage_for_unbounded_data`](docs/lints/instance_storage_for_unbounded_data.md):** Flags `env.storage().instance().set(...)` calls where the value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten in full on every contract invocation.
 *   **[`formatted_panic_payload`](docs/lints/formatted_panic_payload.md):** Flags `format!`, a formatted `panic!`, or `.expect(&format!(..))`, all of which pull `core::fmt` into the contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+*   **[`val_conversion_chain`](docs/lints/val_conversion_chain.md):** Flags a chain of three or more `soroban_sdk` conversions (`into_val`/`try_into_val`/`from_val`/`try_from_val`) that bounce the same local value through `Val` across a `let` sequence, where converting directly to the needed shape would cost a single host call.
 
 ## How it Fits into Tollcraft
 
@@ -141,7 +144,7 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--workspace` | Lint all packages in the workspace |
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
-| `--format <text\|json>` | Output format (default: `text`) |
+| `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
 | `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
@@ -203,6 +206,15 @@ cargo cost-lint --deny soroban_storage_in_loop --allow redundant_env_clone
 2. **`budget.toml`** defines project-wide defaults for unoverridden lints.
 3. **Built-in lint defaults** apply when neither the command line nor `budget.toml` specifies a level.
 
+#### Configuration Discovery Order
+When resolving `budget.toml`, `cargo cost-lint` uses the following order:
+1. **Explicit `--config <PATH>` CLI option**: Loads the specified configuration file. Fails with an error if the path does not exist.
+2. **Current working directory**: Checks for `budget.toml` in the current working directory.
+3. **Walk-up discovery**: If not found in the current directory, walks up parent directories until it finds the workspace root.
+4. **Safe defaults**: If no `budget.toml` is found up to the workspace root, safe default lint levels are used.
+
+You can inspect the resolved configuration path by running with `--verbose`.
+
 Passing conflicting levels for the same lint (e.g. `--allow <LINT> --deny <LINT>`) or an unknown lint name will be rejected with an error before execution.
 
 ### Running the linter
@@ -238,11 +250,12 @@ LL |         env.storage().instance().set(&i, &1);
 
 Use `--format` to choose the output format:
 
-| Format  | Description                                                  |
-| ------- | ------------------------------------------------------------ |
-| `text`  | Human-readable console output (default)                      |
-| `json`  | One JSON object per line, suitable for programmatic parsing  |
-| `sarif` | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+| Format   | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `text`   | Human-readable console output (default)                      |
+| `json`   | One JSON object per line, suitable for programmatic parsing  |
+| `sarif`  | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+| `github` | GitHub Actions workflow command annotations                  |
 
 Example — generate SARIF output for GitHub Advanced Security:
 
@@ -302,6 +315,20 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
 **Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
+
+### Performance Benchmarking & Regression Gate
+
+The performance benchmark suite measures linter execution duration across all corpus contracts:
+
+```bash
+# Run the benchmark and compare against the recorded baseline
+cargo bench --bench linter_performance --package cargo-cost-lint
+
+# Deliberately update/bless the baseline when a performance slowdown is accepted
+BLESS_BENCH=1 cargo bench --bench linter_performance --package cargo-cost-lint
+```
+
+The CI pipeline runs this gate automatically. Regressions exceeding the 25% threshold fail the build.
 
 Release history is documented in [CHANGELOG.md](CHANGELOG.md).
 

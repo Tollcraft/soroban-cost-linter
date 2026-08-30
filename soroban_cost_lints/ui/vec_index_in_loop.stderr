@@ -1,0 +1,33 @@
+warning: indexing a Soroban Vec in a loop
+  --> $DIR/vec_index_in_loop.rs:22:5
+   |
+LL | /     for i in 0..v.len() {
+LL | |         let _ = v.get(i);
+LL | |     }
+   | |_____^
+   |
+   = help: consider iterating over the collection directly using `.iter()`
+   = note: `#[warn(vec_index_in_loop)]` on by default
+
+warning: indexing a Soroban Vec in a loop
+  --> $DIR/vec_index_in_loop.rs:28:5
+   |
+LL | /     for i in 0..v.len() {
+LL | |         let _ = v.get_unchecked(i);
+LL | |     }
+   | |_____^
+   |
+   = help: consider iterating over the collection directly using `.iter()`
+
+warning: indexing a Soroban Vec in a loop
+  --> $DIR/vec_index_in_loop.rs:35:5
+   |
+LL | /     for i in 0..10 {
+LL | |         let _ = v.get(i as u32);
+LL | |     }
+   | |_____^
+   |
+   = help: consider iterating over the collection directly using `.iter()`
+
+warning: 3 warnings emitted
+

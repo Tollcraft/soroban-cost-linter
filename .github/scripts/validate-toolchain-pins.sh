@@ -73,15 +73,28 @@ else
       COMMIT_DATE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['commit']['committer']['date'].split('T')[0])" 2>/dev/null)
     fi
   fi
+  if [ -z "$COMMIT_DATE" ] || [ "$COMMIT_DATE" = "null" ]; then
+    COMMIT_DATE=$(echo "$RESPONSE" | sed -n '/"committer": {/,/}/ s/.*"date": "\([^"]*\)".*/\1/p' | head -n 1 | cut -d'T' -f1)
+  fi
 
   if [ -z "$COMMIT_DATE" ] || [ "$COMMIT_DATE" = "null" ]; then
     echo "::error file=soroban_cost_lints/Cargo.toml::Invalid or unreachable clippy_utils rev ${CLIPPY_REV}. Update the rev in soroban_cost_lints/Cargo.toml."
     FAILED=1
   else
-    COMMIT_TS=$(date -d "$COMMIT_DATE" +%s 2>/dev/null)
-    NIGHTLY_TS=$(date -d "$NIGHTLY_DATE" +%s 2>/dev/null)
+    parse_ts() {
+      local d="$1"
+      if date -u -d "$d" +%s 2>/dev/null; then
+        return 0
+      elif date -j -f "%Y-%m-%d" "$d" +%s 2>/dev/null; then
+        return 0
+      fi
+      return 1
+    }
+
+    COMMIT_TS=$(parse_ts "$COMMIT_DATE" || true)
+    NIGHTLY_TS=$(parse_ts "$NIGHTLY_DATE" || true)
     if [ -z "$COMMIT_TS" ] || [ -z "$NIGHTLY_TS" ]; then
-      echo "::error::Cannot compare dates (date command may not support -d flag)"
+      echo "::error::Cannot compare dates (date command failed)"
       FAILED=1
     else
       DIFF=$((COMMIT_TS - NIGHTLY_TS))

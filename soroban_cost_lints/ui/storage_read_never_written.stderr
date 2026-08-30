@@ -1,0 +1,28 @@
+warning: storage key is read but never written anywhere in this crate
+  --> $DIR/storage_read_never_written.rs:59:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&42);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: Heuristic warning: the write may live in another contract (cross-contract state sharing is common and valid), or the key may be constructed dynamically. This is not proof of a bug — confirm the key is initialised where expected before changing the code.
+   = note: `#[warn(storage_read_never_written)]` on by default
+
+warning: storage key is read but never written anywhere in this crate
+  --> $DIR/storage_read_never_written.rs:80:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&99);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: Heuristic warning: the write may live in another contract (cross-contract state sharing is common and valid), or the key may be constructed dynamically. This is not proof of a bug — confirm the key is initialised where expected before changing the code.
+   = note: `#[warn(storage_read_never_written)]` on by default
+
+warning: storage key is read but never written anywhere in this crate
+  --> $DIR/storage_read_never_written.rs:88:26
+   |
+LL |     let _: Option<i32> = env.storage().instance().get(&5);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: Heuristic warning: the write may live in another contract (cross-contract state sharing is common and valid), or the key may be constructed dynamically. This is not proof of a bug — confirm the key is initialised where expected before changing the code.
+   = note: `#[warn(storage_read_never_written)]` on by default
+
+warning: 3 warnings emitted

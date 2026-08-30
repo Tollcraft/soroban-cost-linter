@@ -1,6 +1,6 @@
 ---
 description: Storage write without corresponding read — flag unnecessary writes that waste Soroban storage fees
-sidebar_position: 4
+sidebar_position: 20
 ---
 
 # `storage_write_without_read`
@@ -39,6 +39,10 @@ fn update(env: Env, key: &str) {
 }
 ```
 
-## Fix
+## Suggested Fix
 
 Either add a corresponding `.get()` or `.has()` call on the same storage object with the same key before the write, or remove the unnecessary write altogether.
+
+## Cost Impact
+
+- **Ledger entry accesses & I/O bytes:** Unnecessary storage writes consume ledger entry write slots, write I/O bytes, and incur rent and state expansion fees without providing any functional benefit.

@@ -1,0 +1,17 @@
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read.rs:45:13
+   |
+45 |     let _ = env.storage().instance().get::<u32, i32>(&1); //~ WARNING storage read result is discarded
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `-W discarded-storage-read` implied by `-W warnings`
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read.rs:49:5
+   |
+49 |     env.storage().persistent().get::<u32, i32>(&1); //~ WARNING storage read result is discarded
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
