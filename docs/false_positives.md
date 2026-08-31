@@ -140,3 +140,11 @@ Flags 128-bit arithmetic on values provably within 64 bits.
 
 - **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
 - **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.
+
+### `storage_read_modify_write`
+
+Flags two or more complete read-modify-write cycles (get then set) on the same storage key within one function body.
+
+- **Cross-function helper patterns:** When two helper functions each perform a read-modify-write on the same key and are called sequentially, the lint fires on the second call. In some cases this is intentional (e.g., separate business-logic modules that must each complete a full cycle). Suppress with `#[allow(storage_read_modify_write)]`.
+- **Complex control flow with branching reads:** If a key is read through different code paths (e.g., inside an `if`/`else`), the lint may reset tracking conservatively and miss or flag a cycle depending on the path taken.
+- **Handling:** Suppress intentional repeated cycles with `#[allow(storage_read_modify_write)]` at the call site or function level.
