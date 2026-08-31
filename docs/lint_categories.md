@@ -39,5 +39,5 @@ Ask what the pattern wastes, in resource terms:
 When the answer is not obvious, look at the closest existing lint in `LINT_METADATA` and follow its category. The category is what the CLI uses to route diagnostics and `budget.toml` rows, so pick the *dominant* cost dimension of the pattern rather than a secondary one.
 
 {% hint style="info" %}
-Before writing a new lint, read [Scope: Clippy vs. soroban-cost-linter](scope_boundary.md) to confirm the pattern belongs here, and follow the [custom lint guide](custom_lint_guide.md) for the full workflow.
+Before writing a new lint, read [Scope: Clippy vs. soroban-cost-linter](scope_boundary.md) to confirm the pattern belongs here, then follow the [custom lint guide](custom_lint_guide.md) — which points to `DEVELOPING_LINTS.md` at the repository root, the single authoritative lint-authoring guide.
 {% endhint %}
