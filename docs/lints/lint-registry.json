@@ -229,5 +229,12 @@
     "description": "stores an Option<T> in storage where the key already models absence",
     "docs_path": "docs/lints/option_wrapping_in_storage.md",
     "name": "option_wrapping_in_storage"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "reads a ledger context value inside a loop when it cannot change during the invocation",
+    "docs_path": "docs/lints/ledger_context_read_in_loop.md",
+    "name": "ledger_context_read_in_loop"
   }
 ]
