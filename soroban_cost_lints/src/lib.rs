@@ -13,6 +13,7 @@ use std::collections::HashSet;
 
 mod discarded_storage_read;
 mod ledger_context_read_in_loop;
+mod redundant_require_auth;
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -238,6 +239,12 @@ pub struct LintMeta {
 
 pub const LINT_METADATA: &[LintMeta] = &[
     LintMeta {
+        name: "redundant_require_auth",
+        category: LintCategory::Compute,
+        description: "require_auth called more than once on the same address in a single function body",
+        rationale: "require_auth walks the authorization tree and verifies signatures; calling it twice on the same address costs twice and proves nothing new.",
+    },
+    LintMeta {
         name: "soroban_storage_in_loop",
         category: LintCategory::Storage,
         description: "Performs a storage read or write inside a loop body",
@@ -460,5 +467,6 @@ dylint_lint_impl! {
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
         LEDGER_CONTEXT_READ_IN_LOOP,
+        REDUNDANT_REQUIRE_AUTH,
     ]
 }

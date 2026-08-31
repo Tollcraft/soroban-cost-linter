@@ -147,3 +147,12 @@ Flags reading a ledger context value (`sequence`, `timestamp`, `network_id`) ins
 
 - **Debugging/Logging in Loop:** A contract reads the ledger timestamp on each iteration for diagnostic logging or conditional branching based on ledger time. This is rare but intentional — the host call cost is accepted for observability. Suppress with `#[allow(ledger_context_read_in_loop)]`.
 - **Relationship with `host_in_loop`:** A ledger context read inside a loop may also trigger `host_in_loop`. The `ledger_context_read_in_loop` lint provides a more specific explanation (the value is invariant during the invocation).
+### `redundant_require_auth`
+
+Fires when `Address::require_auth` or `Address::require_auth_for_args` is called more than once on the same address within a single function body, with no cross-contract call in between.
+
+**Security caveat:** This lint advises about authorization. A false positive here is worse than a false positive in any other lint, because acting on it would remove a security check. The lint is intentionally conservative:
+
+- **Address identity is compared by source-text snippet.** Two distinct variables holding the same address value are *not* flagged. This errs on the side of *not* flagging.
+- **Cross-contract calls reset tracking.** Authorization context can change across `env.invoke_contract` / `env.try_invoke_contract` boundaries.
+- **Cross-function analysis is out of scope.** If `require_auth` is called in two separate functions, the lint does not track across the function boundary.
