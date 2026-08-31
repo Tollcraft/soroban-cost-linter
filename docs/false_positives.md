@@ -136,6 +136,13 @@ Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an e
 
 - **Footprint Risk:** Instance storage is limited to 64KB per contract and shares a single TTL with the contract executable.
 
+### `option_wrapping_in_storage`
+
+Fires when the value argument to a storage `.set()` call has type `Option<T>`.
+
+- **Intentional Tri-State Entry:** A contract deliberately stores a tri-state value: missing (key absent), `Some(T)` (present with value), and `None` (present but empty). This is the documented deliberate false positive. For example, a registry that tracks whether a participant has ever registered (missing), is currently active (`Some(active_config)`), or has been explicitly deactivated (`None`).
+- **Silencing:** Suppress at the call site with `#[allow(option_wrapping_in_storage)]`.
+
 ### `u128_where_u64_suffices`
 
 Flags 128-bit arithmetic on values provably within 64 bits.
@@ -158,3 +165,18 @@ Fires when the same key expression is constructed in two or more distinct functi
 - **Cross-contract key sharing:** A factory contract may construct the same key pattern as a child contract, but the key spaces are separate. Suppress with `#[allow(duplicate_storage_key_construction)]`.
 - **Intentional key derivation:** Some contracts intentionally build keys from different prefixes for different access patterns. Suppress at the call site.
 - **Handling:** Hoist the key to a `const` or key enum. If the duplication is intentional, suppress with `#[allow(duplicate_storage_key_construction)]`.
+### `ledger_context_read_in_loop`
+
+Flags reading a ledger context value (`sequence`, `timestamp`, `network_id`) inside a loop.
+
+- **Debugging/Logging in Loop:** A contract reads the ledger timestamp on each iteration for diagnostic logging or conditional branching based on ledger time. This is rare but intentional — the host call cost is accepted for observability. Suppress with `#[allow(ledger_context_read_in_loop)]`.
+- **Relationship with `host_in_loop`:** A ledger context read inside a loop may also trigger `host_in_loop`. The `ledger_context_read_in_loop` lint provides a more specific explanation (the value is invariant during the invocation).
+### `redundant_require_auth`
+
+Fires when `Address::require_auth` or `Address::require_auth_for_args` is called more than once on the same address within a single function body, with no cross-contract call in between.
+
+**Security caveat:** This lint advises about authorization. A false positive here is worse than a false positive in any other lint, because acting on it would remove a security check. The lint is intentionally conservative:
+
+- **Address identity is compared by source-text snippet.** Two distinct variables holding the same address value are *not* flagged. This errs on the side of *not* flagging.
+- **Cross-contract calls reset tracking.** Authorization context can change across `env.invoke_contract` / `env.try_invoke_contract` boundaries.
+- **Cross-function analysis is out of scope.** If `require_auth` is called in two separate functions, the lint does not track across the function boundary.

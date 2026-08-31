@@ -1,0 +1,59 @@
+warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:33:18
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+   = note: `#[warn(ledger_context_read_in_loop)]` on by default
+
+warning: reading ledger context `timestamp` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:39:18
+   |
+LL |         let _ts = env.ledger().timestamp(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (timestamp) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:46:18
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `network_id` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:53:18
+   |
+LL |         let _nid = env.ledger().network_id(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (network_id) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:59:18
+   |
+LL |         let _seq = env.ledger().sequence(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `timestamp` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:60:18
+   |
+LL |         let _ts = env.ledger().timestamp(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (timestamp) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `network_id` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:61:18
+   |
+LL |         let _nid = env.ledger().network_id(); // Should Warn
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (network_id) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: 7 warnings emitted
+

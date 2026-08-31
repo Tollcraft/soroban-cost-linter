@@ -5,13 +5,16 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_hir::{Crate, Expr, ExprKind, BinOpKind, UnOp, QPath};
+use rustc_hir::{BinOpKind, Crate, Expr, ExprKind, QPath, UnOp};
 use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
 use std::collections::HashSet;
 
 mod discarded_storage_read;
+mod option_wrapping_in_storage;
+mod ledger_context_read_in_loop;
+mod redundant_require_auth;
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -209,6 +212,12 @@ rustc_lint::declare_lint! {
     pub DUPLICATE_STORAGE_KEY_CONSTRUCTION,
     Warn,
     "constructs the same storage key expression in multiple function bodies"
+    pub OPTION_WRAPPING_IN_STORAGE,
+    Warn,
+    "stores an Option<T> in storage where the key already models absence"
+    pub LEDGER_CONTEXT_READ_IN_LOOP,
+    Warn,
+    "reads a ledger context value inside a loop when it cannot change during the invocation"
 }
 
 pub struct SorobanCostLints;
@@ -242,6 +251,12 @@ pub struct LintMeta {
 }
 
 pub const LINT_METADATA: &[LintMeta] = &[
+    LintMeta {
+        name: "redundant_require_auth",
+        category: LintCategory::Compute,
+        description: "require_auth called more than once on the same address in a single function body",
+        rationale: "require_auth walks the authorization tree and verifies signatures; calling it twice on the same address costs twice and proves nothing new.",
+    },
     LintMeta {
         name: "soroban_storage_in_loop",
         category: LintCategory::Storage,
@@ -433,6 +448,14 @@ pub const LINT_METADATA: &[LintMeta] = &[
         category: LintCategory::Storage,
         description: "Constructs the same storage key expression in multiple function bodies",
         rationale: "Rebuilding the same key across functions wastes the symbol-construction host call and introduces independent chances to typo the key into a silent, undebuggable state bug.",
+        name: "option_wrapping_in_storage",
+        category: LintCategory::Storage,
+        description: "Stores an Option<T> in storage where the key already models absence",
+        rationale: "Storage already models absence — a missing key returns None. Storing Option<T> creates a redundant three-state model.",
+        name: "ledger_context_read_in_loop",
+        category: LintCategory::Compute,
+        description: "Reads a ledger context value (sequence, timestamp, network_id) inside a loop",
+        rationale: "Ledger context values are invariant during a single invocation; reading them in a loop performs repeated host calls for the same value.",
     },
 ];
 
@@ -472,5 +495,8 @@ dylint_lint_impl! {
         U128_WHERE_U64_SUFFICES,
         FLOAT_ARITHMETIC_IN_CONTRACT,
         DUPLICATE_STORAGE_KEY_CONSTRUCTION,
+        OPTION_WRAPPING_IN_STORAGE,
+        LEDGER_CONTEXT_READ_IN_LOOP,
+        REDUNDANT_REQUIRE_AUTH,
     ]
 }

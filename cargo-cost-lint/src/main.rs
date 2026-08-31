@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 mod cache;
 mod config;
+mod diff_files;
 mod error;
 mod lint_name_set;
 mod output_formatters;
@@ -33,6 +34,9 @@ pub struct Cli {
 
     #[arg(long, default_value = "target/cargo-cost-lint-cache")]
     pub cache_dir: PathBuf,
+
+    #[arg(long)]
+    pub diff_only: bool,
 
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub cargo_args: Vec<String>,
@@ -119,7 +123,35 @@ fn execute_dylint_and_collect_findings(cli: &Cli) -> LinterResult<Vec<LintFindin
         cache::save_to_cache(&cli.cache_dir, &args, &findings)?;
     }
 
-    Ok(findings)
+    if cli.diff_only {
+        filter_findings_to_changed_files(&findings)
+    } else {
+        Ok(findings)
+    }
+}
+
+/// Filter findings to only include those in files changed relative to the
+/// default branch merge base. Lints the entire changed file, not just
+/// changed lines.
+fn filter_findings_to_changed_files(findings: &[LintFinding]) -> LinterResult<Vec<LintFinding>> {
+    let changed = diff_files::get_changed_files()?;
+    if changed.is_empty() {
+        eprintln!("--diff-only: no changed files found; nothing to lint.");
+        return Ok(vec![]);
+    }
+    eprintln!("--diff-only: linting {} changed file(s)", changed.len());
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let filtered: Vec<LintFinding> = findings
+        .iter()
+        .filter(|f| {
+            let path = std::path::Path::new(&f.file);
+            let relative = path.strip_prefix(&cwd).unwrap_or(path);
+            let relative_str = relative.to_string_lossy().to_string();
+            changed.iter().any(|c| relative_str == *c || relative_str.ends_with(c))
+        })
+        .cloned()
+        .collect();
+    Ok(filtered)
 }
 
 fn invoke_dylint(args: &[String]) -> LinterResult<Vec<LintFinding>> {

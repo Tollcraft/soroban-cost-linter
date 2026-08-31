@@ -1,0 +1,27 @@
+warning: require_auth already called on this address in this function
+  --> $DIR/redundant_require_auth.rs:10:5
+   |
+LL |     addr.require_auth(); //~ WARNING require_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation
+   = note: `#[warn(redundant_require_auth)]` on by default
+
+warning: require_auth already called on this address in this function
+  --> $DIR/redundant_require_auth.rs:16:5
+   |
+LL |     addr.require_auth(); //~ WARNING require_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation
+
+warning: require_auth already called on this address in this function
+  --> $DIR/redundant_require_auth.rs:17:5
+   |
+LL |     addr.require_auth_for_args(&[1, 2]); //~ WARNING require_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation
+
+warning: 3 warnings emitted
+
