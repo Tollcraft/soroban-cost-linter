@@ -34,5 +34,8 @@ exclude = [
     "tests/corpus/contracts/bad_instance_storage",
     "tests/corpus/contracts/good_fixed_instance_storage",
     "tests/corpus/contracts/good_persistent_storage",
+    "tests/corpus/contracts/auth_multi_party",
+    "tests/corpus/contracts/auth_batch_per_item",
+    "tests/corpus/contracts/auth_layered_admin",
 ]
 resolver = "2"

@@ -1,230 +1,181 @@
 [
   {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "redundant clone on Address object",
-    "docs_path": "docs/lints/redundant_address_clone.md",
-    "name": "redundant_address_clone"
-  },
-  {
-    "category": "StorageOperations",
-    "default_level": "warn",
-    "description": "storage operations inside a loop",
+    "category": "Other",
+    "default_level": "deny",
+    "description": "performs a storage read or write inside a loop body",
     "docs_path": "docs/lints/soroban_storage_in_loop.md",
     "name": "soroban_storage_in_loop"
   },
   {
-    "category": "StorageOperations",
-    "default_level": "deny",
-    "description": "storage operation inside a nested loop — O(n·m) cost",
-    "docs_path": "docs/lints/nested_loop_storage_access.md",
-    "name": "nested_loop_storage_access"
-  },
-  {
-    "category": "StorageOperations",
+    "category": "Other",
     "default_level": "warn",
-    "description": "storage operation inside a loop whose operands are provably loop-invariant",
-    "docs_path": "docs/lints/loop_invariant_storage_access.md",
-    "name": "loop_invariant_storage_access"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "inefficient Bytes concatenation inside a loop",
-    "docs_path": "docs/lints/soroban_inefficient_bytes_concat.md",
-    "name": "soroban_inefficient_bytes_concat"
-  },
-  {
-    "category": "StorageOperations",
-    "default_level": "warn",
-    "description": "multiple sequential reads of the same storage key without modification",
-    "docs_path": "docs/lints/soroban_redundant_storage_read.md",
-    "name": "soroban_redundant_storage_read"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "redundant clone on Env object",
+    "description": "clones the Env handle redundantly",
     "docs_path": "docs/lints/redundant_env_clone.md",
     "name": "redundant_env_clone"
   },
   {
-    "category": "Compute",
+    "category": "Other",
     "default_level": "warn",
-    "description": "unnecessary host function call inside loop",
+    "description": "calls host functions that could be hoisted or avoided",
     "docs_path": "docs/lints/unnecessary_host_function_call.md",
     "name": "unnecessary_host_function_call"
   },
   {
-    "category": "Compute",
+    "category": "Other",
     "default_level": "warn",
-    "description": "use of Host object inside a loop",
-    "docs_path": "docs/lints/host_in_loop.md",
-    "name": "host_in_loop"
+    "description": "performs sequential redundant reads or has/get checks on the same key",
+    "docs_path": "docs/lints/soroban_redundant_storage_read.md",
+    "name": "soroban_redundant_storage_read"
   },
   {
-    "category": "Memory",
+    "category": "Other",
     "default_level": "warn",
-    "description": "unnecessary String to Bytes conversion",
-    "docs_path": "docs/lints/unnecessary_string_to_bytes.md",
-    "name": "unnecessary_string_to_bytes"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "cross-contract invocation inside a loop",
-    "docs_path": "docs/lints/contract_call_in_loop.md",
-    "name": "contract_call_in_loop"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "token transfer (transfer / transfer_from) on a contract client inside a loop",
-    "docs_path": "docs/lints/token_transfer_in_loop.md",
-    "name": "token_transfer_in_loop"
-  },
-  {
-    "category": "SymbolOperations",
-    "default_level": "warn",
-    "description": "Symbol::new used with a short literal that could use symbol_short! macro",
-    "docs_path": "docs/lints/symbol_new_for_short_literal.md",
-    "name": "symbol_new_for_short_literal"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "loop bound derived from untrusted input with storage write in body",
-    "docs_path": "docs/lints/unbounded_input_loop.md",
-    "name": "unbounded_input_loop"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "repeatedly growing SDK containers inside loops",
-    "docs_path": "docs/lints/bytes_append_in_loop.md",
-    "name": "bytes_append_in_loop"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "repeatedly concatenating a soroban String inside a loop",
-    "docs_path": "docs/lints/string_concat_in_loop.md",
-    "name": "string_concat_in_loop"
-  },
-  {
-    "category": "StorageOperations",
-    "default_level": "warn",
-    "description": "storage write without a corresponding read",
+    "description": "performs a storage set without any prior get or has in the function",
     "docs_path": "docs/lints/storage_write_without_read.md",
     "name": "storage_write_without_read"
   },
   {
-    "category": "StorageOperations",
+    "category": "Other",
     "default_level": "warn",
-    "description": "reads a storage key that is never written anywhere in this crate",
-    "docs_path": "docs/lints/storage_read_never_written.md",
-    "name": "storage_read_never_written"
+    "description": "reads from storage whose result is never used",
+    "docs_path": "docs/lints/discarded_storage_read.md",
+    "name": "discarded_storage_read"
   },
   {
-    "category": "StorageOperations",
+    "category": "Other",
     "default_level": "warn",
-    "description": "storage write that blindly overwrites a previously written key without reading it back",
-    "docs_path": "docs/lints/blind_storage_write.md",
-    "name": "blind_storage_write"
+    "description": "stores unbounded collections like Vec, Map, or Bytes in instance storage",
+    "docs_path": "docs/lints/instance_storage_for_unbounded_data.md",
+    "name": "instance_storage_for_unbounded_data"
   },
   {
-    "category": "Memory",
+    "category": "Other",
+    "default_level": "warn",
+    "description": "reads from persistent storage without extending its TTL in the same function",
+    "docs_path": "docs/lints/persistent_read_without_ttl_extension.md",
+    "name": "persistent_read_without_ttl_extension"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "performs storage access inside a loop with loop-invariant operands",
+    "docs_path": "docs/lints/loop_invariant_storage_access.md",
+    "name": "loop_invariant_storage_access"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "constructs storage keys inside loop bodies where the key is invariant",
+    "docs_path": "docs/lints/storage_key_construction_in_loop.md",
+    "name": "storage_key_construction_in_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "appends to Bytes or Vec inside loop bodies causing repeated host reallocations",
+    "docs_path": "docs/lints/bytes_append_in_loop.md",
+    "name": "bytes_append_in_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "loops with iteration count derived from untrusted input performing storage writes",
+    "docs_path": "docs/lints/unbounded_input_loop.md",
+    "name": "unbounded_input_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "performs unnecessary string to bytes conversion",
+    "docs_path": "docs/lints/unnecessary_string_to_bytes.md",
+    "name": "unnecessary_string_to_bytes"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "legacy unnecessary host function call",
+    "docs_path": "docs/lints/unnecessary_host_function_call_legacy.md",
+    "name": "unnecessary_host_function_call_legacy"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "inserts into Map inside a loop",
+    "docs_path": "docs/lints/map_insert_in_loop.md",
+    "name": "map_insert_in_loop"
+  },
+  {
+    "category": "Other",
     "default_level": "warn",
     "description": "inefficient bytes concatenation",
     "docs_path": "docs/lints/inefficient_bytes_concat.md",
     "name": "inefficient_bytes_concat"
   },
   {
-    "category": "Memory",
+    "category": "Other",
     "default_level": "warn",
-    "description": "Map::insert called inside a loop",
-    "docs_path": "docs/lints/map_insert_in_loop.md",
-    "name": "map_insert_in_loop"
+    "description": "performs contract call inside loop",
+    "docs_path": "docs/lints/contract_call_in_loop.md",
+    "name": "contract_call_in_loop"
   },
   {
-    "category": "Compute",
+    "category": "Other",
     "default_level": "warn",
-    "description": "signature verification performed inside a loop",
-    "docs_path": "docs/lints/signature_verification_in_loop.md",
-    "name": "signature_verification_in_loop"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "cryptographic hash of a compile-time constant value",
-    "docs_path": "docs/lints/crypto_hash_of_constant.md",
-    "name": "crypto_hash_of_constant"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "storage key constructed inside a loop body where it could be hoisted",
-    "docs_path": "docs/lints/storage_key_construction_in_loop.md",
-    "name": "storage_key_construction_in_loop"
-  },
-  {
-    "category": "Memory",
-    "default_level": "warn",
-    "description": "soroban_sdk::Vec passed by value where a native Rust slice would suffice",
-    "docs_path": "docs/lints/vec_where_slice_could_be_used.md",
-    "name": "vec_where_slice_could_be_used"
-  },
-  {
-    "category": "EntryLifecycle",
-    "default_level": "warn",
-    "description": "extend_ttl called inside a loop",
+    "description": "extends ttl inside loop",
     "docs_path": "docs/lints/extend_ttl_in_loop.md",
     "name": "extend_ttl_in_loop"
   },
   {
-    "category": "Compute",
+    "category": "Other",
     "default_level": "warn",
-    "description": "linear scan on collection inside a loop — O(n²) cost",
-    "docs_path": "docs/lints/linear_scan_in_loop.md",
-    "name": "linear_scan_in_loop"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "indexing a Soroban Vec in a loop",
-    "docs_path": "docs/lints/vec_index_in_loop.md",
-    "name": "vec_index_in_loop"
-  },
-  {
-    "category": "EntryLifecycle",
-    "default_level": "warn",
-    "description": "persistent storage read without TTL extension — archival cost cliff",
-    "docs_path": "docs/lints/persistent_read_without_ttl_extension.md",
-    "name": "persistent_read_without_ttl_extension"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "Address::require_auth or require_auth_for_args called inside a loop",
-    "docs_path": "docs/lints/require_auth_in_loop.md",
-    "name": "require_auth_in_loop"
-  },
-  {
-    "category": "StorageOperations",
-    "default_level": "warn",
-    "description": "unbounded collection written to instance storage",
-    "docs_path": "docs/lints/instance_storage_for_unbounded_data.md",
-    "name": "instance_storage_for_unbounded_data"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract",
+    "description": "formatted panic payload",
     "docs_path": "docs/lints/formatted_panic_payload.md",
     "name": "formatted_panic_payload"
   },
   {
-    "category": "StorageOperations",
+    "category": "Other",
+    "default_level": "warn",
+    "description": "linear scan inside loop",
+    "docs_path": "docs/lints/linear_scan_in_loop.md",
+    "name": "linear_scan_in_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "requires auth inside loop",
+    "docs_path": "docs/lints/require_auth_in_loop.md",
+    "name": "require_auth_in_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "signature verification inside loop",
+    "docs_path": "docs/lints/signature_verification_in_loop.md",
+    "name": "signature_verification_in_loop"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "symbol key boundary",
+    "docs_path": "docs/lints/symbol_key_boundary.md",
+    "name": "symbol_key_boundary"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "symbol key enum storage",
+    "docs_path": "docs/lints/symbol_key_enum_storage.md",
+    "name": "symbol_key_enum_storage"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "symbol key event topics",
+    "docs_path": "docs/lints/symbol_key_event_topics.md",
+    "name": "symbol_key_event_topics"
+  },
+  {
+    "category": "Other",
     "default_level": "warn",
     "description": "instance storage write inside a loop rewrites the full instance entry every iteration",
     "docs_path": "docs/lints/instance_storage_write_in_loop.md",
@@ -238,45 +189,45 @@
     "name": "unwrap_on_storage_get"
   },
   {
-    "category": "Compute",
+    "category": "Other",
     "default_level": "warn",
-    "description": "redundant conversion across the native-Rust/Val boundary",
-    "docs_path": "docs/lints/redundant_val_conversion.md",
-    "name": "redundant_val_conversion"
-  },
-  {
-    "category": "Compute",
-    "default_level": "warn",
-    "description": "unbounded recursion driven by caller-supplied input",
+    "description": "unbounded recursion",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
   },
   {
-    "category": "Memory",
+    "category": "Other",
     "default_level": "warn",
-    "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
-    "docs_path": "docs/lints/std_collection_in_contract.md",
-    "name": "std_collection_in_contract"
+    "description": "unwraps on storage get",
+    "docs_path": "docs/lints/unwrap_on_storage_get.md",
+    "name": "unwrap_on_storage_get"
   },
   {
-    "category": "EntryLifecycle",
+    "category": "Other",
     "default_level": "warn",
-    "description": "temporary storage write followed by an unsafe read that assumes the value persists",
-    "docs_path": "docs/lints/temporary_storage_for_persistent_data.md",
-    "name": "temporary_storage_for_persistent_data"
+    "description": "uses Vec where slice could be used",
+    "docs_path": "docs/lints/vec_where_slice_could_be_used.md",
+    "name": "vec_where_slice_could_be_used"
   },
   {
-    "category": "Memory",
+    "category": "Other",
     "default_level": "warn",
-    "description": "excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve",
-    "docs_path": "docs/lints/excessive_vec_capacity.md",
-    "name": "excessive_vec_capacity"
+    "description": "soroban inefficient bytes concat",
+    "docs_path": "docs/lints/soroban_inefficient_bytes_concat.md",
+    "name": "soroban_inefficient_bytes_concat"
   },
   {
-    "category": "EntryLifecycle",
+    "category": "Other",
     "default_level": "warn",
-    "description": "persistent storage write whose key is removed on every path through the function",
-    "docs_path": "docs/lints/persistent_storage_for_ephemeral_data.md",
-    "name": "persistent_storage_for_ephemeral_data"
+    "description": "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
+    "docs_path": "docs/lints/u128_where_u64_suffices.md",
+    "name": "u128_where_u64_suffices"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "reads a ledger context value inside a loop when it cannot change during the invocation",
+    "docs_path": "docs/lints/ledger_context_read_in_loop.md",
+    "name": "ledger_context_read_in_loop"
   }
 ]

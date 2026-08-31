@@ -5,14 +5,15 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_hir::{Crate, Expr, ExprKind, BinOpKind, UnOp, QPath};
+use rustc_hir::{BinOpKind, Crate, Expr, ExprKind, QPath, UnOp};
 use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
 use std::collections::HashSet;
 
 mod discarded_storage_read;
-mod storage_read_modify_write;
+mod ledger_context_read_in_loop;
+mod redundant_require_auth;
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -201,9 +202,9 @@ rustc_lint::declare_lint! {
 }
 
 rustc_lint::declare_lint! {
-    pub STORAGE_READ_MODIFY_WRITE,
+    pub LEDGER_CONTEXT_READ_IN_LOOP,
     Warn,
-    "performs two or more read-modify-write cycles on the same storage key"
+    "reads a ledger context value inside a loop when it cannot change during the invocation"
 }
 
 pub struct SorobanCostLints;
@@ -237,6 +238,12 @@ pub struct LintMeta {
 }
 
 pub const LINT_METADATA: &[LintMeta] = &[
+    LintMeta {
+        name: "redundant_require_auth",
+        category: LintCategory::Compute,
+        description: "require_auth called more than once on the same address in a single function body",
+        rationale: "require_auth walks the authorization tree and verifies signatures; calling it twice on the same address costs twice and proves nothing new.",
+    },
     LintMeta {
         name: "soroban_storage_in_loop",
         category: LintCategory::Storage,
@@ -418,10 +425,10 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
     },
     LintMeta {
-        name: "storage_read_modify_write",
-        category: LintCategory::Storage,
-        description: "Performs two or more read-modify-write cycles on the same storage key",
-        rationale: "Each extra cycle is a full metered read plus a full metered write for a value that never left the host between them. On a balance update touched by three helpers, that is six storage operations where two would do.",
+        name: "ledger_context_read_in_loop",
+        category: LintCategory::Compute,
+        description: "Reads a ledger context value (sequence, timestamp, network_id) inside a loop",
+        rationale: "Ledger context values are invariant during a single invocation; reading them in a loop performs repeated host calls for the same value.",
     },
 ];
 
@@ -459,6 +466,7 @@ dylint_lint_impl! {
         VEC_WHERE_SLICE_COULD_BE_USED,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
-        STORAGE_READ_MODIFY_WRITE,
+        LEDGER_CONTEXT_READ_IN_LOOP,
+        REDUNDANT_REQUIRE_AUTH,
     ]
 }
