@@ -12,6 +12,7 @@ use rustc_span::Span;
 use std::collections::HashSet;
 
 mod discarded_storage_read;
+mod storage_read_modify_write;
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -197,6 +198,12 @@ rustc_lint::declare_lint! {
     pub U128_WHERE_U64_SUFFICES,
     Warn,
     "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32"
+}
+
+rustc_lint::declare_lint! {
+    pub STORAGE_READ_MODIFY_WRITE,
+    Warn,
+    "performs two or more read-modify-write cycles on the same storage key"
 }
 
 pub struct SorobanCostLints;
@@ -410,6 +417,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
         rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
     },
+    LintMeta {
+        name: "storage_read_modify_write",
+        category: LintCategory::Storage,
+        description: "Performs two or more read-modify-write cycles on the same storage key",
+        rationale: "Each extra cycle is a full metered read plus a full metered write for a value that never left the host between them. On a balance update touched by three helpers, that is six storage operations where two would do.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -446,5 +459,6 @@ dylint_lint_impl! {
         VEC_WHERE_SLICE_COULD_BE_USED,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
+        STORAGE_READ_MODIFY_WRITE,
     ]
 }
