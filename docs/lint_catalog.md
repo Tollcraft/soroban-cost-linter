@@ -39,6 +39,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `vec_where_slice_could_be_used` | warn | uses Vec where slice could be used | [Link](lints/vec_where_slice_could_be_used.md) |
 | `soroban_inefficient_bytes_concat` | warn | soroban inefficient bytes concat | [Link](lints/soroban_inefficient_bytes_concat.md) |
 | `u128_where_u64_suffices` | warn | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 | [Link](lints/u128_where_u64_suffices.md) |
-| `option_wrapping_in_storage` | warn | stores an Option<T> in storage where the key already models absence | [Link](lints/option_wrapping_in_storage.md) |
+| `ledger_context_read_in_loop` | warn | reads a ledger context value inside a loop when it cannot change during the invocation | [Link](lints/ledger_context_read_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

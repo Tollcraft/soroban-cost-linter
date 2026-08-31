@@ -108,7 +108,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | uses Vec where slice could be used |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | soroban inefficient bytes concat |
 | [`u128_where_u64_suffices`](u128_where_u64_suffices.md) | `warn` | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 |
-| [`option_wrapping_in_storage`](option_wrapping_in_storage.md) | `warn` | stores an Option<T> in storage where the key already models absence |
+| [`ledger_context_read_in_loop`](ledger_context_read_in_loop.md) | `warn` | reads a ledger context value inside a loop when it cannot change during the invocation |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
