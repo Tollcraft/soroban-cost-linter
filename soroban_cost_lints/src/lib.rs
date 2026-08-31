@@ -199,6 +199,18 @@ rustc_lint::declare_lint! {
     "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32"
 }
 
+rustc_lint::declare_lint! {
+    pub FLOAT_ARITHMETIC_IN_CONTRACT,
+    Warn,
+    "performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred"
+}
+
+rustc_lint::declare_lint! {
+    pub DUPLICATE_STORAGE_KEY_CONSTRUCTION,
+    Warn,
+    "constructs the same storage key expression in multiple function bodies"
+}
+
 pub struct SorobanCostLints;
 
 #[derive(Debug, Clone, Copy)]
@@ -410,6 +422,18 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
         rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
     },
+    LintMeta {
+        name: "float_arithmetic_in_contract",
+        category: LintCategory::Compute,
+        description: "Performs floating-point arithmetic in contract code",
+        rationale: "wasm32 has no hardware floating point; every f32/f64 operation compiles to a soft-float routine costing tens to hundreds of wasm instructions. Floats are also non-deterministic across rounding paths.",
+    },
+    LintMeta {
+        name: "duplicate_storage_key_construction",
+        category: LintCategory::Storage,
+        description: "Constructs the same storage key expression in multiple function bodies",
+        rationale: "Rebuilding the same key across functions wastes the symbol-construction host call and introduces independent chances to typo the key into a silent, undebuggable state bug.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -446,5 +470,7 @@ dylint_lint_impl! {
         VEC_WHERE_SLICE_COULD_BE_USED,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
+        FLOAT_ARITHMETIC_IN_CONTRACT,
+        DUPLICATE_STORAGE_KEY_CONSTRUCTION,
     ]
 }

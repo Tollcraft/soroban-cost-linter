@@ -42,6 +42,8 @@ The project runs continuous regression and triage checks against real-world Soro
 | `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
 | `u128_where_u64_suffices` | 0 | 0 | warn | True positive: provably narrow 128-bit arithmetic operations on wasm32 |
 | `storage_read_never_written` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+| `float_arithmetic_in_contract` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+| `duplicate_storage_key_construction` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 
 ### Target False-Positive Ratio & Policy
 
@@ -140,3 +142,19 @@ Flags 128-bit arithmetic on values provably within 64 bits.
 
 - **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
 - **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.
+
+### `float_arithmetic_in_contract`
+
+Flags arithmetic on `f32`/`f64` inside contract code.
+
+- **Non-contract helper code:** Functions outside of `#[contractimpl]` blocks (test utilities, benchmarks) may legitimately use floats. The lint scope boundary is the `#[contractimpl]` attribute.
+- **Explicit bit operations:** `f64::from_bits()` / `f64::to_bits()` for bit-level inspection do not perform arithmetic and are not flagged.
+- **Handling:** If floating-point arithmetic is intentional and deterministic for your use case, suppress with `#[allow(float_arithmetic_in_contract)]`.
+
+### `duplicate_storage_key_construction`
+
+Fires when the same key expression is constructed in two or more distinct function bodies.
+
+- **Cross-contract key sharing:** A factory contract may construct the same key pattern as a child contract, but the key spaces are separate. Suppress with `#[allow(duplicate_storage_key_construction)]`.
+- **Intentional key derivation:** Some contracts intentionally build keys from different prefixes for different access patterns. Suppress at the call site.
+- **Handling:** Hoist the key to a `const` or key enum. If the duplication is intentional, suppress with `#[allow(duplicate_storage_key_construction)]`.

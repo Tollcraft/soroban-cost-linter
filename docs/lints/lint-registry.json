@@ -278,5 +278,19 @@
     "description": "persistent storage write whose key is removed on every path through the function",
     "docs_path": "docs/lints/persistent_storage_for_ephemeral_data.md",
     "name": "persistent_storage_for_ephemeral_data"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "performs floating-point arithmetic in contract code",
+    "docs_path": "docs/lints/float_arithmetic_in_contract.md",
+    "name": "float_arithmetic_in_contract"
+  },
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
+    "description": "constructs the same storage key expression in multiple function bodies",
+    "docs_path": "docs/lints/duplicate_storage_key_construction.md",
+    "name": "duplicate_storage_key_construction"
   }
 ]

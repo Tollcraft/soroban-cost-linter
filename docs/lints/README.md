@@ -22,6 +22,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |
 | [`instance_storage_write_in_loop`](instance_storage_write_in_loop.md) | `warn` | instance storage write inside a loop rewrites the full instance entry every iteration |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
+| [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
 
 ## CPU/Compute
 
@@ -40,6 +41,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
 | [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | redundant conversion across the native-Rust/Val boundary |
 | [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
+| [`float_arithmetic_in_contract`](float_arithmetic_in_contract.md) | `warn` | floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred |
 
 ## Memory
 

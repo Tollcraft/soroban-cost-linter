@@ -13,6 +13,8 @@ and this project adheres to Semantic Versioning.
 - New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.
 - New lint `require_auth_in_loop` detecting `Address::require_auth` and `Address::require_auth_for_args` calls inside loop bodies (`for`, `while`, `loop`) and suggesting that distinct addresses be authorized once before the loop.
 - New lint `storage_write_without_read` detecting storage `.set()` calls where the same key is never subsequently read, flagging wasteful storage writes that drive up Soroban fees.
+- New lint `float_arithmetic_in_contract` detecting floating-point arithmetic (`f32`/`f64`) in contract code, where fixed-point integer arithmetic is preferred for both cost efficiency and consensus determinism.
+- New lint `duplicate_storage_key_construction` detecting when the same storage key expression is constructed in two or more distinct function bodies, suggesting hoisting to a `const` or key enum to reduce host calls and prevent silent key typos.
 - New lint `inefficient_bytes_concat` detecting repeated `Bytes` concatenation using `+` inside loops, which creates unnecessary per-iteration allocations.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
