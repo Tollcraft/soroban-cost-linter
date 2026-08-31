@@ -1,0 +1,100 @@
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:53:30
+   |
+LL |     env.storage().instance().set(&"key", &val); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+   = note: `#[warn(storage_write_without_read)]` on by default
+
+warning: storage write stores an `Option<T>` — storage already models absence, so this creates a redundant three-state model (missing / Some / None)
+  --> $DIR/option_wrapping_in_storage.rs:53:5
+   |
+LL |     env.storage().instance().set(&"key", &val); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: storage already models absence (missing key = None); store the inner type T directly and remove the key instead of wrapping in Option
+   = note: `#[warn(option_wrapping_in_storage)]` on by default
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:58:30
+   |
+LL |     env.storage().persistent().set(&1, &val); // Should Warn
+   |                              ^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write stores an `Option<T>` — storage already models absence, so this creates a redundant three-state model (missing / Some / None)
+  --> $DIR/option_wrapping_in_storage.rs:58:5
+   |
+LL |     env.storage().persistent().set(&1, &val); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: storage already models absence (missing key = None); store the inner type T directly and remove the key instead of wrapping in Option
+
+warning: storage write stores an `Option<T>` — storage already models absence, so this creates a redundant three-state model (missing / Some / None)
+  --> $DIR/option_wrapping_in_storage.rs:63:5
+   |
+LL |     env.storage().persistent().set(&1, &val); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: storage already models absence (missing key = None); store the inner type T directly and remove the key instead of wrapping in Option
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:68:30
+   |
+LL |     env.storage().temporary().set(&"key", &val); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write stores an `Option<T>` — storage already models absence, so this creates a redundant three-state model (missing / Some / None)
+  --> $DIR/option_wrapping_in_storage.rs:68:5
+   |
+LL |     env.storage().temporary().set(&"key", &val); // Should Warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: storage already models absence (missing key = None); store the inner type T directly and remove the key instead of wrapping in Option
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:74:30
+   |
+LL |     env.storage().instance().set(&"key", &42u32); // Good — not Option
+   |                              ^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:82:30
+   |
+LL |     env.storage().instance().set(&"key", &cfg); // Good — struct, not Option
+   |                              ^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:87:30
+   |
+LL |     env.storage().persistent().set(&1, &val); // Good — String, not Option<String>
+   |                              ^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:91:30
+   |
+LL |     env.storage().instance().set(&"flag", &true); // Good — bool
+   |                              ^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:97:30
+   |
+LL |     env.storage().instance().set(&"key", &val); // Good (allowed)
+   |                              ^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: 12 warnings emitted
+
