@@ -77,7 +77,38 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
-| [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `deny` | performs a storage read or write inside a loop body |
+| [`redundant_env_clone`](redundant_env_clone.md) | `warn` | clones the Env handle redundantly |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | calls host functions that could be hoisted or avoided |
+| [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | performs sequential redundant reads or has/get checks on the same key |
+| [`storage_write_without_read`](storage_write_without_read.md) | `warn` | performs a storage set without any prior get or has in the function |
+| [`discarded_storage_read`](discarded_storage_read.md) | `warn` | reads from storage whose result is never used |
+| [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | stores unbounded collections like Vec, Map, or Bytes in instance storage |
+| [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | reads from persistent storage without extending its TTL in the same function |
+| [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | performs storage access inside a loop with loop-invariant operands |
+| [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | constructs storage keys inside loop bodies where the key is invariant |
+| [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | appends to Bytes or Vec inside loop bodies causing repeated host reallocations |
+| [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loops with iteration count derived from untrusted input performing storage writes |
+| [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
+| [`unnecessary_host_function_call_legacy`](unnecessary_host_function_call_legacy.md) | `warn` | legacy unnecessary host function call |
+| [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | inserts into Map inside a loop |
+| [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
+| [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | performs contract call inside loop |
+| [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extends ttl inside loop |
+| [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | formatted panic payload |
+| [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan inside loop |
+| [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | requires auth inside loop |
+| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification inside loop |
+| [`symbol_key_boundary`](symbol_key_boundary.md) | `warn` | symbol key boundary |
+| [`symbol_key_enum_storage`](symbol_key_enum_storage.md) | `warn` | symbol key enum storage |
+| [`symbol_key_event_topics`](symbol_key_event_topics.md) | `warn` | symbol key event topics |
+| [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | uses Symbol::new for short literal |
+| [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion |
+| [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwraps on storage get |
+| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | uses Vec where slice could be used |
+| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | soroban inefficient bytes concat |
+| [`u128_where_u64_suffices`](u128_where_u64_suffices.md) | `warn` | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 |
+| [`ledger_context_read_in_loop`](ledger_context_read_in_loop.md) | `warn` | reads a ledger context value inside a loop when it cannot change during the invocation |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).

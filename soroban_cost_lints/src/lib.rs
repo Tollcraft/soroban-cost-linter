@@ -5,13 +5,14 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_hir::{Crate, Expr, ExprKind, BinOpKind, UnOp, QPath};
+use rustc_hir::{BinOpKind, Crate, Expr, ExprKind, QPath, UnOp};
 use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
 use std::collections::HashSet;
 
 mod discarded_storage_read;
+mod ledger_context_read_in_loop;
 mod redundant_require_auth;
 
 rustc_lint::declare_lint! {
@@ -198,6 +199,12 @@ rustc_lint::declare_lint! {
     pub U128_WHERE_U64_SUFFICES,
     Warn,
     "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32"
+}
+
+rustc_lint::declare_lint! {
+    pub LEDGER_CONTEXT_READ_IN_LOOP,
+    Warn,
+    "reads a ledger context value inside a loop when it cannot change during the invocation"
 }
 
 pub struct SorobanCostLints;
@@ -417,6 +424,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
         rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
     },
+    LintMeta {
+        name: "ledger_context_read_in_loop",
+        category: LintCategory::Compute,
+        description: "Reads a ledger context value (sequence, timestamp, network_id) inside a loop",
+        rationale: "Ledger context values are invariant during a single invocation; reading them in a loop performs repeated host calls for the same value.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -453,6 +466,7 @@ dylint_lint_impl! {
         VEC_WHERE_SLICE_COULD_BE_USED,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
+        LEDGER_CONTEXT_READ_IN_LOOP,
         REDUNDANT_REQUIRE_AUTH,
     ]
 }

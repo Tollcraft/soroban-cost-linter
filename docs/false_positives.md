@@ -141,6 +141,12 @@ Flags 128-bit arithmetic on values provably within 64 bits.
 - **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
 - **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.
 
+### `ledger_context_read_in_loop`
+
+Flags reading a ledger context value (`sequence`, `timestamp`, `network_id`) inside a loop.
+
+- **Debugging/Logging in Loop:** A contract reads the ledger timestamp on each iteration for diagnostic logging or conditional branching based on ledger time. This is rare but intentional — the host call cost is accepted for observability. Suppress with `#[allow(ledger_context_read_in_loop)]`.
+- **Relationship with `host_in_loop`:** A ledger context read inside a loop may also trigger `host_in_loop`. The `ledger_context_read_in_loop` lint provides a more specific explanation (the value is invariant during the invocation).
 ### `redundant_require_auth`
 
 Fires when `Address::require_auth` or `Address::require_auth_for_args` is called more than once on the same address within a single function body, with no cross-contract call in between.
