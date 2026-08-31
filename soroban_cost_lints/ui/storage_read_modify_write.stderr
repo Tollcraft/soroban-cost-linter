@@ -1,0 +1,35 @@
+warning: storage read-modify-write cycle: this key was already read, modified, and written once; repeating the cycle wastes storage operations
+  --> $DIR/storage_read_modify_write.rs:60:4
+   |
+LL |     env.storage().instance().set(&1, &new_val2); // Should Warn — second cycle
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: reuse the value from the first cycle instead of re-reading and re-writing the same key
+   = note: `#[warn(storage_read_modify_write)]` on by default
+
+warning: storage read-modify-write cycle: this key was already read, modified, and written once; repeating the cycle wastes storage operations
+  --> $DIR/storage_read_modify_write.rs:71:4
+   |
+LL |     env.storage().instance().set(&1, &(val2.unwrap_or(0) + 1)); // Should Warn — second
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: reuse the value from the first cycle instead of re-reading and re-writing the same key
+
+warning: storage read-modify-write cycle: this key was already read, modified, and written once; repeating the cycle wastes storage operations
+  --> $DIR/storage_read_modify_write.rs:74:4
+   |
+LL |     env.storage().instance().set(&1, &(val3.unwrap_or(0) + 1)); // Should Warn — third
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: reuse the value from the first cycle instead of re-reading and re-writing the same key
+
+warning: storage read-modify-write cycle: this key was already read, modified, and written once; repeating the cycle wastes storage operations
+  --> $DIR/storage_read_modify_write.rs:111:4
+   |
+LL |     env.storage().persistent().set(&1, &(val2.unwrap_or(0) + 1)); // Should Warn
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: reuse the value from the first cycle instead of re-reading and re-writing the same key
+
+warning: 4 warnings emitted
+
