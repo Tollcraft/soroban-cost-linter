@@ -140,3 +140,13 @@ Flags 128-bit arithmetic on values provably within 64 bits.
 
 - **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
 - **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.
+
+### `redundant_require_auth`
+
+Fires when `Address::require_auth` or `Address::require_auth_for_args` is called more than once on the same address within a single function body, with no cross-contract call in between.
+
+**Security caveat:** This lint advises about authorization. A false positive here is worse than a false positive in any other lint, because acting on it would remove a security check. The lint is intentionally conservative:
+
+- **Address identity is compared by source-text snippet.** Two distinct variables holding the same address value are *not* flagged. This errs on the side of *not* flagging.
+- **Cross-contract calls reset tracking.** Authorization context can change across `env.invoke_contract` / `env.try_invoke_contract` boundaries.
+- **Cross-function analysis is out of scope.** If `require_auth` is called in two separate functions, the lint does not track across the function boundary.
