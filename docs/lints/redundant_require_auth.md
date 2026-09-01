@@ -5,11 +5,11 @@
 | Default severity | `warn` |
 | Category | Authorization / Compute |
 
-## What it catches
+## What it does
 
 Calling `require_auth` (or `require_auth_for_args`) more than once on the same `Address` within a single function body.
 
-## Why it matters
+## Why is this bad?
 
 `require_auth` walks the authorization tree and verifies signatures for the given address. Calling it twice for the same address in the same invocation proves nothing new, but costs the full signature-verification and authorization work a second time — crossing the host-function boundary into the VM twice for the same result.
 

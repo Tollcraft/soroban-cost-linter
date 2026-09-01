@@ -1,3 +1,4 @@
+use clippy_utils::diagnostics::span_lint_and_help;
 use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty::{self, Ty};
@@ -31,13 +32,13 @@ impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
             if is_option_type(cx, value_ty) {
                 let help = "storage already models absence (missing key = None); \
                     store the inner type T directly and remove the key instead of wrapping in Option";
-                cx.span_lint(
+                span_lint_and_help(
+                    cx,
                     OPTION_WRAPPING_IN_STORAGE,
                     expr.span,
                     "storage write stores an `Option<T>` — storage already models absence, so this creates a redundant three-state model (missing / Some / None)",
-                    |diag| {
-                        diag.help(help);
-                    },
+                    None,
+                    help,
                 );
             }
         }
@@ -67,7 +68,7 @@ fn is_option_type(cx: &LateContext<'_>, ty: Ty<'_>) -> bool {
     match ty.kind() {
         ty::Adt(adt, args) if cx.tcx.is_diagnostic_item(sym::Option, adt.did()) => {
             // Verify we have a single generic argument (Option<T> has one)
-            args.count() == 1
+            args.len() == 1
         }
         _ => false,
     }

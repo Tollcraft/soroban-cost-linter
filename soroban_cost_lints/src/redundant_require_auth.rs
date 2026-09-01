@@ -18,7 +18,9 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
 
         for stmt in block.stmts {
             let expr = match stmt.kind {
-                StmtKind::Let(hir::LetStmt { init: Some(init), .. }) => init,
+                StmtKind::Let(hir::LetStmt {
+                    init: Some(init), ..
+                }) => init,
                 StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr,
                 _ => continue,
             };
@@ -35,20 +37,21 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
                 }
 
                 // require_auth / require_auth_for_args on an Address.
-                if REQUIRE_AUTH_METHODS.contains(&method) && is_address_receiver(cx, receiver) {
-                    if let Some(key_text) = snippet_opt(cx, receiver.span) {
-                        if let Some(&_prev_span) = first_auth.get(&key_text) {
-                            span_lint_and_help(
-                                cx,
-                                REDUNDANT_REQUIRE_AUTH,
-                                expr.span,
-                                "require_auth already called on this address in this function",
-                                None,
-                                "remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation",
-                            );
-                        } else {
-                            first_auth.entry(key_text).or_insert(expr.span);
-                        }
+                if REQUIRE_AUTH_METHODS.contains(&method)
+                    && is_address_receiver(cx, receiver)
+                    && let Some(key_text) = snippet_opt(cx, receiver.span)
+                {
+                    if let Some(&_prev_span) = first_auth.get(&key_text) {
+                        span_lint_and_help(
+                            cx,
+                            REDUNDANT_REQUIRE_AUTH,
+                            expr.span,
+                            "require_auth already called on this address in this function",
+                            None,
+                            "remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation",
+                        );
+                    } else {
+                        first_auth.entry(key_text).or_insert(expr.span);
                     }
                 }
             }

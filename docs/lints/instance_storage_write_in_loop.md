@@ -4,7 +4,7 @@
 
 Flags `.instance().set(...)` calls that sit inside a loop body. Instance storage is a single ledger entry holding the contract's entire instance map. Writing to it does not update one field — it serialises and writes the whole entry. Doing that inside a loop rewrites the full instance state on every iteration, so a loop updating ten counters pays ten full instance-entry writes where one write after the loop would do.
 
-## Why this matters
+## Why is this bad?
 
 Soroban meters execution against a CPU and memory budget. Instance storage serialises and rewrites the entire instance map on every `set` call. When this happens inside a loop, each iteration pays the full serialisation and write cost for the complete map — not just the changed field. A loop that updates N fields pays N full instance-entry writes. Accumulating changes in local variables and writing once after the loop reduces this to one write.
 

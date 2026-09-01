@@ -5,11 +5,11 @@
 | Default severity | `warn` |
 | Category | Storage Operations |
 
-## What it catches
+## What it does
 
 Storing an `Option<T>` directly in Soroban storage when the storage key already models absence.
 
-## Why it matters
+## Why is this bad?
 
 Soroban storage already models absence: a missing key returns `None` from `get()`. Storing `Option<T>` creates a **three-state model**:
 

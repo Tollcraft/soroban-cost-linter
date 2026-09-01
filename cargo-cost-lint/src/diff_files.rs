@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use crate::error::{LinterError, LinterResult};
@@ -41,10 +41,10 @@ fn detect_default_branch() -> LinterResult<String> {
         let check = Command::new("git")
             .args(["rev-parse", "--verify", &format!("origin/{candidate}")])
             .output();
-        if let Ok(o) = check {
-            if o.status.success() {
-                return Ok(candidate.to_string());
-            }
+        if let Ok(o) = check
+            && o.status.success()
+        {
+            return Ok(candidate.to_string());
         }
     }
 
@@ -87,7 +87,7 @@ fn get_diff_files(base: &str) -> LinterResult<Vec<String>> {
         ));
     }
 
-    let files: Vec<String> = String::from_utf8_lossy(&output)
+    let files: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter(|line| !line.is_empty())
         .map(|line| line.trim().to_string())
@@ -96,33 +96,35 @@ fn get_diff_files(base: &str) -> LinterResult<Vec<String>> {
     Ok(files)
 }
 
+/// Whether `file` is one of the `changed` paths, comparing relative to `root`.
+///
+/// Shared by [`filter_files_by_changed`] and the per-finding `--diff-only`
+/// filter in `main.rs`, so a finding and a file are judged by the same rule.
+pub fn is_file_changed(file: &str, changed: &[String], root: &Path) -> bool {
+    let path = Path::new(file);
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let relative_str = relative.to_string_lossy();
+
+    changed.iter().any(|c| {
+        relative_str == c.as_str()
+            || Path::new(c)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| relative_str.ends_with(n))
+    })
+}
+
 /// Filter a list of file paths to only those in the given `changed` set.
+///
+/// The `--diff-only` path filters findings one at a time through
+/// [`is_file_changed`]; this list-level form is the module's public API and is
+/// covered by the tests below, so it is kept rather than deleted.
 /// Paths are compared relative to the given root directory.
-pub fn filter_files_by_changed(
-    files: &[String],
-    changed: &[String],
-    root: &Path,
-) -> Vec<String> {
+#[allow(dead_code)]
+pub fn filter_files_by_changed(files: &[String], changed: &[String], root: &Path) -> Vec<String> {
     files
         .iter()
-        .filter(|file| {
-            // Try to make the file path relative to root
-            let path = Path::new(file);
-            let relative = path
-                .strip_prefix(root)
-                .unwrap_or(path);
-            let relative_str = relative.to_string_lossy().to_string();
-
-            changed.iter().any(|c| {
-                // Match exact or as a prefix
-                relative_str == *c
-                    || c == &relative_str
-                    || Path::new(c)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map_or(false, |n| relative_str.ends_with(n))
-            })
-        })
+        .filter(|file| is_file_changed(file, changed, root))
         .cloned()
         .collect()
 }
@@ -130,6 +132,7 @@ pub fn filter_files_by_changed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_filter_files_by_changed() {

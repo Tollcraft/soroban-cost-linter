@@ -5,11 +5,11 @@
 | Default severity | `warn` |
 | Category | CPU/Compute |
 
-## What it catches
+## What it does
 
 Reading a ledger context value (`sequence`, `timestamp`, `network_id`, `protocol_version`) inside a loop body.
 
-## Why it matters
+## Why is this bad?
 
 Ledger context values are **invariant during a single contract invocation**. The ledger does not advance while a contract executes, so `env.ledger().sequence()` returns the same value on every call within one invocation. Reading it inside a loop performs repeated host calls for a value that cannot change.
 

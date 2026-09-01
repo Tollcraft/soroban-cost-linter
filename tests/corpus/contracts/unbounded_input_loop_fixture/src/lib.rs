@@ -13,7 +13,7 @@ impl UnboundedInputLoopFixtureContract {
     pub fn sum_and_persist(env: Env, input: Vec<u32>) -> u32 {
         let mut total = 0u32;
         for item in input.iter() {
-            total = total.wrapping_add(*item);
+            total = total.wrapping_add(item);
             env.storage()
                 .instance()
                 .set(&SUM_KEY, &total);
@@ -25,7 +25,7 @@ impl UnboundedInputLoopFixtureContract {
     pub fn sum_then_persist_once(env: Env, input: Vec<u32>) -> u32 {
         let mut total = 0u32;
         for item in input.iter() {
-            total = total.wrapping_add(*item);
+            total = total.wrapping_add(item);
         }
         env.storage().instance().set(&SUM_KEY, &total);
         total

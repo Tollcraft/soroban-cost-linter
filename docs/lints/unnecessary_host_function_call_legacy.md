@@ -5,4 +5,16 @@
 | Default severity | `warn` |
 | Category | Host |
 
-This is a legacy lint retained for backward compatibility. See [`unnecessary_host_function_call`](unnecessary_host_function_call.md) for the current implementation.
+## What it does
+
+Flags the same pattern as [`unnecessary_host_function_call`](unnecessary_host_function_call.md): host-function calls that could be hoisted out of a loop or avoided altogether.
+
+This is a legacy alias retained so existing `allow`/`deny` configuration keeps working. New code should configure `unnecessary_host_function_call` instead.
+
+## Why is this bad?
+
+Every host-function call crosses the VM boundary and is charged for separately, so a call that is repeated or avoidable is paid for on every invocation for no benefit.
+
+## Category
+
+Host

@@ -4,7 +4,7 @@
 
 **Target Resource:** [CPU — host function dispatch and execution, Memory — host allocations](../cost_rationale.md#per-lint-resource-summary)
 
-## What is this?
+## What it does
 
 This lint detects when the **same storage key expression** is constructed in two or more distinct function bodies within a crate. For example, five functions that each call `Symbol::new(env, "balance")` inline are flagged at each construction site.
 

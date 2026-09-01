@@ -4,4 +4,15 @@
 | --- | --- |
 | Default severity | `warn` |
 
-See the lint source code for implementation details.
+## What it does
+
+Symbol key boundary.
+
+## Why is this bad?
+
+Ensure symbol keys respect length limits and conventions.
+
+## Category
+
+Storage
+

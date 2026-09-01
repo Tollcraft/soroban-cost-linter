@@ -33,12 +33,12 @@ impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
                     cx,
                     LEDGER_CONTEXT_READ_IN_LOOP,
                     expr.span,
-                    &format!(
+                    format!(
                         "reading ledger context `{method_name}` inside a loop — the value \
                          cannot change during this invocation"
                     ),
                     None,
-                    &help,
+                    help,
                 );
             }
         }
@@ -48,13 +48,14 @@ impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
 /// Returns `true` if `expr` is the result of calling `env.ledger()`.
 fn is_ledger_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     // Check for <env>.ledger() method call
-    if let rustc_hir::ExprKind::MethodCall(path, receiver, args, _) = expr.kind {
-        if path.ident.as_str() == "ledger" && args.is_empty() {
-            // The receiver of ledger() should be an Env-like type
-            let ty = cx.typeck_results().expr_ty(receiver);
-            let ty_str = format!("{:?}", ty);
-            return ty_str.contains("Env");
-        }
+    if let rustc_hir::ExprKind::MethodCall(path, receiver, args, _) = expr.kind
+        && path.ident.as_str() == "ledger"
+        && args.is_empty()
+    {
+        // The receiver of ledger() should be an Env-like type
+        let ty = cx.typeck_results().expr_ty(receiver);
+        let ty_str = format!("{:?}", ty);
+        return ty_str.contains("Env");
     }
     false
 }

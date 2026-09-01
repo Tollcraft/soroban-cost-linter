@@ -4,4 +4,15 @@
 | --- | --- |
 | Default severity | `warn` |
 
-See the lint source code for implementation details.
+## What it does
+
+Symbol key event topics.
+
+## Why is this bad?
+
+Optimizes event topic symbol keys.
+
+## Category
+
+Host
+

@@ -51,6 +51,9 @@ impl BudgetConfig {
     ///   "allow"  → `-A`     (allow the lint at module level)
     ///   "warn"   → `-W`     (upgrade to warning)
     ///   "deny"   → `-D`     (upgrade to error)
+    // Superseded by `build_effective_lint_flags` in main.rs, which also folds in
+    // the command-line overrides. Kept for its unit tests below.
+    #[allow(dead_code)]
     pub fn to_lint_flags(&self) -> Vec<String> {
         let Some(lints) = &self.lints else {
             return Vec::new();

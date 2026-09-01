@@ -2,7 +2,7 @@
 
 use clap::ValueEnum;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 
 /// Output format for lint results.
@@ -95,7 +95,7 @@ pub fn format_github_annotation(finding: &LintFinding) -> String {
     if finding.span.line_start > 0 {
         if finding.span.column_start > 0 {
             format!(
-                 "::{} file={},line={},col={}::{}",
+                "::{} file={},line={},col={}::{}",
                 severity,
                 escaped_file,
                 finding.span.line_start,
@@ -256,7 +256,10 @@ pub fn print_findings_summary<W: Write>(
     findings: &[LintFinding],
     writer: &mut W,
 ) -> crate::error::LinterResult<()> {
-    if matches!(format, OutputFormat::Json | OutputFormat::Sarif | OutputFormat::Github) {
+    if matches!(
+        format,
+        OutputFormat::Json | OutputFormat::Sarif | OutputFormat::Github
+    ) {
         return Ok(());
     }
 
@@ -265,7 +268,12 @@ pub fn print_findings_summary<W: Write>(
         writeln!(writer, "✓ No cost lints found. Clean workspace!")?;
     } else {
         let total = findings.len();
-        writeln!(writer, "Found {} cost lint finding{}:", total, if total == 1 { "" } else { "s" })?;
+        writeln!(
+            writer,
+            "Found {} cost lint finding{}:",
+            total,
+            if total == 1 { "" } else { "s" }
+        )?;
 
         // Breakdown by lint name
         let mut lint_counts: HashMap<String, usize> = HashMap::new();
@@ -308,7 +316,10 @@ pub fn format_diagnostic(finding: &LintFinding) -> String {
     };
 
     let location = if !finding.file.is_empty() && finding.span.line_start > 0 {
-        format!("{}:{}:{}", finding.file, finding.span.line_start, finding.span.column_start)
+        format!(
+            "{}:{}:{}",
+            finding.file, finding.span.line_start, finding.span.column_start
+        )
     } else if !finding.file.is_empty() {
         finding.file.clone()
     } else {
@@ -317,11 +328,7 @@ pub fn format_diagnostic(finding: &LintFinding) -> String {
 
     let mut output = format!(
         "{}: [{}] {}\n  --> {}\n  = note: {}",
-        severity_prefix,
-        finding.name,
-        finding.message,
-        location,
-        finding.message
+        severity_prefix, finding.name, finding.message, location, finding.message
     );
 
     if let Some(ref help) = finding.help {
@@ -349,15 +356,12 @@ pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
             let uri = if let Ok(current_dir) = std::env::current_dir() {
                 let p = std::path::Path::new(&f.file);
                 if let Ok(stripped) = p.strip_prefix(&current_dir) {
-                    format!("file:///"
-                        + &stripped
-                            .to_string_lossy()
-                            .replace('\\', "/"))
+                    format!("file:///{}", stripped.to_string_lossy().replace('\\', "/"))
                 } else {
-                    format!("file:///" + &f.file.replace('\\', "/"))
+                    format!("file:///{}", f.file.replace('\\', "/"))
                 }
             } else {
-                format!("file:///" + &f.file.replace('\\', "/"))
+                format!("file:///{}", f.file.replace('\\', "/"))
             };
 
             let region = if f.span.line_start > 0 {
@@ -402,7 +406,8 @@ pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
         .collect();
 
     let report = SarifReport {
-        schema: "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json".to_string(),
+        schema: "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json"
+            .to_string(),
         version: "2.1.0".to_string(),
         runs: vec![SarifRun {
             tool: SarifTool {
@@ -492,33 +497,42 @@ mod tests {
         // Check sorting by count descending (lint_a has 2, lint_b has 1)
         let idx_a = output.find("lint_a: 2").unwrap();
         let idx_b = output.find("lint_b: 1").unwrap();
-        assert!(idx_a < idx_b, "lint_a should appear before lint_b due to higher count");
+        assert!(
+            idx_a < idx_b,
+            "lint_a should appear before lint_b due to higher count"
+        );
     }
 
     #[test]
     fn test_summary_suppression_under_machine_formats() {
-        let findings = vec![
-            LintFinding {
-                name: "lint_a".to_string(),
-                level: "warning".to_string(),
-                file: "src/lib.rs".to_string(),
-                span: Span {
-                    line_start: 1,
-                    line_end: 1,
-                    column_start: 1,
-                    column_end: 5,
-                },
-                message: "msg".to_string(),
-                help: None,
-                suggestion: None,
+        let findings = vec![LintFinding {
+            name: "lint_a".to_string(),
+            level: "warning".to_string(),
+            file: "src/lib.rs".to_string(),
+            span: Span {
+                line_start: 1,
+                line_end: 1,
+                column_start: 1,
+                column_end: 5,
             },
-        ];
+            message: "msg".to_string(),
+            help: None,
+            suggestion: None,
+        }];
 
-        for fmt in &[OutputFormat::Json, OutputFormat::Sarif, OutputFormat::Github] {
+        for fmt in &[
+            OutputFormat::Json,
+            OutputFormat::Sarif,
+            OutputFormat::Github,
+        ] {
             let mut buf = Vec::new();
             print_findings_summary(fmt, &findings, &mut buf).unwrap();
             let output = String::from_utf8(buf).unwrap();
-            assert!(output.is_empty(), "Summary should be omitted for format {:?}", fmt);
+            assert!(
+                output.is_empty(),
+                "Summary should be omitted for format {:?}",
+                fmt
+            );
         }
     }
 }

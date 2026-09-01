@@ -13,6 +13,10 @@ pub enum LinterError {
     /// JSON (de)serialisation failed.
     Json(serde_json::Error),
     /// A child process (`cargo dylint`) exited with a non-zero status.
+    // main() reports subprocess exits by calling `exit` with the child's code
+    // directly, so nothing constructs this today; kept as part of the public
+    // error taxonomy.
+    #[allow(dead_code)]
     Subprocess { code: Option<i32> },
     /// A required prerequisite is missing (e.g. `cargo-dylint` not installed).
     MissingPrerequisite(String),

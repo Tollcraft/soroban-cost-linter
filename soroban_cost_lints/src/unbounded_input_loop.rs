@@ -1,5 +1,6 @@
 use clippy_utils::diagnostics::span_lint_and_help;
-use rustc_hir::intravisit::{walk_expr, Visitor};
+use clippy_utils::higher;
+use rustc_hir::intravisit::{Visitor, walk_expr};
 use rustc_hir::{Expr, ExprKind, QPath};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
@@ -17,7 +18,7 @@ impl<'tcx> LateLintPass<'tcx> for UnboundedInputLoop {
         // Only `for` loops over a caller-supplied collection are recognized
         // as input-driven iteration. `while`/`loop` forms are conservatively
         // skipped to avoid flagging intentionally bounded loops.
-        let ExprKind::ForLoop(_pat, iter, _body, _) = expr.kind else {
+        let Some(higher::ForLoop { arg: iter, .. }) = higher::ForLoop::hir(expr) else {
             return;
         };
 
@@ -88,10 +89,10 @@ fn is_collection(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 
 /// Walks the loop body looking for a storage write method (`set`, `put`,
 /// `make_persistent`) called on a storage-typed receiver.
-fn contains_storage_write(cx: &LateContext<'_>, loop_expr: &Expr<'_>) -> bool {
-    if let ExprKind::ForLoop(_, _, body, _) = loop_expr.kind {
+fn contains_storage_write<'tcx>(cx: &LateContext<'tcx>, loop_expr: &'tcx Expr<'tcx>) -> bool {
+    if let Some(higher::ForLoop { body, .. }) = higher::ForLoop::hir(loop_expr) {
         let mut v = WriteVisitor { cx, found: false };
-        v.visit_block(body);
+        v.visit_expr(body);
         v.found
     } else {
         false
@@ -104,19 +105,16 @@ struct WriteVisitor<'v, 'tcx> {
 }
 
 impl<'v, 'tcx> Visitor<'tcx> for WriteVisitor<'v, 'tcx> {
-    type NestedFilter = rustc_middle::hir::nested_filter::OnlySelf;
-
     fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
         if self.found {
             return;
         }
-        if let ExprKind::MethodCall(path, receiver, _args, _) = expr.kind {
-            if WRITE_METHODS.contains(&path.ident.as_str())
-                && is_storage_receiver(self.cx, receiver)
-            {
-                self.found = true;
-                return;
-            }
+        if let ExprKind::MethodCall(path, receiver, _args, _) = expr.kind
+            && WRITE_METHODS.contains(&path.ident.as_str())
+            && is_storage_receiver(self.cx, receiver)
+        {
+            self.found = true;
+            return;
         }
         walk_expr(self, expr);
     }

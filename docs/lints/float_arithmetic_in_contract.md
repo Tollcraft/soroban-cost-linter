@@ -4,7 +4,7 @@
 
 **Target Resource:** [CPU — Wasm instruction execution + software float emulation](../cost_rationale.md#per-lint-resource-summary)
 
-## What is this?
+## What it does
 
 This lint flags any arithmetic operation (`+`, `-`, `*`, `/`) performed on `f32` or `f64` values inside contract code.
 

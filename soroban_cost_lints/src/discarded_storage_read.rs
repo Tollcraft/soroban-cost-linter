@@ -9,17 +9,15 @@ declare_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
 
 impl<'tcx> LateLintPass<'tcx> for DiscardedStorageRead {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
-        if is_storage_read(cx, expr) {
-            if is_expr_discarded(cx, expr) {
-                span_lint_and_help(
-                    cx,
-                    DISCARDED_STORAGE_READ,
-                    expr.span,
-                    "storage read result is discarded",
-                    None,
-                    "delete the storage read or use its returned value",
-                );
-            }
+        if is_storage_read(cx, expr) && is_expr_discarded(cx, expr) {
+            span_lint_and_help(
+                cx,
+                DISCARDED_STORAGE_READ,
+                expr.span,
+                "storage read result is discarded",
+                None,
+                "delete the storage read or use its returned value",
+            );
         }
     }
 }
@@ -30,7 +28,12 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
         if name == "get" || name == "has" {
             let ty = cx.typeck_results().expr_ty(receiver);
             let ty_str = format!("{:?}", ty);
-            if ty_str.contains("storage") || ty_str.contains("Instance") || ty_str.contains("Persistent") || ty_str.contains("Temporary") || is_storage_receiver(cx, receiver) {
+            if ty_str.contains("storage")
+                || ty_str.contains("Instance")
+                || ty_str.contains("Persistent")
+                || ty_str.contains("Temporary")
+                || is_storage_receiver(cx, receiver)
+            {
                 return true;
             }
         }
@@ -41,17 +44,24 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     let ty = cx.typeck_results().expr_ty(expr);
     let s = format!("{:?}", ty);
-    s.contains("Storage") || s.contains("Instance") || s.contains("Persistent") || s.contains("Temporary")
+    s.contains("Storage")
+        || s.contains("Instance")
+        || s.contains("Persistent")
+        || s.contains("Temporary")
 }
 
 fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    let hir = cx.tcx.hir();
-    let parent_id = hir.parent_id(expr.hir_id);
-    let parent_node = hir.find(parent_id);
+    // `TyCtxt::hir()` and `Node::Local` are gone in the pinned nightly:
+    // `parent_hir_node` returns the `Node` directly, and a `let` binding is
+    // now `Node::LetStmt`.
+    let parent_node = cx.tcx.parent_hir_node(expr.hir_id);
 
     match parent_node {
-        Some(rustc_hir::Node::Stmt(Stmt { kind: StmtKind::Semi(_), .. })) => true,
-        Some(rustc_hir::Node::Local(local)) => {
+        rustc_hir::Node::Stmt(Stmt {
+            kind: StmtKind::Semi(_),
+            ..
+        }) => true,
+        rustc_hir::Node::LetStmt(local) => {
             if let PatKind::Wild = local.pat.kind {
                 true
             } else if let PatKind::Binding(_, _, ident, _) = local.pat.kind {
@@ -67,11 +77,11 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
                 false
             }
         }
-        Some(rustc_hir::Node::Expr(parent_expr)) => {
+        rustc_hir::Node::Expr(parent_expr) => {
             match parent_expr.kind {
                 ExprKind::Block(block, _) => {
                     // If it's the last expression of a block, it might be used by the block's parent, unless the block itself is discarded
-                    if block.expr.map_or(false, |e| e.hir_id == expr.hir_id) {
+                    if block.expr.is_some_and(|e| e.hir_id == expr.hir_id) {
                         is_expr_discarded(cx, parent_expr)
                     } else {
                         true
@@ -84,7 +94,11 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     }
 }
 
-fn is_local_referenced_in_body(_cx: &LateContext<'_>, expr: &Expr<'_>, name: rustc_span::Symbol) -> bool {
+fn is_local_referenced_in_body(
+    _cx: &LateContext<'_>,
+    expr: &Expr<'_>,
+    name: rustc_span::Symbol,
+) -> bool {
     // Simple lexical/hir scope check or conservative fallback
     // For safety, let's walk the enclosing body if possible or assume used if not wild/underscore
     let _ = (expr, name);
