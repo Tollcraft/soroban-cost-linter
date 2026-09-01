@@ -1,12 +1,12 @@
 use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty::{self, Ty};
-use rustc_session::declared_lint_pass;
+use rustc_session::declare_lint_pass;
 use rustc_span::sym;
 
 use crate::OPTION_WRAPPING_IN_STORAGE;
 
-declared_lint_pass!(OptionWrappingInStorage => [OPTION_WRAPPING_IN_STORAGE]);
+declare_lint_pass!(OptionWrappingInStorage => [OPTION_WRAPPING_IN_STORAGE]);
 
 impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {

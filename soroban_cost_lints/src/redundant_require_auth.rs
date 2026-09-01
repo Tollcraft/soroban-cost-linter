@@ -2,14 +2,10 @@ use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::source::snippet_opt;
 use rustc_hir::{self as hir, ExprKind, StmtKind};
 use rustc_lint::{LateContext, LateLintPass};
-use rustc_session::{declare_lint, declare_lint_pass};
+use rustc_session::declare_lint_pass;
 use std::collections::HashMap;
 
-declare_lint! {
-    pub REDUNDANT_REQUIRE_AUTH,
-    Warn,
-    "require_auth called more than once on the same address in a single function body"
-}
+use crate::REDUNDANT_REQUIRE_AUTH;
 
 declare_lint_pass!(RedundantRequireAuth => [REDUNDANT_REQUIRE_AUTH]);
 

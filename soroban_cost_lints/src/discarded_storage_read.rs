@@ -1,15 +1,11 @@
 use clippy_utils::diagnostics::span_lint_and_help;
-use rustc_hir::{Expr, ExprKind, Stmt, StmtKind, PatKind};
+use rustc_hir::{Expr, ExprKind, PatKind, Stmt, StmtKind};
 use rustc_lint::{LateContext, LateLintPass};
-use rustc_session::{declare_lint, declare_lint_pass};
+use rustc_session::declare_lint_pass;
 
-declare_lint! {
-    pub DISCARDED_STORAGE_READ,
-    Warn,
-    "reads from storage whose result is never used"
-}
+use crate::DISCARDED_STORAGE_READ;
 
-declared_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
+declare_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
 
 impl<'tcx> LateLintPass<'tcx> for DiscardedStorageRead {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {

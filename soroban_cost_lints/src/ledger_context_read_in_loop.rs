@@ -1,5 +1,5 @@
 use clippy_utils::diagnostics::span_lint_and_help;
-use clippy_utils::ops::is_inside_loop;
+use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
@@ -24,7 +24,7 @@ impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
                 return;
             }
             // Check if this is inside a loop
-            if is_inside_loop(cx, expr) {
+            if get_enclosing_loop_or_multi_call_closure(cx, expr).is_some() {
                 let help = format!(
                     "ledger context values ({method_name}) are invariant during a single \
                      invocation; hoist this read outside the loop to avoid repeated host calls"
