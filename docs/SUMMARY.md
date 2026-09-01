@@ -14,6 +14,7 @@
 * [Windows Setup Guide](windows_setup.md)
 * [Handling False Positives](false_positives.md)
 * [Severity Levels & Rationale](severity_rationale.md)
+* [Troubleshooting](troubleshooting.md)
 
 ## Lints
 

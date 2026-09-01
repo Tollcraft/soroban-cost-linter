@@ -1,20 +1,71 @@
 #![feature(rustc_private)]
 
-extern crate rustc_ast;
 extern crate rustc_hir;
+extern crate rustc_lint;
 extern crate rustc_middle;
+extern crate rustc_session;
 extern crate rustc_span;
 
-use rustc_hir::{BinOpKind, Crate, Expr, ExprKind, QPath, UnOp};
-use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
-use rustc_middle::ty::{self, Ty};
-use rustc_span::Span;
-use std::collections::HashSet;
+use rustc_lint::LintStore;
 
 mod discarded_storage_read;
-mod option_wrapping_in_storage;
 mod ledger_context_read_in_loop;
+mod option_wrapping_in_storage;
 mod redundant_require_auth;
+mod unbounded_input_loop;
+
+dylint_linting::dylint_library!();
+
+/// Registers every lint that the Dylint driver should load, plus a `LateLintPass`
+/// for each lint that has a concrete pass implementation.
+#[unsafe(no_mangle)]
+pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore) {
+    let _ = sess;
+    lint_store.register_lints(&[
+            SOROBAN_STORAGE_IN_LOOP,
+            REDUNDANT_ENV_CLONE,
+            UNNECESSARY_HOST_FUNCTION_CALL,
+            SOROBAN_REDUNDANT_STORAGE_READ,
+            STORAGE_WRITE_WITHOUT_READ,
+            DISCARDED_STORAGE_READ,
+            INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
+            PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
+            LOOP_INVARIANT_STORAGE_ACCESS,
+            STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+            BYTES_APPEND_IN_LOOP,
+            UNBOUNDED_INPUT_LOOP,
+            UNNECESSARY_STRING_TO_BYTES,
+            UNNECESSARY_HOST_FUNCTION_CALL_LEGACY,
+            MAP_INSERT_IN_LOOP,
+            INEFFICIENT_BYTES_CONCAT,
+            CONTRACT_CALL_IN_LOOP,
+            EXTEND_TTL_IN_LOOP,
+            FORMATTED_PANIC_PAYLOAD,
+            LINEAR_SCAN_IN_LOOP,
+            REQUIRE_AUTH_IN_LOOP,
+            SIGNATURE_VERIFICATION_IN_LOOP,
+            SYMBOL_KEY_BOUNDARY,
+            SYMBOL_KEY_ENUM_STORAGE,
+            SYMBOL_KEY_EVENT_TOPICS,
+            SYMBOL_NEW_FOR_SHORT_LITERAL,
+            UNBOUNDED_RECURSION,
+            UNWRAP_ON_STORAGE_GET,
+            VEC_WHERE_SLICE_COULD_BE_USED,
+            SOROBAN_INEFFICIENT_BYTES_CONCAT,
+            U128_WHERE_U64_SUFFICES,
+            FLOAT_ARITHMETIC_IN_CONTRACT,
+            DUPLICATE_STORAGE_KEY_CONSTRUCTION,
+            OPTION_WRAPPING_IN_STORAGE,
+            LEDGER_CONTEXT_READ_IN_LOOP,
+            REDUNDANT_REQUIRE_AUTH,
+    ];
+
+    lint_store.register_late_pass(|_| Box::new(discarded_storage_read::DiscardedStorageRead));
+    lint_store.register_late_pass(|_| Box::new(ledger_context_read_in_loop::LedgerContextReadInLoop));
+    lint_store.register_late_pass(|_| Box::new(option_wrapping_in_storage::OptionWrappingInStorage));
+    lint_store.register_late_pass(|_| Box::new(redundant_require_auth::RedundantRequireAuth));
+    lint_store.register_late_pass(|_| Box::new(unbounded_input_loop::UnboundedInputLoop));
+}
 
 rustc_lint::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
@@ -212,12 +263,24 @@ rustc_lint::declare_lint! {
     pub DUPLICATE_STORAGE_KEY_CONSTRUCTION,
     Warn,
     "constructs the same storage key expression in multiple function bodies"
+}
+
+rustc_lint::declare_lint! {
     pub OPTION_WRAPPING_IN_STORAGE,
     Warn,
     "stores an Option<T> in storage where the key already models absence"
+}
+
+rustc_lint::declare_lint! {
     pub LEDGER_CONTEXT_READ_IN_LOOP,
     Warn,
     "reads a ledger context value inside a loop when it cannot change during the invocation"
+}
+
+rustc_lint::declare_lint! {
+    pub REDUNDANT_REQUIRE_AUTH,
+    Warn,
+    "require_auth called more than once on the same address in a single function body"
 }
 
 pub struct SorobanCostLints;

@@ -1,5 +1,8 @@
 # Developing Lints
 
+> This is the **single authoritative guide** for adding a new lint to `soroban-cost-linter`.
+> [`docs/custom_lint_guide.md`](docs/custom_lint_guide.md) is only a pointer to this page.
+
 This guide explains how to add a custom Dylint lint to `soroban-cost-linter`. It assumes that you know Rust, but have not previously worked with `rustc_hir`, compiler lint passes, or Clippy's helper APIs.
 
 ## Before you start
@@ -21,141 +24,192 @@ cargo install cargo-dylint dylint-link --version "^6.0.1"
 
 Use the pinned toolchain from the repository. Compiler internals are tightly coupled to the Rust version, so changing toolchains while developing a lint can produce confusing errors.
 
-## 1. Scaffold the lint module
+## 1. Understand how a lint is put together
 
-Lint implementations live in `soroban_cost_lints/src`. Create a module for the new lint, using a lowercase snake-case name that matches the public lint name. For example, a lint named `storage_read_in_loop` would start in:
+All lint names and their registration live in **one file**: [`soroban_cost_lints/src/lib.rs`](soroban_cost_lints/src/lib.rs). There is **no** `soroban_cost_lints/src/lints/` directory, and UI fixtures do **not** live in `tests/ui/`.
 
-```text
-soroban_cost_lints/src/storage_read_in_loop.rs
-```
+Each lint needs three things, all of which live in `lib.rs` (or, for the pass implementation, in a sibling module file that `lib.rs` declares):
 
-Begin with the lint declaration and a pass. The exact trait and helper macro used by the repository can be copied from the closest existing lint. A typical Dylint lint has these parts:
+| Piece | Where | What happens if it is missing |
+| --- | --- | --- |
+| `declare_lint!` block | `lib.rs` | `rustc` does not know the lint name, so it cannot be registered, referenced in `#[allow]`, or configured in `budget.toml`. |
+| `LINT_METADATA` row | `lib.rs` (`LINT_METADATA` static, keyed by the snake_case lint name) | The `cargo-cost-lint` CLI does not list or document the lint. It still runs, but is invisible to users and `generate-lint-docs`. |
+| Pass implementation + a line in the `dylint_lint_impl!` list | implementation in a module file (or inlined), declaration in `lib.rs`'s `dylint_lint_impl!` list | **The lint silently never runs.** Dylint only loads passes listed below `SorobanCostLints` in the `dylint_lint_impl!` macro at the bottom of `lib.rs`. |
+
+Miss any one of the three and the lint does not work as intended — in particular, forgetting the `dylint_lint_impl!` entry produces no error at all, just a lint that never fires.
+
+There are two accepted layouts, both present in the tree today:
+
+- **Inline in `lib.rs`.** The majority of lints are declared, implemented, and registered entirely inside `lib.rs` (see the `declare_lint!` blocks and the `dylint_lint_impl!` list, which reference two dozen lints with no separate file).
+- **Sibling module file.** Newer lints declare in `lib.rs` and implement the pass in a small module file. For example `ledger_context_read_in_loop` is declared in `lib.rs` and implemented in [`soroban_cost_lints/src/ledger_context_read_in_loop.rs`](soroban_cost_lints/src/ledger_context_read_in_loop.rs); its `mod ledger_context_read_in_loop;` declaration is at the top of `lib.rs`. Other examples: `redundant_require_auth.rs`, `discarded_storage_read.rs`, `option_wrapping_in_storage.rs`.
+
+For a new lint, a sibling module file keeps `lib.rs` readable once you have many passes. Start from the closest existing module and copy its structure.
+
+## 2. Walkthrough: `ledger_context_read_in_loop` (a real lint)
+
+To make this concrete, this section walks through `ledger_context_read_in_loop`, a small, fully-shipped lint that already exists in the tree. It fires when a ledger-context value (`env.ledger().sequence()`, `.timestamp()`, `.network_id()`, or `.protocol_version()`) is read inside a loop, even though that value cannot change during a single invocation.
+
+### 2a. Declare the lint in `lib.rs`
+
+A lint reaches `rustc` through a `declare_lint!` block. `LEDGER_CONTEXT_READ_IN_LOOP` is declared with the other lints near the top of `lib.rs`:
 
 ```rust
-use clippy_utils::diagnostics::span_lint;
+rustc_lint::declare_lint! {
+    pub LEDGER_CONTEXT_READ_IN_LOOP,
+    Warn,
+    "reads a ledger context value inside a loop when it cannot change during the invocation"
+}
+```
+
+### 2b. Implement the pass
+
+The pass decides *when* the lint fires. For `ledger_context_read_in_loop` the implementation lives in `soroban_cost_lints/src/ledger_context_read_in_loop.rs`. It detects the enclosing loop with `clippy_utils::get_enclosing_loop_or_multi_call_closure` rather than hand-rolling a parent walk, which is exactly the "use `clippy_utils` instead of rebuilding compiler logic" advice in this guide:
+
+```rust
+use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
-use rustc_session::{declare_lint, declare_lint_pass};
+use rustc_session::declare_lint_pass;
 
-// The lint name is part of the public interface. It is used by Rust attributes
-// and by budget.toml, so do not rename it after release.
-declare_lint! {
-    pub STORAGE_READ_IN_LOOP,
-    Warn,
-    "storage reads inside loop bodies"
-}
+use crate::LEDGER_CONTEXT_READ_IN_LOOP;
 
-declare_lint_pass!(StorageReadInLoop => [STORAGE_READ_IN_LOOP]);
+declare_lint_pass!(LedgerContextReadInLoop => [LEDGER_CONTEXT_READ_IN_LOOP]);
 
-impl<'tcx> LateLintPass<'tcx> for StorageReadInLoop {
+const LEDGER_READ_METHODS: &[&str] = &["sequence", "timestamp", "network_id", "protocol_version"];
+
+impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
-        // Match the relevant HIR expression and emit a diagnostic when the
-        // enclosing context proves that it is inside a loop.
-        let _ = (cx, expr);
+        if let rustc_hir::ExprKind::MethodCall(path, receiver, _args, _) = expr.kind {
+            let method_name = path.ident.as_str();
+            if !LEDGER_READ_METHODS.contains(&method_name) {
+                return;
+            }
+            if !is_ledger_receiver(cx, receiver) {
+                return;
+            }
+            if get_enclosing_loop_or_multi_call_closure(cx, expr).is_some() {
+                let help = format!(
+                    "ledger context values ({method_name}) are invariant during a single \
+                     invocation; hoist this read outside the loop to avoid repeated host calls"
+                );
+                span_lint_and_help(
+                    cx,
+                    LEDGER_CONTEXT_READ_IN_LOOP,
+                    expr.span,
+                    &format!(
+                        "reading ledger context `{method_name}` inside a loop — the value \
+                         cannot change during this invocation"
+                    ),
+                    None,
+                    &help,
+                );
+            }
+        }
     }
 }
+
+fn is_ledger_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
+    if let rustc_hir::ExprKind::MethodCall(path, receiver, args, _) = expr.kind {
+        if path.ident.as_str() == "ledger" && args.is_empty() {
+            let ty = cx.typeck_results().expr_ty(receiver);
+            let ty_str = format!("{:?}", ty);
+            return ty_str.contains("Env");
+        }
+    }
+    false
+}
 ```
 
-The names in the example are illustrative. Follow the imports, declaration style, and pass type used by the existing module that most closely resembles your pattern. In particular, do not mix an AST pass and a HIR pass just because both are available: choose the representation that makes the check precise and maintainable.
+Because `lib.rs` declares `LEDGER_CONTEXT_READ_IN_LOOP` and this module references it via `use crate::LEDGER_CONTEXT_READ_IN_LOOP`, the lint-pass macro (`declare_lint_pass!`) knows which lint this pass drives.
 
-### Prefer precise matching
+### 2c. Register all three coordinated edits in `lib.rs`
 
-Compiler HIR is a tree of expressions, statements, patterns, and bodies. A useful workflow is:
+The first edit is the `declare_lint!` block (2a). The remaining two are:
 
-1. Start at the callback that receives the node you need, such as `check_expr`.
-2. Match only the expression kinds relevant to the lint.
-3. Resolve names or definitions when matching methods. Textual method names alone can produce false positives for unrelated types.
-4. Walk parents or use a helper to establish context, such as whether the expression is in a loop.
-5. Emit one diagnostic for the smallest useful source span.
-
-For method calls, inspect the receiver and arguments separately. When possible, use type information or the resolved definition rather than assuming that every method named `insert`, `set`, or `clone` belongs to the Soroban type of interest. Existing lints in this repository are the best examples of how Soroban SDK paths are recognized.
-
-Do not report the same source operation more than once when several visitor callbacks can reach it. Also consider nested loops, closures, `break`, and `continue` when the cost claim depends on loop context.
-
-## 2. Register the lint in `lib.rs`
-
-Declaring a lint in its module is not enough: Dylint must export it from the library. Open `soroban_cost_lints/src/lib.rs` and follow the existing registration pattern.
-
-Add the module declaration:
+**Edit 2 — a `LINT_METADATA` row.** The CLI and `generate-lint-docs` read this static. The name must exactly match the snake_case lint name. The `ledger_context_read_in_loop` row is:
 
 ```rust
-mod storage_read_in_loop;
+LintMeta {
+    name: "ledger_context_read_in_loop",
+    category: LintCategory::Compute,
+    description: "Reads a ledger context value (sequence, timestamp, network_id) inside a loop",
+    rationale: "Ledger context values are invariant during a single invocation; reading them in a loop performs repeated host calls for the same value.",
+},
 ```
 
-Then add the pass to the exported lint list or registration macro used by the file. For example, if the library uses a combined pass, add the new pass alongside the existing passes:
+**Edit 3 — a line in the `dylint_lint_impl!` list.** The pass is loaded by Dylint only if its lint name appears in the list under `SorobanCostLints` at the bottom of `lib.rs`:
 
 ```rust
-pub struct SorobanCostLints;
-
-// Add StorageReadInLoop to the list used by the repository's registration.
+dylint_lint_impl! {
+    SorobanCostLints,
+    [
+        // ... existing lint names ...
+        LEDGER_CONTEXT_READ_IN_LOOP,
+        // ... more lint names ...
+    ]
+}
 ```
 
-Use the actual macro or list already present in `lib.rs`; do not create a second registration mechanism. The module, lint declaration, and exported pass all need to be present for the lint to load through Dylint.
-
-The repository also maintains lint metadata in `LINT_METADATA`. Add an entry there with the lint name, cost category, and user-facing description. Keep the metadata name exactly synchronized with the declared lint name. This registry is used by the command-line tool and configuration validation.
-
-After registration, build the dynamic library from its crate directory so the local Dylint configuration is applied:
+If you use a sibling module file, also add its `mod <module_name>;` declaration at the top of `lib.rs`. Then build the dynamic library from the crate directory so the local Dylint configuration is applied:
 
 ```bash
 cd soroban_cost_lints
 cargo build
 ```
 
-If the lint is not discovered, first check the module declaration, the exported pass list, the metadata entry, and `DYLINT_LIBRARY_PATH` before investigating the implementation.
+If the lint is not discovered, check the module declaration, the `dylint_lint_impl!` entry, and the `LINT_METADATA` row before investigating the implementation — a missing `dylint_lint_impl!` line is the classic cause of a lint that "should work but never fires".
 
 ## 3. Write a UI fixture
 
-UI tests verify both that a lint fires and that its diagnostic is stable. The source fixture belongs in the lint crate's UI test directory, alongside the existing `main.rs` harness:
+UI tests verify both that a lint fires and that its diagnostic is stable. The source fixture and its expected output belong in **`soroban_cost_lints/ui/`**, not `tests/ui/`:
 
 ```text
-soroban_cost_lints/ui/storage_read_in_loop.rs
-soroban_cost_lints/ui/storage_read_in_loop.stderr
+soroban_cost_lints/ui/ledger_context_read_in_loop.rs
+soroban_cost_lints/ui/ledger_context_read_in_loop.stderr
 ```
 
-The `.rs` fixture should contain a small, self-contained example. Include at least:
+The `.rs` fixture is a small, self-contained program that stubs the Soroban SDK surface the lint needs. For `ledger_context_read_in_loop` that is an `Env` with a `ledger()` accessor:
+
+```rust
+pub mod soroban_sdk {
+    pub struct Env;
+    impl Env {
+        pub fn ledger(&self) -> ledger::Ledger {
+            ledger::Ledger
+        }
+    }
+
+    pub mod ledger {
+        pub struct Ledger;
+        impl Ledger {
+            pub fn sequence(&self) -> u32 { 0 }
+            pub fn timestamp(&self) -> u64 { 0 }
+            pub fn network_id(&self) -> [u8; 32] { [0u8; 32] }
+        }
+    }
+}
+
+use soroban_sdk::Env;
+```
+
+The fixture must contain at least:
 
 - one intentionally bad case that must trigger the lint;
 - one valid case that must not trigger it;
 - boundary cases such as a nested block, closure, or different loop form when those affect the analysis;
-- enough surrounding code for the diagnostic span to be meaningful, but no unrelated application logic.
+- a `#[allow(<lint_name>)]` suppression case to confirm the lint can be turned off.
 
-For example:
+`ledger_context_read_in_loop.rs` covers all of these: reads inside `for`, `while`, `loop`, and a closure each warn, while the same reads outside a loop, a hoisted read, and an `#[allow(ledger_context_read_in_loop)]` function stay silent.
 
-```rust
-fn read_in_loop(env: soroban_sdk::Env, key: u32) {
-    for _ in 0..3 {
-        let _ = env.storage().instance().get::<u32, u32>(&key);
-    }
-}
-
-fn read_once(env: soroban_sdk::Env, key: u32) {
-    let _ = env.storage().instance().get::<u32, u32>(&key);
-}
-```
-
-Use the SDK fixture and imports required by the pattern under test. A fixture should compile far enough for rustc to run the lint; avoid deliberately introducing unrelated compiler errors.
-
-The `.stderr` file is the expected compiler output generated by `dylint_testing`. It records the lint name, severity, message, source location, highlighted span, and any help text. Do not hand-edit line numbers unless there is a specific reason; regenerate the expected output after intentional diagnostic changes.
-
-Every registered lint must have a UI test fixture located at `soroban_cost_lints/ui/<lint_name>.rs` accompanied by its blessed `<lint_name>.stderr` output file. Each fixture must test both positive triggering cases (where the lint emits warnings) and negative/allowed cases (to prevent false positives).
-
-The existing UI harness in `soroban_cost_lints/src/lib.rs` discovers and runs all fixtures in `soroban_cost_lints/ui/`. Run the UI tests from the lint crate:
+The `.stderr` file is the blessed expected compiler output, generated by the UI test harness. Run the workspace UI tests to compare and, when a fixture is new or a diagnostic intentionally changes, re-bless:
 
 ```bash
-cargo test -p soroban_cost_lints
+cargo test --workspace
+BLESS=1 cargo test --workspace
 ```
 
-### Updating expected output
-
-When a fixture is new or a diagnostic intentionally changes, update and bless the expected stderr files using `BLESS=1`:
-
-```bash
-BLESS=1 cargo test -p soroban_cost_lints
-```
-
-Review every changed `.stderr` file after blessing. Never bless output merely to make a failing test pass: confirm that the changed warning, span, and suggestion are correct.
-
-A good UI test suite should also cover non-triggering examples. The absence of a diagnostic is part of the expected behavior, even though it does not appear as a separate line in `.stderr`.
+Review every changed `.stderr` file after blessing. Never bless output merely to make a failing test pass: confirm that the changed warning, span, and suggestion are correct. The absence of a diagnostic for the non-triggering cases is part of the expected behavior, even though it does not appear as a separate line in `.stderr`.
 
 ## 4. Use `clippy_utils` instead of rebuilding compiler logic
 
@@ -163,25 +217,19 @@ A good UI test suite should also cover non-triggering examples. The absence of a
 
 Useful categories of helpers include:
 
-- **Loop and closure context:** `get_enclosing_loop_or_multi_call_closure` finds the enclosing loop or a closure that may be called multiple times. This is useful when a host or storage operation is expensive because it can execute repeatedly. It is preferable to manually walking parents and accidentally missing a closure boundary.
+- **Loop and closure context:** `clippy_utils::get_enclosing_loop_or_multi_call_closure` (used above) finds the enclosing loop or a closure that may be called multiple times, returning `Option<&Expr>`. This is preferable to manually walking parents and accidentally missing a closure boundary. Confirm the exact signature against the pinned `clippy_utils` before relying on it (helper names and paths have changed across revisions — `clippy_utils::ops::is_inside_loop` no longer exists at the pinned rev).
 - **Expression and path inspection:** helpers for extracting call arguments, method names, paths, and constants make matching less dependent on the exact HIR layout.
 - **Type checks:** use Clippy's type utilities to determine whether an expression has the expected type or implements the relevant trait instead of comparing source text.
-- **Source spans and diagnostics:** use `span_lint`, `span_lint_and_help`, or the repository's existing diagnostic helpers to keep messages and highlighted spans consistent.
+- **Source spans and diagnostics:** use `clippy_utils::diagnostics::span_lint`, `span_lint_and_help`, or `span_lint_and_sugg` to keep messages and highlighted spans consistent. The `cx.lint(...)` two-argument call from the old guide does **not** exist — the repository's diagnostics go through `clippy_utils::diagnostics`.
 - **Parent and body traversal:** use established HIR traversal utilities when you need to inspect an enclosing body, statement, or expression.
 
-For example, a loop-sensitive check conceptually follows this shape:
-
-```rust
-if let Some(enclosing) = clippy_utils::loops::get_enclosing_loop_or_multi_call_closure(
-    cx.tcx,
-    expr.hir_id,
-) {
-    // Confirm that `expr` is the operation this lint is about, then diagnose it.
-    let _ = enclosing;
-}
-```
+A conceptually similar loop-sensitive check for a different pattern follows the same shape: match the relevant `ExprKind`, confirm the receiver/type, then gate the diagnostic behind `get_enclosing_loop_or_multi_call_closure(...).is_some()` so the check is precise rather than "any statement ancestor".
 
 Function signatures can change with the pinned compiler and `clippy_utils` revision. Use rust-analyzer, `cargo doc`, or the existing call sites in the repository to confirm the current signature before copying an example. The important principle is to use the helper's semantic result rather than assuming that every parent block represents a loop.
+
+For method calls, inspect the receiver and arguments separately. When possible, use type information or the resolved definition rather than assuming that every method named `insert`, `set`, or `clone` belongs to the Soroban type of interest. Existing lints in this repository are the best examples of how Soroban SDK paths are recognized.
+
+Do not report the same source operation more than once when several visitor callbacks can reach it. Also consider nested loops, closures, `break`, and `continue` when the cost claim depends on loop context.
 
 ## 5. Run the complete checks
 
@@ -191,6 +239,7 @@ While iterating, build and run the focused UI tests first. Before opening a pull
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo run -p generate-lint-docs -- --check
 ```
 
 To benchmark the runtime overhead of the linter on real contracts, run:
@@ -212,6 +261,12 @@ A user-facing lint needs a page under [`docs/lints`](docs/lints/README.md). Incl
 - intentional cases that may need `#[allow(lint_name)]`;
 - the default severity and cost category.
 
-Add the page to `docs/lints/README.md`, update the lint list in `README.md`, and update `soroban_cost_lints/README.md` if appropriate. Keep the declared name, metadata name, documentation links, and examples consistent.
+`docs/lints/README.md` and `docs/lints/lint-registry.json` are generated by `tools/generate-lint-docs` from `lib.rs`'s `LINT_METADATA` — do not edit them by hand. After updating the `LINT_METADATA` row, regenerate them:
+
+```bash
+cargo run -p generate-lint-docs
+```
+
+Then review the diff on `docs/lints/` and update the top-level `README.md` and `soroban_cost_lints/README.md` lint tables if appropriate. Keep the declared name, metadata name, documentation links, and examples consistent.
 
 Finally, follow the contribution process in [`CONTRIBUTING.md`](CONTRIBUTING.md). The pull request should explain the cost model motivation, summarize the false-positive safeguards, include the UI coverage, and include `Closes #[this issue]` in the PR description as required by the project issue template.

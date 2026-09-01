@@ -19,9 +19,94 @@ environment variable.
 The [NO_COLOR](https://no-color.org/) convention is respected: any non-empty
 value forces uncoloured output unless `--color` is passed explicitly.
 
+## GitHub Actions
+
+The easiest way to add Soroban cost linting to your CI is the official composite
+action, `Tollcraft/soroban-cost-linter`. It installs the pinned Rust toolchain
+and Dylint, builds the lint library and the `cargo cost-lint` CLI, and runs the
+linter against your contract, emitting GitHub workflow annotations for every
+finding. You do **not** need to hand-roll the toolchain install.
+
+Copy this to `.github/workflows/cost-lint.yml` in your contract workspace:
+
+```yaml
+name: Soroban Cost Lint
+
+on: [push, pull_request]
+
+jobs:
+  cost-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run soroban-cost-linter
+        uses: Tollcraft/soroban-cost-linter@v1
+        with:
+          config: budget.toml
+```
+
+The workflow checks out your repository, then invokes the action. The `with:`
+block wires the `config` input to your `budget.toml` (the same file described
+in [Local Configuration](#local-configuration-budgettoml)). If you have more
+than one contract workspace in a monorepo, point the action at the right one
+with `working-directory: <path>`, and pass any extra CLI flags through `args:`.
+
+The `toolchain` input defaults to the nightly that matches the release
+(`nightly-2026-04-16`). Leave it unset unless you specifically need a different
+nightly — a mismatched toolchain is what makes the lint library fail to link.
+
+### Input reference
+
+The action accepts four inputs:
+
+| Input | Description | Default |
+|---|---|---|
+| `config` | Path to `budget.toml`, relative to `working-directory` | *(none — every lint runs at its default level)* |
+| `toolchain` | Rust nightly toolchain version | `nightly-2026-04-16` |
+| `args` | Additional arguments to pass to `cargo cost-lint` | *(none)* |
+| `working-directory` | Directory containing the contract workspace to lint | `.` |
+
+For example, to lint a subdirectory with an extra `--format` override:
+
+```yaml
+- name: Run soroban-cost-linter
+  uses: Tollcraft/soroban-cost-linter@v1
+  with:
+    working-directory: contracts/my-account
+    config: ../shared/budget.toml
+    args: --format text
+```
+
+### What a failing run looks like
+
+Most shipped lints default to `warn`, but `soroban_storage_in_loop` defaults to
+`deny`. Because `cargo cost-lint` exits `1` whenever any finding is
+`deny`/`error` level, a storage operation inside a loop fails the job by
+default — no config needed. To also fail on the other lints, raise them to
+`deny` in your `budget.toml` (wired in via the `config` input):
+
+```toml
+[lints]
+redundant_env_clone = "deny"
+```
+
+A run that produces only `warn` findings annotates the diff but still exits `0`
+and reports green. Every finding is printed as a GitHub annotation of the form
+`::error file=src/lib.rs,line=12,col=5::storage operation inside a loop`
+(shown inline in the pull-request diff). A failing run therefore shows a
+`deny`-level annotation in the diff **and** fails the job with exit code `1` —
+that is how you tell a real finding from a broken setup, which would fail while
+building the toolchain or the lint library instead.
+
+{% hint style="warning" %}
+The action's CI is exercised on `ubuntu-latest` only. If you target Windows,
+test it in your own CI before relying on it — the steps install `cargo-dylint`
+from source, which is the step most likely to differ from Linux.
+{% endhint %}
+
 ## Local Configuration (`budget.toml`)
 
-Create a `budget.toml` file to adjust lint severities, then point `cargo cost-lint` at it with `--config`. Today the only way to apply a config is to pass `--config <PATH>` explicitly — the tool does **not** automatically walk up to a workspace-root `budget.toml`. When `--config` is omitted, every lint runs at its declared default level (currently `warn` for all shipped lints).
+Create a `budget.toml` file to adjust lint severities, then point `cargo cost-lint` at it with `--config`. Today the only way to apply a config is to pass `--config <PATH>` explicitly — the tool does **not** automatically walk up to a workspace-root `budget.toml`. When `--config` is omitted, every lint runs at its declared default level (`warn` for most lints, `deny` for `soroban_storage_in_loop`).
 
 The `--config` flag accepts a single path (relative or absolute). A relative path is resolved against the directory you run `cargo cost-lint` from; an absolute path is used verbatim.
 
@@ -150,7 +235,3 @@ cargo cost-lint --completions zsh > _cargo-cost-lint
 ```fish
 cargo cost-lint --completions fish > ~/.config/fish/completions/cargo-cost-lint.fish
 ```
-
-## Colour Control
-
-... (rest of the file remains same) ...
