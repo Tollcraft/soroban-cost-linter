@@ -77,31 +77,45 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
         i += 1;
     }
 
-    if let Some(start) = content.find("pub const LINT_METADATA: &[LintMetadata] = &[") {
-        let after = &content[start + "pub const LINT_METADATA: &[LintMetadata] = &[".len()..];
-        if let Some(end) = after.find("];") {
-            let meta_block = &after[..end];
-            let meta_entries: Vec<&str> = meta_block.split("LintMetadata {").skip(1).collect();
-            for entry_str in meta_entries {
-                let mut lint_var = String::new();
-                let mut category = String::new();
-                for line in entry_str.lines() {
-                    let t = line.trim().trim_end_matches(',');
-                    if let Some(val) = t.strip_prefix("lint:") {
-                        lint_var = val.trim().to_string();
-                    } else if let Some(val) = t.strip_prefix("category:") {
-                        let raw = val.trim();
-                        category = raw
-                            .strip_prefix("LintCategory::")
-                            .unwrap_or(raw)
-                            .to_string();
+    if let Some(start) = content.find("pub const LINT_METADATA:") {
+        let after = &content[start + "pub const LINT_METADATA:".len()..];
+        if let Some(bracket) = after.find("&[") {
+            let after_bracket = &after[bracket + 2..];
+            if let Some(end) = after_bracket.find("];") {
+                let meta_block = &after_bracket[..end];
+                let is_lint_meta = meta_block.contains("LintMeta {");
+                let split_token = if is_lint_meta {
+                    "LintMeta {"
+                } else {
+                    "LintMetadata {"
+                };
+                for entry_str in meta_block.split(split_token).skip(1) {
+                    let mut lint_var = String::new();
+                    let mut category = String::new();
+                    for line in entry_str.lines() {
+                        let t = line.trim().trim_end_matches(',');
+                        if let Some(val) = t.strip_prefix("lint:") {
+                            lint_var = val.trim().to_string();
+                        } else if let Some(val) = t.strip_prefix("name:") {
+                            lint_var = val.trim().trim_matches('"').to_string();
+                        } else if let Some(val) = t.strip_prefix("category:") {
+                            let raw = val.trim();
+                            let cat_str = raw.strip_prefix("LintCategory::").unwrap_or(raw);
+                            category = if cat_str == "Storage" {
+                                "StorageOperations".to_string()
+                            } else {
+                                cat_str.to_string()
+                            };
+                        }
                     }
-                }
-                if !lint_var.is_empty() && !category.is_empty() {
-                    for entry in &mut entries {
-                        if entry.name_snake == lint_var {
-                            entry.category = Some(category.clone());
-                            break;
+                    if !lint_var.is_empty() && !category.is_empty() {
+                        for entry in &mut entries {
+                            if entry.name_snake.eq_ignore_ascii_case(&lint_var)
+                                || entry.name_doc == lint_var.to_lowercase()
+                            {
+                                entry.category = Some(category.clone());
+                                break;
+                            }
                         }
                     }
                 }
@@ -119,6 +133,8 @@ fn generate_readme(entries: &[LintEntry]) -> String {
         "Memory",
         "EntryLifecycle",
         "SymbolOperations",
+        "Host",
+        "Security",
     ];
     let category_labels: BTreeMap<&str, &str> = [
         ("StorageOperations", "Storage Operations"),
@@ -126,6 +142,8 @@ fn generate_readme(entries: &[LintEntry]) -> String {
         ("Memory", "Memory"),
         ("EntryLifecycle", "Entry Lifecycle"),
         ("SymbolOperations", "Symbol Operations"),
+        ("Host", "Host"),
+        ("Security", "Security"),
     ]
     .into_iter()
     .collect();

@@ -30,7 +30,12 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
         if name == "get" || name == "has" {
             let ty = cx.typeck_results().expr_ty(receiver);
             let ty_str = format!("{:?}", ty);
-            if ty_str.contains("storage") || ty_str.contains("Instance") || ty_str.contains("Persistent") || ty_str.contains("Temporary") || is_storage_receiver(cx, receiver) {
+            if ty_str.contains("storage")
+                || ty_str.contains("Instance")
+                || ty_str.contains("Persistent")
+                || ty_str.contains("Temporary")
+                || is_storage_receiver(cx, receiver)
+            {
                 return true;
             }
         }
@@ -41,7 +46,10 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     let ty = cx.typeck_results().expr_ty(expr);
     let s = format!("{:?}", ty);
-    s.contains("Storage") || s.contains("Instance") || s.contains("Persistent") || s.contains("Temporary")
+    s.contains("Storage")
+        || s.contains("Instance")
+        || s.contains("Persistent")
+        || s.contains("Temporary")
 }
 
 fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
@@ -50,7 +58,10 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     let parent_node = hir.find(parent_id);
 
     match parent_node {
-        Some(rustc_hir::Node::Stmt(Stmt { kind: StmtKind::Semi(_), .. })) => true,
+        Some(rustc_hir::Node::Stmt(Stmt {
+            kind: StmtKind::Semi(_),
+            ..
+        })) => true,
         Some(rustc_hir::Node::Local(local)) => {
             if let PatKind::Wild = local.pat.kind {
                 true
@@ -84,7 +95,11 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     }
 }
 
-fn is_local_referenced_in_body(_cx: &LateContext<'_>, expr: &Expr<'_>, name: rustc_span::Symbol) -> bool {
+fn is_local_referenced_in_body(
+    _cx: &LateContext<'_>,
+    expr: &Expr<'_>,
+    name: rustc_span::Symbol,
+) -> bool {
     // Simple lexical/hir scope check or conservative fallback
     // For safety, let's walk the enclosing body if possible or assume used if not wild/underscore
     let _ = (expr, name);

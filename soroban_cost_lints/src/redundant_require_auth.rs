@@ -18,7 +18,9 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
 
         for stmt in block.stmts {
             let expr = match stmt.kind {
-                StmtKind::Let(hir::LetStmt { init: Some(init), .. }) => init,
+                StmtKind::Let(hir::LetStmt {
+                    init: Some(init), ..
+                }) => init,
                 StmtKind::Expr(expr) | StmtKind::Semi(expr) => expr,
                 _ => continue,
             };

@@ -64,11 +64,9 @@ fn parse_register_lints(content: &str) -> Result<Vec<String>> {
     }
     // Fall back to legacy register_lints pattern
     let start_marker = "lint_store.register_lints(&[";
-    let start = content
-        .find(start_marker)
-        .ok_or_else(|| Error::Parse(
-            "Could not find register_lints or dylint_lint_impl in lib.rs".into()
-        ))?;
+    let start = content.find(start_marker).ok_or_else(|| {
+        Error::Parse("Could not find register_lints or dylint_lint_impl in lib.rs".into())
+    })?;
     let content_after = &content[start..];
     let end = content_after
         .find("]);")
@@ -370,14 +368,12 @@ fn run() -> Result<()> {
             if path.extension().and_then(|ext| ext.to_str()) == Some("md")
                 && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
                 && stem != "README"
+                && !names.contains(&stem.to_lowercase())
             {
-                if !names.contains(&stem.to_lowercase()) {
-                    eprintln!(
-                        "warning: doc file '{:?}' exists in docs/lints/ but lint '{}' is not registered — skipping orphan check",
-                        path,
-                        stem
-                    );
-                }
+                eprintln!(
+                    "warning: doc file '{:?}' exists in docs/lints/ but lint '{}' is not registered — skipping orphan check",
+                    path, stem
+                );
             }
         }
     }
@@ -399,44 +395,57 @@ fn run() -> Result<()> {
     }
 
     let mut category_map = HashMap::new();
-    let metadata_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
+    let metadata_marker = "pub const LINT_METADATA:";
     if let Some(start) = content.find(metadata_marker) {
         let after = &content[start + metadata_marker.len()..];
-        if let Some(end) = after.find("];") {
-            let metadata_body = &after[..end];
-            for entry in metadata_body.split("LintMetadata {") {
-                let entry = entry.trim();
-                if entry.is_empty() {
-                    continue;
-                }
-                if let Some(lint_part) = entry.split("lint:").nth(1) {
-                    let lint_name = lint_part
-                        .split(',')
-                        .next()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Could not parse lint_name in LINT_METADATA entry: {}",
-                                entry
-                            )
-                        })
-                        .trim();
-                    if let Some(category_part) = entry.split("category:").nth(1) {
-                        let category = category_part
+        if let Some(bracket_start) = after.find("&[") {
+            let after_bracket = &after[bracket_start + 2..];
+            if let Some(end) = after_bracket.find("];") {
+                let metadata_body = &after_bracket[..end];
+                let (split_str, is_name_field) = if metadata_body.contains("LintMeta {") {
+                    ("LintMeta {", true)
+                } else {
+                    ("LintMetadata {", false)
+                };
+                for entry in metadata_body.split(split_str) {
+                    let entry = entry.trim();
+                    if entry.is_empty() {
+                        continue;
+                    }
+                    let prefix = if is_name_field { "name:" } else { "lint:" };
+                    if let Some(lint_part) = entry.split(prefix).nth(1) {
+                        let raw_lint = lint_part
                             .split(',')
                             .next()
                             .unwrap_or_else(|| {
                                 panic!(
-                                    "Could not parse category_part in LINT_METADATA entry: {}",
+                                    "Could not parse lint name in LINT_METADATA entry: {}",
                                     entry
                                 )
                             })
                             .trim()
-                            .split("::")
-                            .last()
-                            .unwrap_or_else(|| {
-                                panic!("Could not extract category name from: {}", category_part)
-                            });
-                        category_map.insert(lint_name.to_lowercase(), category.to_string());
+                            .trim_matches('"');
+                        if let Some(category_part) = entry.split("category:").nth(1) {
+                            let category = category_part
+                                .split(',')
+                                .next()
+                                .unwrap_or_else(|| {
+                                    panic!(
+                                        "Could not parse category_part in LINT_METADATA entry: {}",
+                                        entry
+                                    )
+                                })
+                                .trim()
+                                .split("::")
+                                .last()
+                                .unwrap_or_else(|| {
+                                    panic!(
+                                        "Could not extract category name from: {}",
+                                        category_part
+                                    )
+                                });
+                            category_map.insert(raw_lint.to_lowercase(), category.to_string());
+                        }
                     }
                 }
             }

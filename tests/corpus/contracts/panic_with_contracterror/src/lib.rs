@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contracterror, contractimpl, panic_with_error, Env};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, Env};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -8,6 +8,7 @@ pub enum Error {
     Bad = 1,
 }
 
+#[contract]
 pub struct Contract;
 
 #[contractimpl]

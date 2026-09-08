@@ -48,7 +48,7 @@ runs:
         RUSTFLAGS: -C linker=dylint-link
         CARGO_NET_RETRY: '10'
         ACTION_PATH: ${{ github.action_path }}
-      run: cargo build --release --locked --manifest-path "$ACTION_PATH/soroban_cost_lints/Cargo.toml"
+      run: cargo build --release --manifest-path "$ACTION_PATH/soroban_cost_lints/Cargo.toml"
 
     - name: Register lint library with dylint
       shell: bash
@@ -64,7 +64,7 @@ runs:
       env:
         CARGO_NET_RETRY: '10'
         ACTION_PATH: ${{ github.action_path }}
-      run: cargo build --release --locked --manifest-path "$ACTION_PATH/cargo-cost-lint/Cargo.toml"
+      run: cargo build --release --manifest-path "$ACTION_PATH/cargo-cost-lint/Cargo.toml"
 
     - name: Run Cost Linter
       shell: bash
