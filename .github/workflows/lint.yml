@@ -120,7 +120,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cargo llvm-cov --package cargo-cost-lint --bins --test integration --lcov --output-path lcov.info
       - name: Upload LCOV Report Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lcov-report
           path: lcov.info

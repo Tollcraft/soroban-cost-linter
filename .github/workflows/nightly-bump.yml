@@ -112,7 +112,7 @@ jobs:
 
       - name: Open or update the bump PR
         if: steps.bump.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ci/nightly-bump
