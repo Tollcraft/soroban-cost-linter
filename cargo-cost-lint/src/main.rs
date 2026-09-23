@@ -7,8 +7,9 @@ mod lint_name_set;
 mod output_formatters;
 
 use clap::{ArgGroup, Parser, ValueEnum};
+use config::{BudgetConfig, normalize_lint_name};
 use output_formatters::{LintFinding, OutputFormat, Span};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -116,13 +117,6 @@ struct Cli {
     diff_only: bool,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct BudgetConfig {
-    pub lints: Option<std::collections::HashMap<String, String>>,
-}
-
-/// Colour-policy preference forwarded to the underlying `cargo dylint`
-/// (and therefore `rustc`) invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ColorChoice {
     /// Emit ANSI colours only when stdout is a terminal (default behaviour).
@@ -314,22 +308,28 @@ pub fn build_effective_lint_flags(
 
     for (lints, level_name, flag) in cli_groups {
         for lint in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
+            // The same fold the config file gets (#487): `--allow
+            // Soroban_Storage_In_Loop` and `soroban_storage_in_loop = "deny"`
+            // have to agree about whether that name exists.
+            let name = normalize_lint_name(lint);
+            if !LINT_NAMES.contains(&name.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
                     "Error: Unknown lint name '{}'. Valid lints are: {}",
                     lint, valid
                 ));
             }
-            if let Some((existing_level, _)) = cli_levels.get(lint) {
+            if let Some((existing_level, _)) = cli_levels.get(&name) {
                 if *existing_level != level_name {
                     return Err(format!(
                         "Error: Conflicting lint levels specified for '{}': cannot set to both '{}' and '{}'",
-                        lint, existing_level, level_name
+                        name, existing_level, level_name
                     ));
                 }
             } else {
-                cli_levels.insert(lint.clone(), (level_name, flag));
+                // Keyed by the canonical name, so two spellings of one lint
+                // collapse instead of emitting two flags for it.
+                cli_levels.insert(name, (level_name, flag));
             }
         }
     }
@@ -340,7 +340,8 @@ pub fn build_effective_lint_flags(
 
     if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
         for (lint, level) in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
+            let name = normalize_lint_name(lint);
+            if !LINT_NAMES.contains(&name.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
                     "Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}",
@@ -358,7 +359,20 @@ pub fn build_effective_lint_flags(
                     ));
                 }
             };
-            effective_flags.insert(lint.clone(), format!("{} {}", level_flag, lint));
+            let flag = format!("{} {}", level_flag, name);
+            // Two keys that differ only by case name one lint. If they disagree
+            // on the level, whichever printed last would win, and hash-map order
+            // is not stable. `from_file_validated` rejects this before main()
+            // gets here; this guards callers that assemble a config by hand.
+            if let Some(existing) = effective_flags.insert(name.clone(), flag.clone())
+                && existing != flag
+            {
+                return Err(format!(
+                    "Error: Conflicting lint levels specified for '{}': \
+                     budget.toml spells the same lint twice with different levels",
+                    name
+                ));
+            }
         }
     }
 
@@ -514,7 +528,8 @@ pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, Strin
 // Kept: scaffolding for future feature implementations
 #[allow(dead_code)]
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
-    let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
+    let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)
+        .map_err(|e| e.to_string())?;
 
     let mut lint_flags = Vec::new();
     if let Some(lints) = config.lints {
@@ -656,13 +671,16 @@ fn main() {
         } else if !quiet {
             eprintln!("Using config: {}", path.display());
         }
-        if let Ok(config_str) = fs::read_to_string(path) {
-            if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                config_opt = Some(config);
-            } else {
-                if !quiet {
-                    eprintln!("Warning: Failed to parse {}", path.display());
-                }
+        // A config that was found but cannot be read, parsed, or validated stops
+        // the run instead of being dropped: continuing would apply the default
+        // lint levels and report a clean run against settings the user never
+        // wrote. An invalid level already exited here (#492); unreadable (#491)
+        // and malformed files now get the same treatment.
+        match config::BudgetConfig::from_file_validated(path, LINT_NAMES) {
+            Ok(config) => config_opt = Some(config),
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
             }
         }
     } else {
@@ -1018,7 +1036,7 @@ fn main() {
 
 /// Prints the explanation for a lint, or errors with valid lint names if not found.
 fn print_explanation(lint_name: &str) {
-    let normalized = lint_name.to_lowercase();
+    let normalized = normalize_lint_name(lint_name);
 
     let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
 
@@ -1671,6 +1689,67 @@ mod tests {
         let result = build_effective_lint_flags(None, &allow, &[], &[]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), vec!["-A redundant_env_clone"]);
+    }
+
+    // --- lint-name casing (#487) ---
+    // One fold, applied to every source a name can arrive from. The bug was that
+    // `--explain` folded case while these two paths compared raw, so the same
+    // spelling worked in one place and was rejected in another.
+
+    #[test]
+    fn test_effective_flags_fold_case_on_cli_lint_names() {
+        let allow = vec!["Redundant_Env_Clone".to_string()];
+        let flags = build_effective_lint_flags(None, &allow, &[], &[]).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-A redundant_env_clone"],
+            "rustc only knows the canonical spelling, so the flag must carry it"
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_fold_case_on_budget_toml_lint_names() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("Soroban_Storage_In_Loop".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        let flags = build_effective_lint_flags(Some(&config), &[], &[], &[]).unwrap();
+        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn test_effective_flags_treat_cli_and_config_spellings_as_one_lint() {
+        // Without the fold these are two map keys and the run emits two flags
+        // for a single lint — one of them set to a level the user never chose.
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let deny = vec!["Soroban_Storage_In_Loop".to_string()];
+
+        let flags = build_effective_lint_flags(Some(&config), &[], &[], &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-D soroban_storage_in_loop"],
+            "CLI must win over budget.toml with one flag for the lint"
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_case_variants_that_disagree_on_level() {
+        // Folding makes these one lint; keeping the first would mean the applied
+        // level depends on hash-map iteration order.
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("Soroban_Storage_In_Loop".to_string(), "deny".to_string());
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Conflicting lint levels specified for 'soroban_storage_in_loop'")
+        );
     }
 
     #[test]

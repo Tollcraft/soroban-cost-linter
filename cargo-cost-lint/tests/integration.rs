@@ -260,6 +260,110 @@ fn test_shared_budget_toml_parsing() {
     );
 }
 
+/// Every way `budget.toml` can be wrong ends the run the same way: exit code 1
+/// and a message naming the file (#491, #492).
+///
+/// These run the real binary because that is where the split lived: `main()`
+/// used to warn and continue on a malformed file while an invalid level exited
+/// 1, and an unreadable file was dropped without a word — so the run reported a
+/// clean lint against default levels the user never chose.
+#[test]
+fn test_broken_budget_toml_is_fatal_and_names_the_file() {
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    fn run_with_config(bin_path: &str, config_path: &Path) -> (Option<i32>, String) {
+        let output = Command::new(bin_path)
+            .arg("--config")
+            .arg(config_path)
+            // Run from the temp dir: the linter keeps its cache under
+            // `./target`, and the working directory here is the package
+            // directory, which would drop an ignored-but-untracked
+            // `cargo-cost-lint/target/` into the checkout.
+            .current_dir(config_path.parent().expect("config lives in a directory"))
+            .output()
+            .expect("Failed to execute cargo-cost-lint");
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        )
+    }
+
+    let dir = tempdir().unwrap();
+
+    // 1. Unreadable (#491). A directory stands in for a permission failure:
+    //    it exists, so discovery accepts it, and reading it fails. Permissions
+    //    cannot be taken away from a test that happens to run as root.
+    let unreadable = dir.path().join("budget.toml");
+    fs::create_dir(&unreadable).unwrap();
+    let (code, stderr) = run_with_config(bin_path, &unreadable);
+    assert_eq!(
+        code,
+        Some(1),
+        "unreadable config must fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains("Error: Failed to read"),
+        "expected a read error naming the file, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("budget.toml"),
+        "message must name the file: {stderr}"
+    );
+
+    // 2. Malformed (#492). This used to print a warning and carry on.
+    let malformed = dir.path().join("malformed.toml");
+    fs::write(&malformed, "this is not valid toml [[[").unwrap();
+    let (code, stderr) = run_with_config(bin_path, &malformed);
+    assert_eq!(
+        code,
+        Some(1),
+        "malformed config must fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains("Error: Failed to parse"),
+        "expected a parse error naming the file, got: {stderr}"
+    );
+
+    // 3. An invalid level (#492, the behaviour the other two are now consistent
+    //    with): same exit code, same shape of message.
+    let bad_level = dir.path().join("bad-level.toml");
+    fs::write(&bad_level, "[lints]\nsoroban_storage_in_loop = \"oops\"\n").unwrap();
+    let (code, stderr) = run_with_config(bin_path, &bad_level);
+    assert_eq!(code, Some(1), "invalid level must fail the run: {stderr}");
+    assert!(
+        stderr.contains("Error: Unknown lint level"),
+        "got: {stderr}"
+    );
+
+    // 4. An unknown lint name, for the same reason.
+    let bad_name = dir.path().join("bad-name.toml");
+    fs::write(&bad_name, "[lints]\nnot_a_real_lint = \"deny\"\n").unwrap();
+    let (code, stderr) = run_with_config(bin_path, &bad_name);
+    assert_eq!(
+        code,
+        Some(1),
+        "unknown lint name must fail the run: {stderr}"
+    );
+    assert!(stderr.contains("Error: Unknown lint name"), "got: {stderr}");
+
+    // 5. Control: a valid config gets past configuration loading. What happens
+    //    after that depends on whether cargo-dylint is installed, so only assert
+    //    that no configuration error was raised.
+    let valid = dir.path().join("valid.toml");
+    fs::write(&valid, "[lints]\nsoroban_storage_in_loop = \"deny\"\n").unwrap();
+    let (_code, stderr) = run_with_config(bin_path, &valid);
+    assert!(
+        !stderr.contains("Error: Failed to read")
+            && !stderr.contains("Error: Failed to parse")
+            && !stderr.contains("Error: Unknown lint"),
+        "a valid config must not be reported as broken: {stderr}"
+    );
+}
+
 #[test]
 fn test_list_lints_json_and_text_consistency_and_descriptions() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
