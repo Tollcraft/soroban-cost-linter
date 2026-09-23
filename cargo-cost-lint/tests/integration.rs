@@ -3,6 +3,28 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+fn test_help_exits_zero() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--help")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --help");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --help must exit with status 0"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(stdout_str.contains("Usage"), "help text should show usage");
+    assert!(
+        stdout_str.contains("cargo-cost-lint"),
+        "help text should mention the binary name"
+    );
+}
+
+#[test]
 fn test_list_lints_json() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 

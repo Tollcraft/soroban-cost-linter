@@ -2,8 +2,8 @@ pub mod cache;
 mod config;
 mod diff_files;
 mod error;
-#[allow(dead_code)]
 mod lint_name_set;
+pub use lint_name_set::{LintNameSet, build_lint_name_set};
 mod output_formatters;
 
 use clap::{ArgGroup, Parser, ValueEnum};
@@ -13,6 +13,10 @@ use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
+use std::sync::LazyLock;
+
+/// O(1) lookup set built from the generated `LINT_NAMES` slice.
+static LINT_NAMES_SET: LazyLock<LintNameSet> = LazyLock::new(|| build_lint_name_set(LINT_NAMES));
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
@@ -314,7 +318,7 @@ pub fn build_effective_lint_flags(
 
     for (lints, level_name, flag) in cli_groups {
         for lint in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
+            if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
                     "Error: Unknown lint name '{}'. Valid lints are: {}",
@@ -340,7 +344,7 @@ pub fn build_effective_lint_flags(
 
     if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
         for (lint, level) in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
+            if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
                     "Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}",
@@ -588,10 +592,7 @@ fn main() {
 
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
-        Err(e) => {
-            e.print().unwrap();
-            exit(1);
-        }
+        Err(e) => e.exit(),
     };
 
     if cli.clear_cache {
@@ -836,7 +837,7 @@ fn main() {
                 && let Some(message) = msg.get("message")
                 && let Some(code) = message.get("code")
                 && let Some(lint_name) = code.get("code").and_then(|c| c.as_str())
-                && LINT_NAMES.contains(&lint_name)
+                && LINT_NAMES_SET.contains(lint_name)
             {
                 let mut file = String::new();
                 let mut span_obj = Span {
