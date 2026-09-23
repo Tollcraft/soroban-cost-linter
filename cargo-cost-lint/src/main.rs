@@ -628,7 +628,7 @@ fn main() {
     }
 
     if let Some(lint_name) = &cli.explain {
-        print_explanation(lint_name);
+        print_explanation(lint_name, &cli.format);
         return;
     }
 
@@ -1017,16 +1017,25 @@ fn main() {
 }
 
 /// Prints the explanation for a lint, or errors with valid lint names if not found.
-fn print_explanation(lint_name: &str) {
+///
+/// In JSON mode the explanation is emitted as a JSON object (`name` +
+/// `markdown`), consistent with `--list-lints --format json`. Errors are
+/// always reported on stderr as plain text, mirroring the other format-aware
+/// outputs.
+fn print_explanation(lint_name: &str, format: &OutputFormat) {
     let normalized = lint_name.to_lowercase();
 
     let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
 
     match explanation {
         Some(entry) => {
-            // Clean up the markdown for terminal display
-            let cleaned = clean_markdown_for_terminal(entry.markdown);
-            println!("{}", cleaned);
+            if *format == OutputFormat::Json {
+                println!("{}", serde_json::to_string_pretty(entry).unwrap());
+            } else {
+                // Clean up the markdown for terminal display
+                let cleaned = clean_markdown_for_terminal(entry.markdown);
+                println!("{}", cleaned);
+            }
         }
         None => {
             eprintln!("Error: unknown lint '{}'.\n\nValid lints:\n", lint_name);
@@ -1230,6 +1239,28 @@ mod tests {
         assert!(
             !cleaned.contains("{% hint"),
             "cleaned output should not contain GitBook hint tags"
+        );
+    }
+
+    #[test]
+    fn print_explanation_json_is_serializable() {
+        // `--explain <LINT> --format json` must produce a JSON object with
+        // the lint name and its raw markdown documentation.
+        let first = LINT_INFO.first().expect("at least one lint registered");
+        let explanation = LINT_EXPLANATIONS
+            .iter()
+            .find(|e| e.name == first.name)
+            .expect("lint should have an explanation");
+        let json = serde_json::to_string(explanation).expect("explanation must serialize");
+        let value: serde_json::Value =
+            serde_json::from_str(&json).expect("serialized explanation must be valid JSON");
+        assert_eq!(value["name"], first.name);
+        let markdown = value["markdown"]
+            .as_str()
+            .expect("markdown must be a string");
+        assert!(
+            !markdown.is_empty(),
+            "serialized explanation must carry the markdown documentation"
         );
     }
 

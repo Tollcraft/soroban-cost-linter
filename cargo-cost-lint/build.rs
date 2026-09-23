@@ -547,7 +547,7 @@ fn run() -> Result<()> {
 
     // --- Write lint_explanations.rs with embedded doc content as raw string literals ---
     let mut explanations_out = String::new();
-    explanations_out.push_str("pub struct LintExplanation {\n");
+    explanations_out.push_str("#[derive(Serialize, Debug)]\npub struct LintExplanation {\n");
     explanations_out.push_str("    pub name: &'static str,\n");
     explanations_out.push_str("    pub markdown: &'static str,\n");
     explanations_out.push_str("}\n\n");

@@ -105,6 +105,88 @@ fn test_list_lints_text() {
 }
 
 #[test]
+fn test_explain_json() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // `--explain` must respect `--format json` consistently with
+    // `--list-lints --format json`: a JSON object with the lint's name and
+    // its raw markdown documentation, and no GitBook hint tags in the raw doc.
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("soroban_storage_in_loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --explain --format json failed"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_str).expect("Output is not valid JSON");
+
+    assert_eq!(value["name"], "soroban_storage_in_loop");
+    let markdown = value["markdown"]
+        .as_str()
+        .expect("markdown is not a string");
+    assert!(!markdown.is_empty(), "markdown should not be empty");
+}
+
+#[test]
+fn test_explain_text() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Default (text) format keeps the terminal-clean markdown rendering.
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("soroban_storage_in_loop")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert!(output.status.success(), "cargo-cost-lint --explain failed");
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(
+        !stdout_str.contains("{% hint"),
+        "terminal output should not contain GitBook hint tags"
+    );
+    assert!(
+        stdout_str.to_lowercase().contains("storage"),
+        "output should contain relevant documentation content"
+    );
+}
+
+#[test]
+fn test_explain_unknown_lint() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("definitely_not_a_real_lint_name")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unknown lint should exit with code 1"
+    );
+
+    let stderr_str = String::from_utf8(output.stderr).expect("Stderr is not valid UTF-8");
+    assert!(
+        stderr_str.contains("Error: unknown lint"),
+        "stderr should report the unknown lint"
+    );
+    assert!(
+        stderr_str.contains("Valid lints:"),
+        "stderr should list valid lints"
+    );
+}
+
+#[test]
 fn test_json_output() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 

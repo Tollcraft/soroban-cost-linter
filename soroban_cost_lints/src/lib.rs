@@ -825,31 +825,6 @@ fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str
         .any(|segments| match_soroban_def_path(cx, def_id, segments))
 }
 
-fn match_soroban_def_path_tcx(tcx: TyCtxt<'_>, def_id: DefId, segments: &[&str]) -> bool {
-    let full = tcx.def_path_str(def_id);
-    let suffix = segments.join("::");
-    if full == suffix {
-        return true;
-    }
-    if full.ends_with(&format!("::{}", suffix)) {
-        let root_crate = full.split("::").next().unwrap_or("");
-        if root_crate == segments[0]
-            || root_crate == "soroban_sdk"
-            || root_crate == "soroban_env_host"
-            || root_crate == "soroban_env_common"
-        {
-            return true;
-        }
-    }
-    false
-}
-
-fn matches_any_path_tcx(tcx: TyCtxt<'_>, def_id: DefId, paths: &[&[&str]]) -> bool {
-    paths
-        .iter()
-        .any(|segments| match_soroban_def_path_tcx(tcx, def_id, segments))
-}
-
 /// Maximum call depth for inter-procedural analysis. Functions reachable
 /// beyond this depth are not inspected; the analysis conservatively treats
 /// them as not containing the target operation.
@@ -866,7 +841,7 @@ const MAX_CALL_DEPTH: u32 = 3;
 /// cross-function lint never produces a false positive from incomplete
 /// information.
 fn callee_contains_soroban_op<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    cx: &LateContext<'tcx>,
     def_id: DefId,
     target_paths: &[&[&str]],
     depth_remaining: u32,
@@ -890,15 +865,15 @@ fn callee_contains_soroban_op<'tcx>(
     let Some(local_def_id) = def_id.as_local() else {
         return false;
     };
-    let Some(body_id) = tcx.hir_node_by_def_id(local_def_id).body_id() else {
+    let Some(body_id) = cx.tcx.hir_node_by_def_id(local_def_id).body_id() else {
         return false;
     };
-    let body = tcx.hir_body(body_id);
-    let typeck = tcx.typeck(local_def_id);
+    let body = cx.tcx.hir_body(body_id);
+    let typeck = cx.tcx.typeck(local_def_id);
 
     let found = {
         let mut detector = CalleeStorageDetector {
-            tcx,
+            cx,
             typeck,
             target_paths,
             depth_remaining: depth_remaining - 1,
@@ -916,7 +891,7 @@ fn callee_contains_soroban_op<'tcx>(
 /// Visitor that walks a callee body looking for direct storage/host method
 /// calls or nested calls that transitively reach one.
 struct CalleeStorageDetector<'a, 'tcx> {
-    tcx: TyCtxt<'tcx>,
+    cx: &'a LateContext<'tcx>,
     typeck: &'tcx rustc_middle::ty::TypeckResults<'tcx>,
     target_paths: &'a [&'a [&'a str]],
     depth_remaining: u32,
@@ -939,8 +914,8 @@ impl<'a, 'tcx> Visitor<'tcx> for CalleeStorageDetector<'a, 'tcx> {
 
                 if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
                     let did = adt_def.did();
-                    if matches_any_path_tcx(self.tcx, did, self.target_paths)
-                        || (match_soroban_def_path_tcx(self.tcx, did, &["soroban_sdk", "Env"])
+                    if matches_any_path(self.cx, did, self.target_paths)
+                        || (match_soroban_def_path(self.cx, did, &["soroban_sdk", "Env"])
                             && path_segment.ident.name.as_str() == "storage")
                     {
                         self.found = true;
@@ -953,7 +928,7 @@ impl<'a, 'tcx> Visitor<'tcx> for CalleeStorageDetector<'a, 'tcx> {
                 // storage/host op.
                 if let Some(callee_def_id) = self.typeck.type_dependent_def_id(expr.hir_id)
                     && callee_contains_soroban_op(
-                        self.tcx,
+                        self.cx,
                         callee_def_id,
                         self.target_paths,
                         self.depth_remaining,
@@ -1161,7 +1136,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
             let mut visited: Vec<DefId> = Vec::new();
             if let Some(callee_def_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
                 && callee_contains_soroban_op(
-                    cx.tcx,
+                    cx,
                     callee_def_id,
                     SOROBAN_STORAGE_TYPES,
                     MAX_CALL_DEPTH,
@@ -3352,6 +3327,17 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                 content
             );
         }
+    }
+
+    // Every registered lint must have a dedicated UI fixture so a lint can
+    // never ship (or regress) without a test that exercises it directly.
+    for name in registered_names {
+        let fixture = ui_dir.join(format!("{name}.rs"));
+        assert!(
+            fixture.exists(),
+            "registered lint '{name}' has no dedicated UI fixture at {:?}",
+            fixture
+        );
     }
 }
 
