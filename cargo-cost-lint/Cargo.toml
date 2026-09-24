@@ -12,11 +12,11 @@ categories = ["development-tools:cargo-plugins"]
 clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tabled = "0.15"
+tabled = "0.22"
 ignore = "0.4"
-toml = "0.8"
+toml = "1.1"
 anyhow = "1.0"
-indicatif = "0.17"
+indicatif = "0.18"
 
 [dev-dependencies]
 tempfile = "3.8"
