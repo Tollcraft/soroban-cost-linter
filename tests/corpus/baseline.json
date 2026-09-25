@@ -2,10 +2,10 @@
   "version": 1,
   "description": "Baseline lint findings for real-world corpus. Generated on t=1788274923 with 174 findings (28 TP, 146 FP, 83.91% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 174,
-    "total_true_positives": 28,
-    "total_false_positives": 146,
-    "false_positive_rate_percent": 83.91
+    "total_findings": 171,
+    "total_true_positives": 27,
+    "total_false_positives": 144,
+    "false_positive_rate_percent": 84.21
   },
   "contracts": {
     "auth_batch_per_item": {
@@ -542,7 +542,7 @@
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 10,
+          "line": 16,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         }
       ],
@@ -944,41 +944,22 @@
       ]
     },
     "symbol_key_event_topics": {
-      "total": 5,
+      "total": 2,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 11,
+          "line": 10,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         },
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 12,
+          "line": 11,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unnecessary_host_function_call",
-          "file": "src/lib.rs",
-          "line": 13,
-          "message": "unnecessary host function call inside loop"
         }
       ],
-      "false_positives": [
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "storage key constructed inside a loop body"
-        },
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 12,
-          "message": "storage key constructed inside a loop body"
-        }
-      ]
+      "false_positives": []
     },
     "timelock": {
       "total": 19,
