@@ -2,10 +2,10 @@
   "version": 1,
   "description": "Baseline lint findings for real-world corpus. Generated on t=1788274923 with 174 findings (28 TP, 146 FP, 83.91% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 171,
+    "total_findings": 172,
     "total_true_positives": 27,
-    "total_false_positives": 144,
-    "false_positive_rate_percent": 84.21
+    "total_false_positives": 145,
+    "false_positive_rate_percent": 84.30
   },
   "contracts": {
     "auth_batch_per_item": {
@@ -537,7 +537,7 @@
       "false_positives": []
     },
     "good_fixed_instance_storage": {
-      "total": 1,
+      "total": 2,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -546,7 +546,14 @@
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         }
       ],
-      "false_positives": []
+      "false_positives": [
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 17,
+          "message": "storage write without a corresponding read"
+        }
+      ]
     },
     "good_persistent_storage": {
       "total": 1,
