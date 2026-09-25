@@ -40,3 +40,6 @@ impl NegativeControlContract {
         exists
     }
 }
+
+#[cfg(test)]
+mod test;
