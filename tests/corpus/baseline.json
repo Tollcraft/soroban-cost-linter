@@ -949,13 +949,13 @@
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 10,
+          "line": 11,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         },
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 11,
+          "line": 12,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
         }
       ],
