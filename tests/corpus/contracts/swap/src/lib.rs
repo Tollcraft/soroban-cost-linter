@@ -50,14 +50,15 @@ impl SwapContract {
 
     pub fn batch_swap(env: Env, from: Address, amounts: Vec<i128>) -> Vec<i128> {
         from.require_auth();
-        let res_a: i128 = env.storage().instance().get(&RESERVE_A).unwrap_or(0);
+        let mut res_a: i128 = env.storage().instance().get(&RESERVE_A).unwrap_or(0);
+        let res_b: i128 = env.storage().instance().get(&RESERVE_B).unwrap_or(0);
         let mut outcomes = Vec::new(&env);
         for amount_in in amounts.iter() {
-            let res_b: i128 = env.storage().instance().get(&RESERVE_B).unwrap_or(0);
             let amount_out = (amount_in * res_b) / (res_a + amount_in);
-            env.storage().instance().set(&RESERVE_A, &(res_a + amount_in));
+            res_a += amount_in;
             outcomes.push_back(amount_out);
         }
+        env.storage().instance().set(&RESERVE_A, &res_a);
         outcomes
     }
 
@@ -65,12 +66,8 @@ impl SwapContract {
         from.require_auth();
         let res_a: i128 = env.storage().instance().get(&RESERVE_A).unwrap_or(0);
         let fee = res_a / 1000;
-        let mut buf = Bytes::new(&env);
-        let fee_bytes = Bytes::from_array(&env, &fee.to_be_bytes());
-        buf.append(&fee_bytes);
-        for _ in 0..3 {
-            buf.append(&Bytes::from_array(&env, &[0u8; 4]));
-        }
+        let mut buf = Bytes::from_array(&env, &fee.to_be_bytes());
+        buf.append(&Bytes::from_slice(&env, &[0u8; 12]));
         buf
     }
 }
