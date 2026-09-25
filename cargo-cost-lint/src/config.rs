@@ -4,6 +4,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::error::LinterResult;
+
 #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 pub struct BudgetConfig {
     pub lints: Option<HashMap<String, String>>,
@@ -15,14 +17,20 @@ impl BudgetConfig {
     /// of `allow`/`warn`/`deny`. This is the single canonical entry point
     /// for loading a `budget.toml` — the file may be read from anywhere on
     /// disk, but always goes through this same validation.
-    pub fn from_file_validated(path: &Path, known_lints: &[&str]) -> Result<Self, String> {
+    pub fn from_file_validated(path: &Path, known_lints: &[&str]) -> LinterResult<Self> {
         let path_display = path.display();
         let content = fs::read_to_string(path)
             .map_err(|e| format!("Error: Failed to read {}: {}", path_display, e))?;
-        let config: BudgetConfig = toml::from_str(&content)
+        let mut config: BudgetConfig = toml::from_str(&content)
             .map_err(|e| format!("Error: Failed to parse {}: {}", path_display, e))?;
 
-        if let Some(lints) = &config.lints {
+        if let Some(lints) = &mut config.lints {
+            let normalized_lints: HashMap<String, String> = lints
+                .drain()
+                .map(|(k, v)| (k.replace('-', "_"), v))
+                .collect();
+            *lints = normalized_lints;
+
             for (lint, level) in lints {
                 if !known_lints.contains(&lint.as_str()) {
                     return Err(format!(
@@ -30,13 +38,14 @@ impl BudgetConfig {
                         lint,
                         path_display,
                         known_lints.join(", ")
-                    ));
+                    )
+                    .into());
                 }
                 if !matches!(level.as_str(), "allow" | "warn" | "deny") {
                     return Err(format!(
                         "Error: Unknown lint level '{}' for '{}' in {}. Valid levels are allow, warn, and deny.",
                         level, lint, path_display
-                    ));
+                    ).into());
                 }
             }
         }
@@ -105,7 +114,7 @@ mod tests {
         let missing = dir.path().join("nonexistent.toml");
         let result = BudgetConfig::from_file_validated(&missing, KNOWN_LINTS);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Failed to read"));
+        assert!(result.unwrap_err().to_string().contains("Failed to read"));
     }
 
     #[test]
@@ -115,7 +124,7 @@ mod tests {
         write_file(&path, "this is not valid toml [[[");
         let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Failed to parse"));
+        assert!(result.unwrap_err().to_string().contains("Failed to parse"));
     }
 
     #[test]
@@ -155,7 +164,12 @@ soroban_storage_in_loop = "deny"
         write_file(&path, "[lints]\nnot_a_real_lint = \"deny\"\n");
         let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown lint name"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown lint name")
+        );
     }
 
     #[test]
@@ -165,7 +179,12 @@ soroban_storage_in_loop = "deny"
         write_file(&path, "[lints]\nsoroban_storage_in_loop = \"oops\"\n");
         let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown lint level"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown lint level")
+        );
     }
 
     #[test]
