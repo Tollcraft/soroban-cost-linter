@@ -104,6 +104,93 @@ fn test_list_lints_json() {
     }
 }
 
+/// `build.rs` derives each inventory entry's `category` by textually parsing
+/// `lib.rs`'s `LINT_METADATA` registry. This test parses the same registry
+/// independently and requires the CLI to agree with it, so a change to the
+/// registry's shape that build.rs no longer understands fails here instead of
+/// silently reporting every category as `Unknown`.
+#[test]
+fn test_list_lints_categories_match_lint_metadata() {
+    let lib_rs = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("soroban_cost_lints")
+        .join("src")
+        .join("lib.rs");
+    let content = match std::fs::read_to_string(&lib_rs) {
+        Ok(content) => content,
+        // Packaged crate: the workspace sources are not part of the package.
+        Err(_) if !lib_rs.exists() => return,
+        Err(e) => panic!("Failed to read {}: {}", lib_rs.display(), e),
+    };
+
+    let registry_start = content
+        .find("pub const LINT_METADATA")
+        .expect("lib.rs must declare LINT_METADATA");
+    let registry = &content[registry_start..];
+    let registry = &registry[..registry
+        .find("];")
+        .expect("LINT_METADATA must be a closed slice literal")];
+
+    let mut expected: Vec<(String, String)> = Vec::new();
+    for entry in registry.split("LintMeta {").skip(1) {
+        let name = entry
+            .split("name: \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| panic!("LINT_METADATA entry has no name: {}", entry.trim()))
+            .to_string();
+        let category = entry
+            .split("category: LintCategory::")
+            .nth(1)
+            .and_then(|rest| rest.split(',').next())
+            .unwrap_or_else(|| panic!("LINT_METADATA entry has no category: {}", entry.trim()))
+            .to_string();
+        expected.push((name, category));
+    }
+    assert!(
+        !expected.is_empty(),
+        "LINT_METADATA should declare at least one lint"
+    );
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output is not valid JSON");
+    let lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+
+    for (name, category) in &expected {
+        let entry = lints
+            .iter()
+            .find(|lint| lint["name"].as_str() == Some(name.as_str()))
+            .unwrap_or_else(|| panic!("lint '{}' is missing from the inventory", name));
+        assert_eq!(
+            entry["category"].as_str(),
+            Some(category.as_str()),
+            "lint '{}' category drifted from its LINT_METADATA row",
+            name
+        );
+    }
+
+    assert_eq!(
+        lints.len(),
+        expected.len(),
+        "inventory and LINT_METADATA describe different numbers of lints"
+    );
+}
+
 #[test]
 fn test_list_lints_text() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");

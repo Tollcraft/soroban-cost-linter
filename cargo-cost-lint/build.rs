@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt;
 use std::fs;
@@ -52,21 +52,77 @@ fn rust_string(value: &str) -> String {
     format!("{:?}", value)
 }
 
-/// Parse lint names from the registration pattern, returning lowercase names
-/// in the order they appear.
+/// Parse lint names from every registration site in `lib.rs`, returning
+/// lowercase names in registration order.
 ///
-/// Supports both the legacy `lint_store.register_lints(&[...])` pattern
-/// and the current `dylint_lint_impl! { ..., [...] }` macro invocation.
+/// `lib.rs` names its lints twice: once in the `dylint_lint_impl! { ..., [...] }`
+/// invocation (the list `DEVELOPING_LINTS.md` tells authors to edit) and once in
+/// the legacy `lint_store.register_lints(&[...])` call, which the in-tree tests
+/// parse instead. Each list has its own parser, so both run whenever their
+/// pattern is present and their results are required to agree — otherwise the
+/// two parsers would silently describe two different lint sets. When both are
+/// present the `dylint_lint_impl!` order wins, matching the documented source of
+/// truth.
 fn parse_register_lints(content: &str) -> Result<Vec<String>> {
-    // Try dylint_lint_impl! first (current pattern)
-    if let Some(result) = parse_dylint_impl(content) {
-        return Ok(result);
+    let dylint = parse_dylint_impl(content)?;
+    let legacy = parse_legacy_register_lints(content)?;
+
+    match (dylint, legacy) {
+        (Some(dylint_names), Some(legacy_names)) => {
+            if dylint_names != legacy_names {
+                let dylint_set: HashSet<&str> = dylint_names.iter().map(String::as_str).collect();
+                let legacy_set: HashSet<&str> = legacy_names.iter().map(String::as_str).collect();
+                let only_dylint = sorted_diff(&dylint_set, &legacy_set);
+                let only_legacy = sorted_diff(&legacy_set, &dylint_set);
+                if only_dylint.is_empty() && only_legacy.is_empty() {
+                    return Err(Error::Parse(
+                        "lib.rs lists the same lints in different orders in `dylint_lint_impl!` \
+                         and `lint_store.register_lints`; keep the two lists identical"
+                            .into(),
+                    ));
+                }
+                return Err(Error::Parse(format!(
+                    "lib.rs's `dylint_lint_impl!` and `lint_store.register_lints` lists disagree. \
+                     Only in `dylint_lint_impl!`: [{}]. Only in `register_lints`: [{}]. \
+                     Keep the two lists identical",
+                    only_dylint.join(", "),
+                    only_legacy.join(", ")
+                )));
+            }
+            Ok(dylint_names)
+        }
+        (Some(dylint_names), None) => Ok(dylint_names),
+        (None, Some(legacy_names)) => Ok(legacy_names),
+        (None, None) => Err(Error::Parse(
+            "Could not find register_lints or dylint_lint_impl in lib.rs".into(),
+        )),
     }
-    // Fall back to legacy register_lints pattern
+}
+
+/// Members of `a` that are not in `b`, sorted so the error message is stable.
+fn sorted_diff<'a>(a: &HashSet<&'a str>, b: &HashSet<&'a str>) -> Vec<&'a str> {
+    let mut only: Vec<&str> = a.difference(b).copied().collect();
+    only.sort_unstable();
+    only
+}
+
+/// Renders lint names as `"a", "b"` so build errors read like the source.
+fn join_quoted(names: &[&str]) -> String {
+    names
+        .iter()
+        .map(|name| format!("\"{}\"", name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Parse the lint list out of the legacy `lint_store.register_lints(&[...])`
+/// call, if `lib.rs` has one.
+fn parse_legacy_register_lints(content: &str) -> Result<Option<Vec<String>>> {
     let start_marker = "lint_store.register_lints(&[";
-    let start = content.find(start_marker).ok_or_else(|| {
-        Error::Parse("Could not find register_lints or dylint_lint_impl in lib.rs".into())
-    })?;
+    let start = match content.find(start_marker) {
+        Some(start) => start,
+        None => return Ok(None),
+    };
     let content_after = &content[start..];
     let end = content_after
         .find("]);")
@@ -81,18 +137,28 @@ fn parse_register_lints(content: &str) -> Result<Vec<String>> {
             names.push(trimmed.to_lowercase());
         }
     }
-    Ok(names)
+    Ok(Some(names))
 }
 
-/// Try to parse lint names from a `dylint_lint_impl!` macro invocation.
-fn parse_dylint_impl(content: &str) -> Option<Vec<String>> {
+/// Parse lint names from the `dylint_lint_impl!` macro invocation, if `lib.rs`
+/// has one.
+fn parse_dylint_impl(content: &str) -> Result<Option<Vec<String>>> {
     let marker = "dylint_lint_impl!";
-    let start = content.find(marker)?;
+    let start = match content.find(marker) {
+        Some(start) => start,
+        None => return Ok(None),
+    };
     let after = &content[start..];
-    // Find the outermost bracket pair: the lint list is the second argument
-    let open = after.find('[')? + 1;
-    let close = after[open..].find(']')? + open;
-    let list_str = &after[open..close];
+    // The lint list is the macro's second argument, so the first bracket pair
+    // opened after the invocation is the one to read.
+    let open = after
+        .find('[')
+        .ok_or_else(|| Error::Parse("dylint_lint_impl! has no lint list".into()))?;
+    let close = after[open..]
+        .find(']')
+        .ok_or_else(|| Error::Parse("dylint_lint_impl! lint list is not closed".into()))?
+        + open;
+    let list_str = &after[open + 1..close];
 
     let mut names = Vec::new();
     for line in list_str.lines() {
@@ -101,7 +167,7 @@ fn parse_dylint_impl(content: &str) -> Option<Vec<String>> {
             names.push(trimmed.to_lowercase());
         }
     }
-    Some(names)
+    Ok(Some(names))
 }
 
 /// Parse `declare_lint! { ... }` blocks to extract each lint's name, default
@@ -207,6 +273,106 @@ fn parse_declare_lints(content: &str) -> Result<Vec<LintMeta>> {
     }
 
     Ok(results)
+}
+
+/// Parse the `LINT_METADATA` registry into a lowercase-name → category map.
+///
+/// This is the third and final view of `lib.rs` that build.rs needs. It is
+/// keyed the same way as the `declare_lint!` blocks, so `run()` can require the
+/// three views to agree instead of letting a lint quietly lose its category.
+fn parse_lint_metadata_categories(content: &str) -> Result<HashMap<String, String>> {
+    const MARKER: &str = "pub const LINT_METADATA";
+    let marker_start = content
+        .find(MARKER)
+        .ok_or_else(|| Error::Parse("lib.rs has no `pub const LINT_METADATA` registry".into()))?;
+
+    let rel = content[marker_start..].find("= &[").ok_or_else(|| {
+        Error::Parse("`LINT_METADATA` in lib.rs is not a slice literal (`= &[ ... ]`)".into())
+    })?;
+    // Index of the `[` that opens the slice literal.
+    let open = marker_start + rel + "= &[".len() - 1;
+    let close = closing_bracket(content, open)?;
+    let body = &content[open + 1..close];
+
+    let mut categories = HashMap::new();
+    for entry in body.split("LintMeta {").skip(1) {
+        let mut name = None;
+        let mut category = None;
+        for line in entry.lines() {
+            let line = line.trim().trim_end_matches(',');
+            if let Some(value) = line.strip_prefix("name:") {
+                name = Some(value.trim().trim_matches('"').to_string());
+            } else if let Some(value) = line.strip_prefix("category:") {
+                let value = value.trim();
+                // `LintCategory::Compute` -> `Compute`
+                category = Some(value.rsplit("::").next().unwrap_or(value).to_string());
+            }
+        }
+        let (name, category) = match (name, category) {
+            (Some(name), Some(category)) => (name, category),
+            _ => {
+                return Err(Error::Parse(format!(
+                    "Could not parse a LINT_METADATA entry (expected `name:` and `category:` \
+                     fields): {}",
+                    entry.trim()
+                )));
+            }
+        };
+        if name.is_empty() || category.is_empty() {
+            return Err(Error::Parse(format!(
+                "LINT_METADATA entry has an empty name or category: {}",
+                entry.trim()
+            )));
+        }
+        if categories.insert(name.to_lowercase(), category).is_some() {
+            return Err(Error::Parse(format!(
+                "duplicate LINT_METADATA row for lint '{}'",
+                name
+            )));
+        }
+    }
+
+    if categories.is_empty() {
+        return Err(Error::Parse(
+            "LINT_METADATA in lib.rs contains no entries".into(),
+        ));
+    }
+    Ok(categories)
+}
+
+/// Index of the `]` closing the `[` at `open`, skipping brackets that appear
+/// inside string literals.
+fn closing_bracket(content: &str, open: usize) -> Result<usize> {
+    let mut depth: u32 = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, ch) in content[open..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Ok(open + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(Error::Parse(format!(
+        "Unterminated `[` in lib.rs at byte {}",
+        open
+    )))
 }
 
 /// Wraps `s` in the shortest raw string literal (`r"..."`, `r#"..."#`, ...)
@@ -328,40 +494,85 @@ fn run() -> Result<()> {
         ))
     })?;
 
+    // --- Parse `lib.rs` once, then make the three views agree ---
+    // `parse_register_lints` reads the registration lists, `parse_declare_lints`
+    // the `declare_lint!` blocks and `parse_lint_metadata_categories` the
+    // `LINT_METADATA` registry. They are independent textual parsers, so every
+    // lint must show up in all three or the build fails here rather than
+    // shipping an inventory with a silent gap in it.
     let names = parse_register_lints(&content)?;
     let declared = parse_declare_lints(&content)?;
+    let categories = parse_lint_metadata_categories(&content)?;
+
+    let registered: HashSet<&str> = names.iter().map(String::as_str).collect();
+
+    let missing_declare: Vec<&str> = names
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !declared.iter().any(|meta| meta.name == *name))
+        .collect();
+    if !missing_declare.is_empty() {
+        return Err(Error::Parse(format!(
+            "lint(s) {} registered in lib.rs but missing a declare_lint! block",
+            join_quoted(&missing_declare)
+        )));
+    }
+
+    let undeclared: Vec<&str> = declared
+        .iter()
+        .map(|meta| meta.name.as_str())
+        .filter(|name| !registered.contains(name))
+        .collect();
+    if !undeclared.is_empty() {
+        return Err(Error::Parse(format!(
+            "lint(s) {} have a declare_lint! block in lib.rs but are not registered",
+            join_quoted(&undeclared)
+        )));
+    }
+
+    let mut missing_category: Vec<&str> = registered
+        .iter()
+        .copied()
+        .filter(|name| !categories.contains_key(*name))
+        .collect();
+    if !missing_category.is_empty() {
+        missing_category.sort_unstable();
+        return Err(Error::Parse(format!(
+            "lint(s) {} are registered in lib.rs but have no LINT_METADATA row, so the \
+             inventory would carry no category",
+            join_quoted(&missing_category)
+        )));
+    }
+
+    let mut orphan_category: Vec<&str> = categories
+        .keys()
+        .map(String::as_str)
+        .filter(|name| !registered.contains(name))
+        .collect();
+    if !orphan_category.is_empty() {
+        orphan_category.sort_unstable();
+        return Err(Error::Parse(format!(
+            "LINT_METADATA row(s) {} name a lint that is not registered in lib.rs",
+            join_quoted(&orphan_category)
+        )));
+    }
 
     // Build a name→metadata lookup from the declare_lint! blocks.
     let metadata_by_name: HashMap<&str, &LintMeta> =
         declared.iter().map(|m| (m.name.as_str(), m)).collect();
 
-    // Derive LINT_INFO in the same order as register_lints, so the two
-    // lists can never drift. If a lint is in register_lints but missing
-    // a declare_lint! block, we panic at build time.
+    // Derive LINT_INFO in the same order as register_lints, so the three
+    // lists can never drift. The presence checks above mean every lookup here
+    // succeeds.
     let ordered: Vec<&LintMeta> = names
         .iter()
         .map(|name| {
             metadata_by_name
                 .get(name.as_str())
                 .copied()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "lint '{}' found in register_lints but not in any declare_lint! block",
-                        name
-                    )
-                })
+                .expect("registered lints were checked against declare_lint! above")
         })
         .collect();
-
-    // Cross-check: every declare_lint! must also appear in register_lints.
-    for meta in &declared {
-        if !names.contains(&meta.name) {
-            panic!(
-                "lint '{}' has a declare_lint! block but is not in register_lints",
-                meta.name
-            );
-        }
-    }
 
     // --- Verify every registered lint has a corresponding doc file ---
     for name in &names {
@@ -408,51 +619,6 @@ fn run() -> Result<()> {
         // Notify cargo to re-run build.rs when any doc file changes
         println!("cargo:rerun-if-changed={}/{}.md", docs_rel, name);
         explanations.push((name.clone(), doc_content));
-    }
-
-    let mut category_map = HashMap::new();
-    let metadata_marker = "pub const LINT_METADATA: &[LintMetadata] = &[";
-    if let Some(start) = content.find(metadata_marker) {
-        let after = &content[start + metadata_marker.len()..];
-        if let Some(end) = after.find("];") {
-            let metadata_body = &after[..end];
-            for entry in metadata_body.split("LintMetadata {") {
-                let entry = entry.trim();
-                if entry.is_empty() {
-                    continue;
-                }
-                if let Some(lint_part) = entry.split("lint:").nth(1) {
-                    let lint_name = lint_part
-                        .split(',')
-                        .next()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Could not parse lint_name in LINT_METADATA entry: {}",
-                                entry
-                            )
-                        })
-                        .trim();
-                    if let Some(category_part) = entry.split("category:").nth(1) {
-                        let category = category_part
-                            .split(',')
-                            .next()
-                            .unwrap_or_else(|| {
-                                panic!(
-                                    "Could not parse category_part in LINT_METADATA entry: {}",
-                                    entry
-                                )
-                            })
-                            .trim()
-                            .split("::")
-                            .last()
-                            .unwrap_or_else(|| {
-                                panic!("Could not extract category name from: {}", category_part)
-                            });
-                        category_map.insert(lint_name.to_lowercase(), category.to_string());
-                    }
-                }
-            }
-        }
     }
 
     // --- Parse the pinned toolchain and emit version metadata ---
@@ -502,40 +668,43 @@ fn run() -> Result<()> {
     metadata_out.push_str("    lints: &[\n");
 
     for name in &names {
-        if let Some(meta) = metadata_by_name.get(name.as_str()) {
-            let category = category_map
-                .get(name)
-                .map(|value| value.as_str())
-                .unwrap_or("Unknown");
-            let docs_path = format!(
-                "https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md",
+        // Both lookups were validated against `names` above, so this loop can
+        // only fail if the cross-checks were skipped.
+        let meta = metadata_by_name.get(name.as_str()).ok_or_else(|| {
+            Error::Parse(format!(
+                "lint '{}' registered in lib.rs but metadata not found in declare_lint! blocks",
                 name
-            );
-            metadata_out.push_str("        LintInventoryEntry {\n");
-            metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
-            metadata_out.push_str(&format!(
-                "            default_level: {},\n",
-                rust_string(&meta.level)
-            ));
-            metadata_out.push_str(&format!(
-                "            description: {},\n",
-                rust_string(&meta.description)
-            ));
-            metadata_out.push_str(&format!(
-                "            category: {},\n",
-                rust_string(category)
-            ));
-            metadata_out.push_str(&format!(
-                "            documentation_url: {},\n",
-                rust_string(&docs_path)
-            ));
-            metadata_out.push_str("        },\n");
-        } else {
-            return Err(Error::Parse(format!(
-                "Lint '{}' registered in register_lints but metadata not found in declare_lint! blocks",
+            ))
+        })?;
+        let category = categories.get(name).ok_or_else(|| {
+            Error::Parse(format!(
+                "lint '{}' registered in lib.rs but has no LINT_METADATA row",
                 name
-            )));
-        }
+            ))
+        })?;
+        let docs_path = format!(
+            "https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md",
+            name
+        );
+        metadata_out.push_str("        LintInventoryEntry {\n");
+        metadata_out.push_str(&format!("            name: {},\n", rust_string(name)));
+        metadata_out.push_str(&format!(
+            "            default_level: {},\n",
+            rust_string(&meta.level)
+        ));
+        metadata_out.push_str(&format!(
+            "            description: {},\n",
+            rust_string(&meta.description)
+        ));
+        metadata_out.push_str(&format!(
+            "            category: {},\n",
+            rust_string(category)
+        ));
+        metadata_out.push_str(&format!(
+            "            documentation_url: {},\n",
+            rust_string(&docs_path)
+        ));
+        metadata_out.push_str("        },\n");
     }
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");

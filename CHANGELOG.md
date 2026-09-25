@@ -70,6 +70,17 @@ and this project adheres to Semantic Versioning.
   pick a category for a new lint. The contributing and lint-authoring guides
   now link to it instead of carrying an incomplete inline list.
 
+### Fixed
+
+- `cargo-cost-lint`'s `build.rs` read `LINT_METADATA` with the pre-refactor
+  `LintMetadata { lint: .. }` shape, so the registry never matched and every
+  lint's `category` silently came out as `Unknown` in `--list-lints`. The build
+  script now parses `LintMeta { name: .. }`, cross-checks the registration
+  lists, the `declare_lint!` blocks and `LINT_METADATA` against each other, and
+  fails the build on any mismatch instead of emitting a partial inventory.
+  `unnecessary_host_function_call_legacy`, which had no `LINT_METADATA` row, is
+  now registered under `Host`.
+
 ## [0.1.1]
 
 ### Changed

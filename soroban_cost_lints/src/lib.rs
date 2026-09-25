@@ -475,6 +475,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Host function calls cross the Wasm boundary and consume CPU.",
     },
     LintMeta {
+        name: "unnecessary_host_function_call_legacy",
+        category: LintCategory::Host,
+        description: "Legacy alias of unnecessary_host_function_call",
+        rationale: "Retained so existing allow/deny configuration keeps working; the host call is still charged on every invocation.",
+    },
+    LintMeta {
         name: "soroban_redundant_storage_read",
         category: LintCategory::Storage,
         description: "Performs sequential redundant reads or has/get checks on the same key",
