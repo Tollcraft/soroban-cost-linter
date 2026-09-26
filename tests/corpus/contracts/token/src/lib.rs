@@ -1,4 +1,5 @@
 #![no_std]
+
 use soroban_sdk::symbol_short;
 use soroban_sdk::{contract, contractimpl, vec, Address, BytesN, Env, String, Symbol, Vec};
 
@@ -40,13 +41,15 @@ impl TokenContract {
     pub fn bulk_transfer(env: Env, from: Address, recipients: Vec<Address>, amounts: Vec<i128>) {
         from.require_auth();
         let mut from_bal: i128 = env.storage().instance().get(&from).unwrap_or(0);
-        for i in 0..recipients.len() {
+        let mut i = 0;
+        while i < recipients.len() {
             let recipient = recipients.get(i).unwrap();
             let amt = amounts.get(i).unwrap();
             from_bal -= amt;
             let mut bal: i128 = env.storage().instance().get(&recipient).unwrap_or(0);
             bal += amt;
             env.storage().instance().set(&recipient, &bal);
+            i += 1;
         }
         env.storage().instance().set(&from, &from_bal);
     }
@@ -54,18 +57,19 @@ impl TokenContract {
     pub fn batch_mint(env: Env, recipients: Vec<Address>, amounts: Vec<i128>) {
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
         admin.require_auth();
-        for i in 0..recipients.len() {
+        let mut i = 0;
+        while i < recipients.len() {
             let recipient = recipients.get(i).unwrap();
             let amt = amounts.get(i).unwrap();
             let bal: i128 = env.storage().instance().get(&recipient).unwrap_or(0);
             env.storage().instance().set(&recipient, &(bal + amt));
+            i += 1;
         }
     }
 
     pub fn metadata(env: Env) -> Vec<Symbol> {
         let name: Symbol = env.storage().instance().get(&Symbol::new(&env, "name")).unwrap();
         let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
-        let _seq = env.ledger().sequence();
         vec![&env, name, symbol_short!("TKN")]
     }
 }
