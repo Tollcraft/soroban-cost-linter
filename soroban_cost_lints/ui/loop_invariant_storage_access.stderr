@@ -40,5 +40,222 @@ LL |         let _: Option<i32> = s.get(&1); // Should NOT warn
    |
    = help: delete the storage read or use its returned value
 
-warning: 5 warnings emitted
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:85:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:85:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:85:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:95:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:95:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:95:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:107:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:107:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:107:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:107:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:117:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:117:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:117:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:117:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:127:9
+   |
+LL |         env.storage().persistent().extend_ttl(&1, &()); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: extend_ttl called inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:127:9
+   |
+LL |         env.storage().persistent().extend_ttl(&1, &()); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = note: `#[warn(extend_ttl_in_loop)]` on by default
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:127:9
+   |
+LL |         env.storage().persistent().extend_ttl(&1, &()); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:127:9
+   |
+LL |         env.storage().persistent().extend_ttl(&1, &()); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:138:34
+   |
+LL |             let _: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:150:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:150:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:150:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:150:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:152:34
+   |
+LL |             let _: Option<i32> = env.storage().instance().get(&i); // Should NOT warn on the `get` call
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:152:34
+   |
+LL |             let _: Option<i32> = env.storage().instance().get(&i); // Should NOT warn on the `get` call
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access.rs:152:34
+   |
+LL |             let _: Option<i32> = env.storage().instance().get(&i); // Should NOT warn on the `get` call
+   |                                  ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage read result is discarded
+  --> $DIR/loop_invariant_storage_access.rs:162:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().get(&1); // Should NOT warn (allowed)
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: 32 warnings emitted
 
