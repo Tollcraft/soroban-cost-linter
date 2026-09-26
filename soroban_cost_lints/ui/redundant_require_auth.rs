@@ -32,21 +32,31 @@ use soroban_sdk::{Address, Env, Symbol};
 // Triggering cases — these MUST produce the redundant_require_auth warning
 // =======================================================================
 
-/// Same address, require_auth called twice.
+/// Same address, `require_auth` called twice in one function. The second call
+/// adds no authorization; only it is reported, so the author sees the line to
+/// delete.
 fn bad_double_require_auth(env: Env) {
     let addr = Address;
     addr.require_auth(); // first — no warning
     addr.require_auth(); //~ WARNING require_auth already called on this address
 }
 
-/// Same address, mixed require_auth and require_auth_for_args.
+/// Same address, `require_auth_for_args` called twice.
+fn bad_double_require_auth_for_args(env: Env) {
+    let addr = Address;
+    addr.require_auth_for_args(&[1]); // first — no warning
+    addr.require_auth_for_args(&[2]); //~ WARNING require_auth already called on this address
+}
+
+/// Same address, mixed `require_auth` and `require_auth_for_args`. Both are
+/// tracked as authorization of the same address, so the second fires.
 fn bad_mixed_auth_methods(env: Env) {
     let addr = Address;
     addr.require_auth(); //~ WARNING require_auth already called on this address
     addr.require_auth_for_args(&[1, 2]); //~ WARNING require_auth already called on this address
 }
 
-/// Second call fires, first does not.
+/// Second call fires, first does not — pins which span is reported.
 fn bad_second_fires(env: Env) {
     let addr = Address;
     addr.require_auth(); // first — no warning
@@ -57,7 +67,7 @@ fn bad_second_fires(env: Env) {
 // Non-triggering cases — these MUST NOT produce any warning
 // =======================================================================
 
-/// Two genuinely different addresses.
+/// Two genuinely different addresses: neither is authorized twice.
 fn good_different_addresses() {
     let addr_a = Address;
     let addr_b = Address;
@@ -65,7 +75,9 @@ fn good_different_addresses() {
     addr_b.require_auth();
 }
 
-/// Same address but separated by a cross-contract call.
+/// Same address but separated by a cross-contract call. `invoke_contract`
+/// resets the tracking, because authorization state across a callee cannot be
+/// reasoned about here.
 fn good_separated_by_invoke_contract(env: Env, target: Address, func: Symbol) {
     let addr = Address;
     addr.require_auth();
@@ -73,7 +85,7 @@ fn good_separated_by_invoke_contract(env: Env, target: Address, func: Symbol) {
     addr.require_auth();
 }
 
-/// Same address but separated by a try_invoke_contract call.
+/// Same address but separated by a `try_invoke_contract` call.
 fn good_separated_by_try_invoke_contract(env: Env, target: Address, func: Symbol) {
     let addr = Address;
     addr.require_auth();
@@ -81,13 +93,13 @@ fn good_separated_by_try_invoke_contract(env: Env, target: Address, func: Symbol
     addr.require_auth();
 }
 
-/// Single require_auth — no duplication.
+/// Single `require_auth` — no duplication.
 fn good_single_require_auth() {
     let addr = Address;
     addr.require_auth();
 }
 
-/// No require_auth calls at all.
+/// No `require_auth` calls at all.
 fn good_no_require_auth() {
     let _env = Env;
 }

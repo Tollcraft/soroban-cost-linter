@@ -19,6 +19,9 @@ use soroban_sdk::{Address, Env};
 
 // --- Positive (should warn): same address authorized repeatedly in a loop ---
 
+/// A `for` loop re-authorizing the same address on every iteration. The first
+/// call already authorized the address for the whole invocation, so the rest
+/// only repeat the host call.
 fn bad_same_address_auth_in_for_loop(env: Env) {
     let addr = Address;
     for _ in 0..10 {
@@ -26,6 +29,7 @@ fn bad_same_address_auth_in_for_loop(env: Env) {
     }
 }
 
+/// Same as above with a `while` loop: the loop kind is irrelevant to the lint.
 fn bad_same_address_auth_in_while_loop(env: Env) {
     let addr = Address;
     let mut i = 0;
@@ -35,6 +39,7 @@ fn bad_same_address_auth_in_while_loop(env: Env) {
     }
 }
 
+/// A bare `loop` with a manual break, to cover all three loop kinds.
 fn bad_same_address_auth_in_loop_loop(env: Env) {
     let addr = Address;
     let mut count = 0;
@@ -47,10 +52,31 @@ fn bad_same_address_auth_in_loop_loop(env: Env) {
     }
 }
 
+/// `require_auth_for_args` is tracked exactly like `require_auth`.
 fn bad_require_auth_for_args_in_loop(env: Env) {
     let addr = Address;
     for i in 0..10 {
         addr.require_auth_for_args(&[i]); // Should Warn
+    }
+}
+
+/// `require_auth_for_args` in a `while` loop.
+fn bad_require_auth_for_args_in_while_loop(env: Env) {
+    let addr = Address;
+    let mut i = 0;
+    while i < 10 {
+        addr.require_auth_for_args(&[i]); // Should Warn
+        i += 1;
+    }
+}
+
+/// An authorization nested in an inner loop is still inside a loop.
+fn bad_nested_loop_auth(env: Env) {
+    let addr = Address;
+    for _ in 0..3 {
+        for _ in 0..3 {
+            addr.require_auth(); // Should Warn
+        }
     }
 }
 
@@ -70,6 +96,20 @@ fn good_distinct_address_per_iteration(env: Env, addrs: [Address; 5]) {
 fn good_auth_outside_loop(env: Env) {
     let addr = Address;
     addr.require_auth(); // Good — called once
+}
+
+// --- Negative: a receiver that is not a soroban_sdk::Address is out of scope ---
+
+struct NotAnAddress;
+impl NotAnAddress {
+    fn require_auth(&self) {}
+}
+
+fn good_require_auth_on_other_type(env: Env) {
+    let other = NotAnAddress;
+    for _ in 0..10 {
+        other.require_auth(); // Good — not a soroban_sdk::Address
+    }
 }
 
 // --- Suppression test ---

@@ -59,6 +59,19 @@ fn redundant_read(env: Env) {
     let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
 }
 
+// Fires: `has` observes the key just like `get`, so the following `get` repeats
+// work that has already been metered.
+fn redundant_read_after_has(env: Env) {
+    let _ = env.storage().instance().has(&1);
+    let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+}
+
+// Fires: the same redundant pair on persistent storage rather than instance.
+fn redundant_read_persistent(env: Env) {
+    let _: Option<i32> = env.storage().persistent().get(&1);
+    let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+}
+
 // Near-miss: a write between the reads clears the tracked key, so the second
 // read is not redundant and must NOT be flagged.
 fn read_write_read(env: Env) {
@@ -71,6 +84,13 @@ fn read_write_read(env: Env) {
 fn different_keys(env: Env) {
     let _: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
     let _: Option<i32> = env.storage().instance().get(&2); // Should NOT warn
+}
+
+// Near-miss: the same key read through two different storage accessors is not
+// the same read, because the accessor is part of the tracked identity.
+fn different_accessor_same_key(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+    let _: Option<i32> = env.storage().persistent().get(&1); // Should NOT warn
 }
 
 fn main() {}

@@ -1,5 +1,5 @@
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:25:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:28:9
    |
 LL |         addr.req$DIRre_auth(); // Should Warn — same address every iteration
    |         ^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         addr.req$DIRre_auth(); // Should Warn — same address every iterat
    = note: `#[warn(req$DIRre_auth_in_loop)]` on by default
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:33:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:37:9
    |
 LL |         addr.req$DIRre_auth(); // Should Warn — same address every iteration
    |         ^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         addr.req$DIRre_auth(); // Should Warn — same address every iterat
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:42:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:47:9
    |
 LL |         addr.req$DIRre_auth(); // Should Warn — same address every iteration
    |         ^^^^^^^^^^^^^^^^^^^
@@ -24,7 +24,7 @@ LL |         addr.req$DIRre_auth(); // Should Warn — same address every iterat
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:53:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:59:9
    |
 LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -32,12 +32,28 @@ LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:64:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:68:9
+   |
+LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/req$DIRre_auth_in_loop.rs:78:13
+   |
+LL |             addr.req$DIRre_auth(); // Should Warn
+   |             ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/req$DIRre_auth_in_loop.rs:90:9
    |
 LL |         addr.req$DIRre_auth(); // False positive — each iteration authorizes a different address
    |         ^^^^^^^^^^^^^^^^^^^
    |
    = help: collect distinct addresses first and authorize each once before the loop
 
-warning: 5 warnings emitted
+warning: 7 warnings emitted
 

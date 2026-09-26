@@ -1,5 +1,5 @@
 warning: storage write without a corresponding read
-  --> $DIR/storage_write_without_read.rs:46:30
+  --> $DIR/storage_write_without_read.rs:58:30
    |
 LL |     env.storage().instance().set(&1, &2); // Should Warn
    |                              ^^^^^^^^^^^
@@ -7,8 +7,32 @@ LL |     env.storage().instance().set(&1, &2); // Should Warn
    = help: consider reading the value before writing or using `.has()` to check existence
    = note: `#[warn(storage_write_without_read)]` on by default
 
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read.rs:63:32
+   |
+LL |     env.storage().persistent().set(&1, &2); // Should Warn
+   |                                ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read.rs:68:31
+   |
+LL |     env.storage().temporary().set(&1, &2); // Should Warn
+   |                               ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read.rs:74:30
+   |
+LL |     env.storage().instance().set(&2, &3); // Should Warn — different key
+   |                              ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
 warning: storage read result is discarded
-  --> $DIR/storage_write_without_read.rs:58:13
+  --> $DIR/storage_write_without_read.rs:73:13
    |
 LL |     let _ = env.storage().instance().get::<i32, i32>(&1);
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,5 +40,37 @@ LL |     let _ = env.storage().instance().get::<i32, i32>(&1);
    = help: delete the storage read or use its returned value
    = note: `#[warn(discarded_storage_read)]` on by default
 
-warning: 2 warnings emitted
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read.rs:80:32
+   |
+LL |     env.storage().persistent().set(&1, &2); // Should Warn — different receiver
+   |                                ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage read result is discarded
+  --> $DIR/storage_write_without_read.rs:79:13
+   |
+LL |     let _ = env.storage().instance().get::<i32, i32>(&1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/storage_write_without_read.rs:97:13
+   |
+LL |     let _ = env.storage().instance().get::<i32, i32>(&1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/storage_write_without_read.rs:103:13
+   |
+LL |     let _ = env.storage().instance().has(&1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: 9 warnings emitted
 

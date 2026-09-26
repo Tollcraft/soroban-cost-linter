@@ -37,6 +37,9 @@ mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
 mod option_wrapping_in_storage;
 mod redundant_require_auth;
+mod require_auth_in_loop;
+mod soroban_redundant_storage_read;
+mod storage_write_without_read;
 mod string_concat_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
@@ -105,7 +108,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
 
     // Restored with the pass implementations 3e70958 deleted.
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
-    lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
+    lint_store.register_late_pass(|_| {
+        Box::new(soroban_redundant_storage_read::SorobanRedundantStorageRead)
+    });
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
@@ -120,7 +125,8 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(string_concat_in_loop::StringConcatInLoop));
-    lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
+    lint_store
+        .register_late_pass(|_| Box::new(storage_write_without_read::StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
@@ -128,7 +134,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
-    lint_store.register_late_pass(|_| Box::new(RequireAuthInLoop));
+    lint_store.register_late_pass(|_| Box::new(require_auth_in_loop::RequireAuthInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
@@ -735,7 +741,7 @@ thread_local! {
     static DEF_PATH_CACHE: RefCell<HashMap<DefId, String>> = RefCell::new(HashMap::new());
 }
 
-fn cached_def_path_str(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+pub(crate) fn cached_def_path_str(tcx: TyCtxt<'_>, def_id: DefId) -> String {
     DEF_PATH_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache
@@ -1224,121 +1230,6 @@ impl<'tcx> LateLintPass<'tcx> for SorobanInefficientBytesConcat {
     }
 }
 
-pub struct SorobanRedundantStorageRead;
-
-rustc_session::impl_lint_pass!(SorobanRedundantStorageRead => [SOROBAN_REDUNDANT_STORAGE_READ]);
-
-impl SorobanRedundantStorageRead {
-    fn is_storage_type<'tcx>(
-        cx: &LateContext<'tcx>,
-        ty: rustc_middle::ty::Ty<'tcx>,
-    ) -> Option<DefId> {
-        let peeled = ty.peel_refs();
-        if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
-            let did = adt_def.did();
-            if match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Instance"])
-                || match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Persistent"])
-                || match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Temporary"])
-            {
-                return Some(did);
-            }
-        }
-        None
-    }
-
-    fn extract_storage_op<'tcx>(
-        cx: &LateContext<'tcx>,
-        expr: &'tcx hir::Expr<'tcx>,
-    ) -> Option<StorageOp> {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
-            let method_name = path_segment.ident.name.as_str();
-            if method_name != "get" && method_name != "has" && method_name != "set" {
-                return None;
-            }
-
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let storage_def_id = Self::is_storage_type(cx, receiver_ty)?;
-
-            if method_name == "set" {
-                return Some(StorageOp::Write);
-            }
-
-            // For get/has, extract the key argument and get its source text
-            let key_arg = args.first()?;
-            let key_inner = if let hir::ExprKind::AddrOf(_, _, inner) = key_arg.kind {
-                inner
-            } else {
-                key_arg
-            };
-
-            let key_text = snippet_opt(cx, key_inner.span)?;
-
-            Some(StorageOp::Read {
-                storage_def_id,
-                key_text,
-            })
-        } else {
-            None
-        }
-    }
-}
-
-enum StorageOp {
-    Read {
-        storage_def_id: DefId,
-        key_text: String,
-    },
-    Write,
-}
-
-impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
-    fn check_block(&mut self, cx: &LateContext<'tcx>, block: &'tcx hir::Block<'tcx>) {
-        let mut last_read: Option<(DefId, String)> = None;
-
-        // Iterate over top-level expressions from statements and optional tail expr
-        let exprs = block
-            .stmts
-            .iter()
-            .filter_map(|stmt| match stmt.kind {
-                hir::StmtKind::Let(&hir::LetStmt {
-                    init: Some(init), ..
-                }) => Some(init),
-                hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => Some(expr),
-                _ => None,
-            })
-            .chain(block.expr);
-
-        for expr in exprs {
-            if let Some(op) = SorobanRedundantStorageRead::extract_storage_op(cx, expr) {
-                match op {
-                    StorageOp::Read {
-                        storage_def_id,
-                        key_text,
-                    } => {
-                        if let Some((last_def_id, ref last_key)) = last_read
-                            && last_def_id == storage_def_id
-                            && *last_key == key_text
-                        {
-                            span_lint_and_help(
-                                cx,
-                                SOROBAN_REDUNDANT_STORAGE_READ,
-                                expr.span,
-                                "redundant storage read: this key was already read without modification",
-                                None,
-                                "store the value from the first read and reuse it instead of reading again",
-                            );
-                        }
-                        last_read = Some((storage_def_id, key_text));
-                    }
-                    StorageOp::Write => {
-                        last_read = None;
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Concrete pass that fires [`REDUNDANT_ENV_CLONE`].
 pub struct RedundantEnvClone;
 
@@ -1683,132 +1574,6 @@ fn is_valid_short_symbol(symbol_str: &str) -> bool {
     symbol_str
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-/// Late pass backing [`STORAGE_WRITE_WITHOUT_READ`].
-///
-/// Flags `set` calls on storage accessors when the same key was not
-/// previously read (via `get` or `has`) in the same function body.
-/// Writing without prior knowledge of the stored value may indicate a
-/// logic error or unnecessary overwrite that wastes budget.
-pub struct StorageWriteWithoutRead;
-
-rustc_session::impl_lint_pass!(StorageWriteWithoutRead => [STORAGE_WRITE_WITHOUT_READ]);
-
-impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
-    /// Visits a function body, collecting all storage reads and writes, and
-    /// emits a diagnostic for every write whose key was not preceded by a
-    /// read on the same receiver-key pair.
-    fn check_fn(
-        &mut self,
-        cx: &LateContext<'tcx>,
-        _: rustc_hir::intravisit::FnKind<'tcx>,
-        _: &'tcx hir::FnDecl<'tcx>,
-        body: &'tcx hir::Body<'tcx>,
-        _: rustc_span::Span,
-        def_id: rustc_hir::def_id::LocalDefId,
-    ) {
-        let fn_name = cx.tcx.opt_item_name(def_id.to_def_id());
-        if let Some(name) = fn_name {
-            let name_str = name.as_str();
-            if name_str.contains("init") || name_str.contains("set_admin") {
-                return;
-            }
-        }
-        /// Collects storage-read method calls (`get`, `has`) keyed by
-        /// receiver-snippet and key-snippet for later cross-referencing.
-        struct ReadVisitor<'a, 'tcx> {
-            cx: &'a LateContext<'tcx>,
-            reads: HashSet<(String, String)>,
-        }
-
-        impl<'a, 'tcx> Visitor<'tcx> for ReadVisitor<'a, 'tcx> {
-            /// Records `(receiver_snippet, key_snippet)` for every `get` or
-            /// `has` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
-            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-                if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
-                    let is_storage = if let Some(adt_def) =
-                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
-                    {
-                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
-                    } else {
-                        false
-                    };
-
-                    let method_name = path_segment.ident.name.as_str();
-                    if is_storage
-                        && (method_name == "get"
-                            || method_name == "try_get"
-                            || method_name == "has"
-                            || method_name == "remove"
-                            || method_name == "update")
-                        && !args.is_empty()
-                    {
-                        let receiver_snippet =
-                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
-                        self.reads.insert((receiver_snippet, key_snippet));
-                    }
-                }
-                intravisit::walk_expr(self, expr);
-            }
-        }
-
-        /// Collects storage-write method calls (`set`) with receiver,
-        /// key, and span for later comparison against the read set.
-        struct WriteVisitor<'a, 'tcx> {
-            cx: &'a LateContext<'tcx>,
-            writes: Vec<(String, String, rustc_span::Span)>,
-        }
-
-        impl<'a, 'tcx> Visitor<'tcx> for WriteVisitor<'a, 'tcx> {
-            /// Records `(receiver_snippet, key_snippet, span)` for every
-            /// `set` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
-            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-                if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
-                    let is_storage = if let Some(adt_def) =
-                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
-                    {
-                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
-                    } else {
-                        false
-                    };
-
-                    if is_storage && path_segment.ident.name.as_str() == "set" && args.len() >= 2 {
-                        let receiver_snippet =
-                            snippet_opt(self.cx, receiver.span).unwrap_or_default();
-                        let key_snippet = snippet_opt(self.cx, args[0].span).unwrap_or_default();
-                        self.writes.push((receiver_snippet, key_snippet, *span));
-                    }
-                }
-                intravisit::walk_expr(self, expr);
-            }
-        }
-
-        let reads = HashSet::new();
-        let writes = Vec::new();
-        let mut read_visitor = ReadVisitor { cx, reads };
-        read_visitor.visit_body(body);
-
-        let mut write_visitor = WriteVisitor { cx, writes };
-        write_visitor.visit_body(body);
-
-        for (w_receiver, w_key, w_span) in &write_visitor.writes {
-            let has_read = read_visitor
-                .reads
-                .contains(&(w_receiver.clone(), w_key.clone()));
-            if !has_read {
-                span_lint_and_help(
-                    cx,
-                    STORAGE_WRITE_WITHOUT_READ,
-                    *w_span,
-                    "storage write without a corresponding read",
-                    None,
-                    "consider reading the value before writing or using `.has()` to check existence",
-                );
-            }
-        }
-    }
 }
 
 /// Late pass backing [`INEFFICIENT_BYTES_CONCAT`].
@@ -2310,40 +2075,6 @@ impl<'tcx> LateLintPass<'tcx> for PersistentReadWithoutTtlExtension {
                 None,
                 "after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access",
             );
-        }
-    }
-}
-
-pub struct RequireAuthInLoop;
-
-rustc_session::impl_lint_pass!(RequireAuthInLoop => [REQUIRE_AUTH_IN_LOOP]);
-
-const REQUIRE_AUTH_METHODS: &[&str] = &["require_auth", "require_auth_for_args"];
-
-impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
-    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && REQUIRE_AUTH_METHODS.contains(&path_segment.ident.name.as_str())
-        {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_address = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
-            } else {
-                false
-            };
-
-            if is_address && enclosing_loop(cx, expr).is_some() {
-                span_lint_and_help(
-                    cx,
-                    REQUIRE_AUTH_IN_LOOP,
-                    expr.span,
-                    "authorization call inside a loop",
-                    None,
-                    "collect distinct addresses first and authorize each once before the loop",
-                );
-            }
         }
     }
 }
