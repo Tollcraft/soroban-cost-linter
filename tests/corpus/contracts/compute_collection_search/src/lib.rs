@@ -30,16 +30,17 @@ impl ComputeCollectionSearchContract {
     ///
     /// # Performance
     ///
-    /// This function avoids unnecessary `Symbol` clones by passing references
-    /// to `contains_key` and `get`, reducing per-iteration allocation overhead.
-    /// Each key is looked up exactly once, and the result is accumulated in-place.
+    /// This function minimizes `Symbol` clones by only cloning once per key
+    /// for `contains_key` (which takes ownership), then reusing the original
+    /// key for `get`. This reduces per-iteration allocation overhead compared
+    /// to cloning for both calls.
     pub fn find_in_collection(_env: Env, keys: Vec<Symbol>, map: Map<Symbol, i32>) -> i32 {
         let mut sum = 0i32;
         for key in keys.iter() {
             // Check if the key exists in the map before attempting to retrieve.
-            // Passing `key` by reference avoids cloning the Symbol, which saves
-            // a memory allocation per iteration.
-            if map.contains_key(key) {
+            // `contains_key` takes ownership, so we clone the key here.
+            // The original key is then reused for `get`, avoiding a second clone.
+            if map.contains_key(key.clone()) {
                 // Safe unwrap: we just confirmed the key exists above.
                 // Using `if let` instead of `unwrap()` avoids panicking on
                 // edge cases and makes the control flow explicit.
