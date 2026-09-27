@@ -452,6 +452,41 @@ fn test_shared_budget_toml_parsing() {
 }
 
 #[test]
+fn forbid_level_in_budget_toml_is_rejected() {
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let dir = tempdir().unwrap();
+    let budget_path = dir.path().join("budget.toml");
+    let mut f = File::create(&budget_path).unwrap();
+    f.write_all(b"[lints]\nsoroban_storage_in_loop = \"forbid\"\n")
+        .unwrap();
+    drop(f);
+
+    let output = Command::new(bin_path)
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        !output.status.success(),
+        "budget.toml with level \"forbid\" must be rejected"
+    );
+    let stderr_str = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr_str.contains("Unknown lint level 'forbid'"),
+        "stderr was: {stderr_str}"
+    );
+    assert!(
+        stderr_str.contains("for lint 'soroban_storage_in_loop'"),
+        "stderr was: {stderr_str}"
+    );
+}
+
+#[test]
 fn test_list_lints_json_and_text_consistency_and_descriptions() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 

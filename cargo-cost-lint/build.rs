@@ -173,45 +173,45 @@ fn parse_dylint_impl(content: &str) -> Result<Option<Vec<String>>> {
 /// Parse `declare_lint! { ... }` blocks to extract each lint's name, default
 /// level, and one-line description.
 ///
+/// The block is delimited by [`matching_delimiter`], so a `}` inside a string
+/// literal or a comment does not end it early — only the brace that balances
+/// the opening one does.
+///
 /// Returns metadata for lints in the order they appear in source.
 fn parse_declare_lints(content: &str) -> Result<Vec<LintMeta>> {
+    const MARKER: &str = "declare_lint! {";
     let mut results = Vec::new();
     let mut search_from = 0;
 
-    while let Some(rel_start) = content[search_from..].find("declare_lint! {") {
+    while let Some(rel_start) = content[search_from..].find(MARKER) {
         let absolute_start = search_from + rel_start;
-        let after_start = &content[absolute_start + "declare_lint! {".len()..];
+        let after_start = &content[absolute_start + MARKER.len()..];
         let start_line = content[..absolute_start].lines().count() + 1;
 
-        // Find matching closing brace, respecting nested braces.
-        let mut depth: u32 = 1;
-        let mut end_offset = None;
-        for (i, ch) in after_start.char_indices() {
-            if ch == '{' {
-                depth += 1;
-            } else if ch == '}' {
-                depth -= 1;
-                if depth == 0 {
-                    end_offset = Some(i);
-                    break;
-                }
-            }
-        }
-
-        let end_idx = end_offset.ok_or_else(|| {
+        // The `{` of `declare_lint! {`, and the `}` that balances it.
+        let open = absolute_start + MARKER.len() - 1;
+        let close = matching_delimiter(content, open).map_err(|e| {
             Error::Parse(format!(
-                "Unclosed declare_lint! block starting at line {}",
-                start_line
+                "unclosed declare_lint! block starting at line {}: {}",
+                start_line, e
             ))
         })?;
 
+        let end_idx = close - (absolute_start + MARKER.len());
         let block = &after_start[..end_idx];
 
-        // Extract non-comment, non-empty lines from the block body.
+        // Extract non-comment, non-empty lines from the block body. Block
+        // comments are dropped too, now that the scanner looks inside them.
         let lines: Vec<&str> = block
             .lines()
             .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("#["))
+            .filter(|l| {
+                !l.is_empty()
+                    && !l.starts_with("//")
+                    && !l.starts_with("/*")
+                    && !l.starts_with('*')
+                    && !l.starts_with("#[")
+            })
             .collect();
 
         if lines.len() < 3 {
@@ -269,18 +269,28 @@ fn parse_declare_lints(content: &str) -> Result<Vec<LintMeta>> {
             description,
         });
 
-        search_from = absolute_start + "declare_lint! {".len() + end_idx + 1;
+        search_from = close + 1;
     }
 
     Ok(results)
 }
 
-/// Parse the `LINT_METADATA` registry into a lowercase-name → category map.
+/// A `LINT_METADATA` row: the fields `declare_lint!` cannot express.
+///
+/// `name` and `description` are deliberately *not* stored here — they are read
+/// out of the row only to check them against the `declare_lint!` block for the
+/// same lint, so the two views of `lib.rs` cannot drift apart.
+struct RegistryRow {
+    category: String,
+    description: String,
+}
+
+/// Parse the `LINT_METADATA` registry into a lowercase-name → row map.
 ///
 /// This is the third and final view of `lib.rs` that build.rs needs. It is
 /// keyed the same way as the `declare_lint!` blocks, so `run()` can require the
 /// three views to agree instead of letting a lint quietly lose its category.
-fn parse_lint_metadata_categories(content: &str) -> Result<HashMap<String, String>> {
+fn parse_lint_metadata(content: &str) -> Result<HashMap<String, RegistryRow>> {
     const MARKER: &str = "pub const LINT_METADATA";
     let marker_start = content
         .find(MARKER)
@@ -291,13 +301,14 @@ fn parse_lint_metadata_categories(content: &str) -> Result<HashMap<String, Strin
     })?;
     // Index of the `[` that opens the slice literal.
     let open = marker_start + rel + "= &[".len() - 1;
-    let close = closing_bracket(content, open)?;
+    let close = matching_delimiter(content, open).map_err(Error::Parse)?;
     let body = &content[open + 1..close];
 
-    let mut categories = HashMap::new();
+    let mut rows = HashMap::new();
     for entry in body.split("LintMeta {").skip(1) {
         let mut name = None;
         let mut category = None;
+        let mut description = None;
         for line in entry.lines() {
             let line = line.trim().trim_end_matches(',');
             if let Some(value) = line.strip_prefix("name:") {
@@ -306,25 +317,31 @@ fn parse_lint_metadata_categories(content: &str) -> Result<HashMap<String, Strin
                 let value = value.trim();
                 // `LintCategory::Compute` -> `Compute`
                 category = Some(value.rsplit("::").next().unwrap_or(value).to_string());
+            } else if let Some(value) = line.strip_prefix("description:") {
+                description = Some(value.trim().trim_matches('"').to_string());
             }
         }
-        let (name, category) = match (name, category) {
-            (Some(name), Some(category)) => (name, category),
+        let (name, category, description) = match (name, category, description) {
+            (Some(name), Some(category), Some(description)) => (name, category, description),
             _ => {
                 return Err(Error::Parse(format!(
-                    "Could not parse a LINT_METADATA entry (expected `name:` and `category:` \
-                     fields): {}",
+                    "Could not parse a LINT_METADATA entry (expected `name:`, `category:` and \
+                     `description:` fields): {}",
                     entry.trim()
                 )));
             }
         };
-        if name.is_empty() || category.is_empty() {
+        if name.is_empty() || category.is_empty() || description.is_empty() {
             return Err(Error::Parse(format!(
-                "LINT_METADATA entry has an empty name or category: {}",
+                "LINT_METADATA entry has an empty name, category or description: {}",
                 entry.trim()
             )));
         }
-        if categories.insert(name.to_lowercase(), category).is_some() {
+        let row = RegistryRow {
+            category,
+            description,
+        };
+        if rows.insert(name.to_lowercase(), row).is_some() {
             return Err(Error::Parse(format!(
                 "duplicate LINT_METADATA row for lint '{}'",
                 name
@@ -332,47 +349,189 @@ fn parse_lint_metadata_categories(content: &str) -> Result<HashMap<String, Strin
         }
     }
 
-    if categories.is_empty() {
+    if rows.is_empty() {
         return Err(Error::Parse(
             "LINT_METADATA in lib.rs contains no entries".into(),
         ));
     }
-    Ok(categories)
+    Ok(rows)
 }
 
-/// Index of the `]` closing the `[` at `open`, skipping brackets that appear
-/// inside string literals.
-fn closing_bracket(content: &str, open: usize) -> Result<usize> {
+/// Index of the delimiter closing the one at `open`.
+///
+/// `open` must point at an opening `(`, `[` or `{`; the result is the index of
+/// the delimiter that balances it. Delimiters inside string literals, raw
+/// strings, char literals and comments are skipped, so neither a `}` in a lint
+/// description nor a `]` in a comment can end the scan early.
+fn matching_delimiter(content: &str, open: usize) -> std::result::Result<usize, String> {
+    let Some(from_open) = content.get(open..) else {
+        return Err(format!("byte offset {} is not a character boundary", open));
+    };
+    let Some(first) = from_open.chars().next() else {
+        return Err(format!(
+            "no delimiter at byte {}: the source ends first",
+            open
+        ));
+    };
+    let closer = match first {
+        '(' => ')',
+        '[' => ']',
+        '{' => '}',
+        other => {
+            return Err(format!(
+                "expected `(`, `[` or `{{` at byte {}, found {:?}",
+                open, other
+            ));
+        }
+    };
+
     let mut depth: u32 = 0;
-    let mut in_string = false;
-    let mut escaped = false;
-    for (i, ch) in content[open..].char_indices() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
+    let mut i = open;
+    while i < content.len() {
+        // Every advance below keeps `i` on a character boundary.
+        let ch = content[i..]
+            .chars()
+            .next()
+            .expect("i is a character boundary");
+        let width = ch.len_utf8();
+        let rest = &content[i + width..];
+
+        // Comments carry no structure.
+        if ch == '/' && rest.starts_with('/') {
+            i = match rest.find('\n') {
+                Some(newline) => i + width + newline,
+                None => content.len(),
+            };
+            continue;
+        }
+        if ch == '/' && rest.starts_with('*') {
+            let mut nested: u32 = 1;
+            i += width + 1; // past the opening `/*`
+            while nested > 0 {
+                let Some(next) = content[i..].chars().next() else {
+                    return Err(format!("unterminated block comment before byte {}", open));
+                };
+                let next_width = next.len_utf8();
+                let next_rest = &content[i + next_width..];
+                if next == '*' && next_rest.starts_with('/') {
+                    nested -= 1;
+                    i += next_width + 1;
+                } else if next == '/' && next_rest.starts_with('*') {
+                    nested += 1;
+                    i += next_width + 1;
+                } else {
+                    i += next_width;
+                }
             }
             continue;
         }
+
+        // Quoted literals hide their contents from the scan.
+        if ch == '"' {
+            i = skip_quoted(content, i)?;
+            continue;
+        }
+        if ch == '\''
+            && let Some(end) = char_literal_end(content, i)
+        {
+            i = end;
+            continue;
+        }
+        if ch == 'r'
+            && let Some(end) = raw_string_end(content, i)
+        {
+            i = end;
+            continue;
+        }
+
+        if ch == closer {
+            depth = depth
+                .checked_sub(1)
+                .ok_or_else(|| format!("unmatched {:?} at byte {}", closer, i))?;
+            if depth == 0 {
+                return Ok(i);
+            }
+        } else if ch == first {
+            depth += 1;
+        }
+
+        i += width;
+    }
+
+    Err(format!(
+        "no {:?} closes the {:?} at byte {}",
+        closer, first, open
+    ))
+}
+
+/// Index just past the closing quote of the `"..."` literal at `start`,
+/// honouring backslash escapes.
+fn skip_quoted(content: &str, start: usize) -> std::result::Result<usize, String> {
+    let mut i = start + 1; // past the opening quote
+    while i < content.len() {
+        let Some(ch) = content[i..].chars().next() else {
+            break;
+        };
+        let width = ch.len_utf8();
         match ch {
-            '"' => in_string = true,
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Ok(open + i);
+            '\\' => {
+                i += 1;
+                if let Some(escaped) = content[i..].chars().next() {
+                    i += escaped.len_utf8();
                 }
             }
-            _ => {}
+            '"' => return Ok(i + width),
+            _ => i += width,
         }
     }
-    Err(Error::Parse(format!(
-        "Unterminated `[` in lib.rs at byte {}",
-        open
-    )))
+    Err(format!("unterminated string literal at byte {}", start))
+}
+
+/// If `content[start..]` opens a char literal (`'a'`, `'\n'`, `'{'`, ...), the
+/// index just past its closing quote; `None` for a lifetime such as `'a`.
+fn char_literal_end(content: &str, start: usize) -> Option<usize> {
+    let mut i = start + 1; // past the opening quote
+    if content.get(i..)?.starts_with('\\') {
+        // An escape sequence, then the closing quote.
+        i += 1;
+        i += content.get(i..)?.chars().next()?.len_utf8();
+        while i < content.len() {
+            let ch = content.get(i..)?.chars().next()?;
+            i += ch.len_utf8();
+            if ch == '\'' {
+                return Some(i);
+            }
+            if ch == '\n' {
+                return None;
+            }
+        }
+        return None;
+    }
+    let first = content.get(i..)?.chars().next()?;
+    i += first.len_utf8();
+    content.get(i..)?.starts_with('\'').then_some(i + 1)
+}
+
+/// If `content[start..]` opens a raw string literal (`r"..."`, `r#"..."#`,
+/// ...), the index just past its closing delimiter; `None` otherwise.
+fn raw_string_end(content: &str, start: usize) -> Option<usize> {
+    let mut i = start + 1; // past the `r`
+    let mut hashes = 0usize;
+    while content.get(i..)?.starts_with('#') {
+        i += 1;
+        hashes += 1;
+    }
+    if !content.get(i..)?.starts_with('"') {
+        return None;
+    }
+    i += 1; // past the opening quote
+    if hashes == 0 {
+        return content[i..].find('"').map(|rel| i + rel + 1);
+    }
+    let terminator = format!("\"{}", "#".repeat(hashes));
+    content[i..]
+        .find(&terminator)
+        .map(|rel| i + rel + terminator.len())
 }
 
 /// Wraps `s` in the shortest raw string literal (`r"..."`, `r#"..."#`, ...)
@@ -496,13 +655,14 @@ fn run() -> Result<()> {
 
     // --- Parse `lib.rs` once, then make the three views agree ---
     // `parse_register_lints` reads the registration lists, `parse_declare_lints`
-    // the `declare_lint!` blocks and `parse_lint_metadata_categories` the
-    // `LINT_METADATA` registry. They are independent textual parsers, so every
-    // lint must show up in all three or the build fails here rather than
-    // shipping an inventory with a silent gap in it.
+    // the `declare_lint!` blocks and `parse_lint_metadata` the `LINT_METADATA`
+    // registry. They are independent textual parsers, so every lint must show
+    // up in all three or the build fails here rather than shipping an inventory
+    // with a silent gap in it. Where two views carry the same field — a lint's
+    // name, and its description — they must carry the same value.
     let names = parse_register_lints(&content)?;
     let declared = parse_declare_lints(&content)?;
-    let categories = parse_lint_metadata_categories(&content)?;
+    let registry = parse_lint_metadata(&content)?;
 
     let registered: HashSet<&str> = names.iter().map(String::as_str).collect();
 
@@ -533,7 +693,7 @@ fn run() -> Result<()> {
     let mut missing_category: Vec<&str> = registered
         .iter()
         .copied()
-        .filter(|name| !categories.contains_key(*name))
+        .filter(|name| !registry.contains_key(*name))
         .collect();
     if !missing_category.is_empty() {
         missing_category.sort_unstable();
@@ -544,7 +704,7 @@ fn run() -> Result<()> {
         )));
     }
 
-    let mut orphan_category: Vec<&str> = categories
+    let mut orphan_category: Vec<&str> = registry
         .keys()
         .map(String::as_str)
         .filter(|name| !registered.contains(name))
@@ -554,6 +714,38 @@ fn run() -> Result<()> {
         return Err(Error::Parse(format!(
             "LINT_METADATA row(s) {} name a lint that is not registered in lib.rs",
             join_quoted(&orphan_category)
+        )));
+    }
+
+    // Both views spell out a description for every lint, so a hand edit that
+    // updates one and not the other would ship two contradictory descriptions
+    // of the same lint. `declare_lint!` wins: it is what `--list-lints` and the
+    // generated docs show.
+    let mut divergent: Vec<String> = declared
+        .iter()
+        .filter_map(|meta| {
+            let row = registry.get(meta.name.as_str())?;
+            (row.description != meta.description).then(|| {
+                format!(
+                    "{}: declare_lint! has {:?}, LINT_METADATA has {:?}",
+                    meta.name, meta.description, row.description
+                )
+            })
+        })
+        .collect();
+    if !divergent.is_empty() {
+        divergent.sort_unstable();
+        let shown = divergent.len().min(5);
+        let preview = divergent[..shown].join("; ");
+        let rest = if divergent.len() > shown {
+            format!(" (and {} more)", divergent.len() - shown)
+        } else {
+            String::new()
+        };
+        return Err(Error::Parse(format!(
+            "lib.rs's `declare_lint!` blocks and `LINT_METADATA` rows disagree about a lint's \
+             description: {}{}. Make the two descriptions identical",
+            preview, rest
         )));
     }
 
@@ -676,12 +868,15 @@ fn run() -> Result<()> {
                 name
             ))
         })?;
-        let category = categories.get(name).ok_or_else(|| {
-            Error::Parse(format!(
-                "lint '{}' registered in lib.rs but has no LINT_METADATA row",
-                name
-            ))
-        })?;
+        let category = registry
+            .get(name)
+            .map(|row| row.category.as_str())
+            .ok_or_else(|| {
+                Error::Parse(format!(
+                    "lint '{}' registered in lib.rs but has no LINT_METADATA row",
+                    name
+                ))
+            })?;
         let docs_path = format!(
             "https://github.com/Tollcraft/soroban-cost-linter/blob/main/docs/lints/{}.md",
             name

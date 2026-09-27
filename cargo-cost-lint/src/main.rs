@@ -508,13 +508,13 @@ pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, Strin
 /// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
 /// (unknown lint names, invalid levels) is handled by
 /// `BudgetConfig::from_file_validated`, the single canonical config parser.
-// Not currently reached from `main()`, which still uses the inline
-// `validate_and_build_flags` path. `cargo-cost-lint` now carries two config
-// generations -- this one via `BudgetConfig::from_file_validated` (validates
-// lint names and levels) and the newer `config::Config::from_file_or_default`
-// (fallback defaults, no name validation). Both are tested; picking which one
-// ships is a behavioural decision for a maintainer, so this change leaves
-// `main()` as it found it rather than choosing silently.
+// Not currently reached from `main()`, which builds its flags with
+// `build_effective_lint_flags` instead (that path also folds in the
+// `--allow`/`--warn`/`--deny` overrides). Both validate lint names and
+// levels identically -- no level outside `allow`/`warn`/`deny`, including
+// `forbid`, is accepted by either. `main()` uses neither here today;
+// picking which one ships is a behavioural decision for a maintainer, so
+// this leaves `main()` as it found it rather than choosing silently.
 // Kept: scaffolding for future feature implementations
 #[allow(dead_code)]
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
@@ -1635,6 +1635,22 @@ mod tests {
         assert_eq!(
             flags,
             vec!["-W redundant_env_clone", "-D soroban_storage_in_loop",]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_forbid_level_from_budget_toml() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "forbid".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level 'forbid'"), "{err}");
+        assert!(
+            err.contains("for lint 'soroban_storage_in_loop'"),
+            "the message must name the offending lint: {err}"
         );
     }
 

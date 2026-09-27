@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
+#[derive(Debug)]
 struct LintEntry {
     name_snake: String,
     name_doc: String,
@@ -11,6 +12,12 @@ struct LintEntry {
     category: Option<String>,
 }
 
+/// Read every `declare_lint!` block in `lib.rs`, plus the category each lint
+/// picks up from `LINT_METADATA`.
+///
+/// A block is bounded by the brace that balances its opening `{` — see
+/// [`matching_close_brace`] — so the payload lines of one lint can never spill
+/// into the next construct.
 fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
     let lines: Vec<&str> = content.lines().collect();
     let mut entries: Vec<LintEntry> = Vec::new();
@@ -19,60 +26,26 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
         if trimmed.contains("declare_lint!") && trimmed.ends_with('{') {
-            i += 1;
-            while i < lines.len()
-                && (lines[i].trim().is_empty()
-                    || lines[i].trim().starts_with("///")
-                    || lines[i].trim().starts_with("//")
-                    || lines[i].trim().starts_with("#["))
+            match block_end_line(&lines, i)
+                .and_then(|end| parse_block_body(&lines[i + 1..end]).map(|body| (end, body)))
             {
-                i += 1;
+                Some((end, (name_snake, level, desc))) => {
+                    entries.push(LintEntry {
+                        name_doc: name_snake.to_lowercase(),
+                        name_snake,
+                        level,
+                        description: desc,
+                        category: None,
+                    });
+                    i = end + 1;
+                }
+                // Unclosed block, or a payload this parser does not
+                // recognise: skip the whole block rather than reading past it.
+                None => {
+                    i += 1;
+                }
             }
-            if i >= lines.len() {
-                break;
-            }
-            let name_line = lines[i].trim();
-            if !name_line.starts_with("pub ") {
-                i += 1;
-                continue;
-            }
-            let name_snake = name_line
-                .strip_prefix("pub ")
-                .unwrap_or(name_line)
-                .trim_end_matches(',')
-                .trim()
-                .to_string();
-
-            i += 1;
-            while i < lines.len() && lines[i].trim().is_empty() {
-                i += 1;
-            }
-            if i >= lines.len() {
-                break;
-            }
-            let level = lines[i].trim().trim_end_matches(',').to_string();
-
-            i += 1;
-            while i < lines.len() && lines[i].trim().is_empty() {
-                i += 1;
-            }
-            if i >= lines.len() {
-                break;
-            }
-            let desc = lines[i]
-                .trim()
-                .trim_start_matches('"')
-                .trim_end_matches(',')
-                .trim_end_matches('"')
-                .to_string();
-
-            entries.push(LintEntry {
-                name_doc: name_snake.to_lowercase(),
-                name_snake,
-                level,
-                description: desc,
-                category: None,
-            });
+            continue;
         }
         i += 1;
     }
@@ -110,6 +83,211 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
     }
 
     entries
+}
+
+/// Index of the line holding the `}` that balances the `{` opening the
+/// `declare_lint!` block at `start_line`; `None` if the block never closes.
+fn block_end_line(lines: &[&str], start_line: usize) -> Option<usize> {
+    let text = lines[start_line..].join("\n");
+    let first_line = text.find('\n').unwrap_or(text.len());
+    // The opening line ends with `{`, so it is the last one on that line.
+    let open = text[..first_line].rfind('{')?;
+    let close = matching_close_brace(&text, open)?;
+    Some(start_line + text[..close].matches('\n').count())
+}
+
+/// Reads `pub NAME,` / `LEVEL,` / `"description"` out of the lines between the
+/// braces of one `declare_lint!` block. Returns `None` when the payload is not
+/// shaped like that, so callers skip the block instead of guessing.
+fn parse_block_body(body: &[&str]) -> Option<(String, String, String)> {
+    let mut i = 0;
+    while i < body.len() {
+        let line = body[i].trim();
+        if line.is_empty()
+            || line.starts_with("///")
+            || line.starts_with("//")
+            || line.starts_with("#[")
+        {
+            i += 1;
+        } else {
+            break;
+        }
+    }
+
+    let name_line = body.get(i)?.trim();
+    if !name_line.starts_with("pub ") {
+        return None;
+    }
+    let name_snake = name_line
+        .strip_prefix("pub ")
+        .unwrap_or(name_line)
+        .trim_end_matches(',')
+        .trim()
+        .to_string();
+
+    i += 1;
+    while i < body.len() && body[i].trim().is_empty() {
+        i += 1;
+    }
+    let level = body.get(i)?.trim().trim_end_matches(',').to_string();
+
+    i += 1;
+    while i < body.len() && body[i].trim().is_empty() {
+        i += 1;
+    }
+    let desc = body
+        .get(i)?
+        .trim()
+        .trim_start_matches('"')
+        .trim_end_matches(',')
+        .trim_end_matches('"')
+        .to_string();
+
+    Some((name_snake, level, desc))
+}
+
+/// Index of the `}` closing the `{` at `open`, so a `}` inside a string
+/// literal or a comment never ends the scan early — only the brace that
+/// balances `open` does.
+fn matching_close_brace(content: &str, open: usize) -> Option<usize> {
+    if content.as_bytes().get(open) != Some(&b'{') {
+        return None;
+    }
+
+    let mut depth: u32 = 0;
+    let mut i = open;
+    while i < content.len() {
+        let ch = content[i..].chars().next()?;
+        let width = ch.len_utf8();
+        let rest = &content[i + width..];
+
+        // Comments carry no structure.
+        if ch == '/' && rest.starts_with('/') {
+            i = match rest.find('\n') {
+                Some(newline) => i + width + newline,
+                None => content.len(),
+            };
+            continue;
+        }
+        if ch == '/' && rest.starts_with('*') {
+            let mut nested: u32 = 1;
+            i += width + 1; // past the opening `/*`
+            while nested > 0 {
+                let next = content[i..].chars().next()?;
+                let next_width = next.len_utf8();
+                let next_rest = &content[i + next_width..];
+                if next == '*' && next_rest.starts_with('/') {
+                    nested -= 1;
+                    i += next_width + 1;
+                } else if next == '/' && next_rest.starts_with('*') {
+                    nested += 1;
+                    i += next_width + 1;
+                } else {
+                    i += next_width;
+                }
+            }
+            continue;
+        }
+
+        // Quoted literals hide their contents from the scan.
+        if ch == '"' {
+            i = skip_string_literal(content, i)?;
+            continue;
+        }
+        if ch == '\'' {
+            if let Some(end) = skip_char_literal(content, i) {
+                i = end;
+                continue;
+            }
+        }
+        if ch == 'r' {
+            if let Some(end) = skip_raw_string(content, i) {
+                i = end;
+                continue;
+            }
+        }
+
+        if ch == '}' {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(i);
+            }
+        } else if ch == '{' {
+            depth += 1;
+        }
+        i += width;
+    }
+    None
+}
+
+/// Index just past the closing quote of the `"..."` literal at `start`.
+fn skip_string_literal(content: &str, start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    while i < content.len() {
+        let ch = content[i..].chars().next()?;
+        let width = ch.len_utf8();
+        if ch == '\\' {
+            i += 1;
+            if let Some(escaped) = content[i..].chars().next() {
+                i += escaped.len_utf8();
+            }
+        } else if ch == '"' {
+            return Some(i + width);
+        } else {
+            i += width;
+        }
+    }
+    None
+}
+
+/// If `content[start..]` opens a char literal, the index just past it; `None`
+/// for a lifetime such as `'a`.
+fn skip_char_literal(content: &str, start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    if content.get(i..)?.starts_with('\\') {
+        i += 1;
+        i += content.get(i..)?.chars().next()?.len_utf8();
+        while i < content.len() {
+            let ch = content.get(i..)?.chars().next()?;
+            i += ch.len_utf8();
+            if ch == '\'' {
+                return Some(i);
+            }
+            if ch == '\n' {
+                return None;
+            }
+        }
+        return None;
+    }
+    let first = content.get(i..)?.chars().next()?;
+    i += first.len_utf8();
+    if content.get(i..)?.starts_with('\'') {
+        Some(i + 1)
+    } else {
+        None
+    }
+}
+
+/// If `content[start..]` opens a raw string literal, the index just past its
+/// closing delimiter; `None` otherwise.
+fn skip_raw_string(content: &str, start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    let mut hashes = 0usize;
+    while content.get(i..)?.starts_with('#') {
+        i += 1;
+        hashes += 1;
+    }
+    if !content.get(i..)?.starts_with('"') {
+        return None;
+    }
+    i += 1;
+    if hashes == 0 {
+        return content[i..].find('"').map(|rel| i + rel + 1);
+    }
+    let terminator = format!("\"{}", "#".repeat(hashes));
+    content[i..]
+        .find(&terminator)
+        .map(|rel| i + rel + terminator.len())
 }
 
 fn generate_readme(entries: &[LintEntry]) -> String {
@@ -388,6 +566,32 @@ multiline description"
         }
     "#;
 
+    const LINT_WITH_STRAY_BRACES: &str = r#"
+        rustc_session::declare_lint! {
+            // a comment holding a stray } brace
+            pub STRAY_BRACE_LINT,
+            Warn,
+            "mentions a } brace and a /* fake */ comment"
+        }
+        pub const AFTER_BLOCK: &str = "must not be swallowed";
+    "#;
+
+    const LINT_WITHOUT_DESCRIPTION: &str = r#"
+        rustc_session::declare_lint! {
+            pub NO_DESC_LINT,
+            Warn,
+        }
+        pub const AFTER_BLOCK: &str = "must not be swallowed";
+    "#;
+
+    const LINT_UNCLOSED: &str = r#"
+        rustc_session::declare_lint! {
+            pub UNCLOSED_LINT,
+            Warn,
+            "the block below never closes"
+        pub const AFTER_BLOCK: &str = "must not be swallowed";
+    "#;
+
     // ------------------------------------------------------------------
     // parse_lib_rs tests
     // ------------------------------------------------------------------
@@ -509,6 +713,32 @@ multiline description"
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].category.as_deref(), Some("StorageOperations"));
         assert_eq!(entries[1].category.as_deref(), Some("Memory"));
+    }
+
+    #[test]
+    fn parse_block_ends_at_matching_brace() {
+        let entries = parse_lib_rs(LINT_WITH_STRAY_BRACES);
+        assert_eq!(entries.len(), 1, "entries: {:?}", entries);
+        assert_eq!(entries[0].name_snake, "STRAY_BRACE_LINT");
+        assert_eq!(entries[0].level, "Warn");
+        assert_eq!(
+            entries[0].description,
+            "mentions a } brace and a /* fake */ comment"
+        );
+    }
+
+    #[test]
+    fn parse_does_not_read_past_closing_brace() {
+        // The `}` line is not a description; anything after the block belongs
+        // to whatever comes next.
+        let entries = parse_lib_rs(LINT_WITHOUT_DESCRIPTION);
+        assert!(entries.is_empty(), "entries: {:?}", entries);
+    }
+
+    #[test]
+    fn parse_unclosed_block_is_skipped() {
+        let entries = parse_lib_rs(LINT_UNCLOSED);
+        assert!(entries.is_empty(), "entries: {:?}", entries);
     }
 
     // ------------------------------------------------------------------

@@ -43,34 +43,6 @@ impl BudgetConfig {
 
         Ok(config)
     }
-
-    /// Converts the lint severity settings into rustc-compatible flags for
-    /// `DYLINT_RUSTFLAGS`.
-    ///
-    /// Each severity maps to a flag prefix:
-    ///   "allow"  → `-A`     (allow the lint at module level)
-    ///   "warn"   → `-W`     (upgrade to warning)
-    ///   "deny"   → `-D`     (upgrade to error)
-    // Superseded by `build_effective_lint_flags` in main.rs, which also folds in
-    // the command-line overrides. Kept for its unit tests below.
-    #[allow(dead_code)]
-    pub fn to_lint_flags(&self) -> Vec<String> {
-        let Some(lints) = &self.lints else {
-            return Vec::new();
-        };
-
-        let mut flags = Vec::new();
-        for (lint_name, severity) in lints {
-            let prefix = match severity.as_str() {
-                "allow" => "-A",
-                "warn" => "-W",
-                "deny" => "-D",
-                _ => continue,
-            };
-            flags.push(format!("{} {}", prefix, lint_name));
-        }
-        flags
-    }
 }
 
 #[cfg(test)]
@@ -96,7 +68,6 @@ mod tests {
     fn default_config_has_no_lints() {
         let config = BudgetConfig::default();
         assert!(config.lints.is_none());
-        assert!(config.to_lint_flags().is_empty());
     }
 
     #[test]
@@ -134,8 +105,6 @@ soroban_storage_in_loop = "deny"
             lints.get("soroban_storage_in_loop").map(|s| s.as_str()),
             Some("deny")
         );
-        let flags = config.to_lint_flags();
-        assert_eq!(flags, vec!["-D soroban_storage_in_loop".to_string()]);
     }
 
     #[test]
@@ -145,7 +114,6 @@ soroban_storage_in_loop = "deny"
         write_file(&path, "");
         let config = BudgetConfig::from_file_validated(&path, KNOWN_LINTS).unwrap();
         assert!(config.lints.is_none());
-        assert!(config.to_lint_flags().is_empty());
     }
 
     #[test]
@@ -166,18 +134,6 @@ soroban_storage_in_loop = "deny"
         let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown lint level"));
-    }
-
-    #[test]
-    fn to_lint_flags_maps_severity_to_rustc_flag() {
-        let mut lints = HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
-        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
-        let config = BudgetConfig { lints: Some(lints) };
-        let flags = config.to_lint_flags();
-        assert_eq!(flags.len(), 2);
-        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
-        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
     }
 
     #[test]
@@ -256,9 +212,17 @@ lints = { "soroban_storage_in_loop" = "deny" }
             config.lints.is_none(),
             "obsolete [budget] wrapper schema should not be parsed as top-level [lints]"
         );
-        assert!(
-            config.to_lint_flags().is_empty(),
-            "obsolete [budget] wrapper schema should produce no lint flags"
-        );
+    }
+
+    #[test]
+    fn from_file_validated_rejects_forbid_level() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("budget.toml");
+        write_file(&path, "[lints]\nsoroban_storage_in_loop = \"forbid\"\n");
+        let result = BudgetConfig::from_file_validated(&path, KNOWN_LINTS);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level 'forbid'"), "{err}");
+        assert!(err.contains("allow, warn, and deny"), "{err}");
     }
 }
