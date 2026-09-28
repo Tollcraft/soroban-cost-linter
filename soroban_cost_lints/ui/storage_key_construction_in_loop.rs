@@ -1,5 +1,17 @@
-#![allow(symbol_new_for_short_literal, soroban_storage_in_loop, loop_invariant_storage_access, storage_write_without_read, formatted_panic_payload)]
+//! UI test fixtures for the `storage_key_construction_in_loop` lint.
+//!
+//! Flags `Symbol::new(&env, key)` calls inside loop bodies where the key argument
+//! is invariant across iterations, which causes unnecessary repeated host allocations.
 
+#![allow(
+    symbol_new_for_short_literal,
+    soroban_storage_in_loop,
+    loop_invariant_storage_access,
+    storage_write_without_read,
+    formatted_panic_payload
+)]
+
+/// Mock Soroban SDK definitions for UI testing.
 pub mod soroban_sdk {
     pub struct Env;
     impl Env {
@@ -11,19 +23,25 @@ pub mod soroban_sdk {
     pub mod storage {
         pub struct Storage;
         impl Storage {
-            pub fn instance(&self) -> Instance { Instance }
+            pub fn instance(&self) -> Instance {
+                Instance
+            }
         }
 
         pub struct Instance;
         impl Instance {
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn get<K, V>(&self, _k: &K) -> Option<V> {
+                None
+            }
         }
     }
 
     pub struct Symbol;
     impl Symbol {
-        pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
+        pub fn new(_env: &Env, _s: &str) -> Symbol {
+            Symbol
+        }
     }
 }
 
@@ -90,3 +108,4 @@ fn allowed_key_construction_in_loop(env: Env) {
 }
 
 fn main() {}
+

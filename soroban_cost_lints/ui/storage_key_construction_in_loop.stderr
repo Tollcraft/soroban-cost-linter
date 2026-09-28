@@ -1,5 +1,5 @@
 warning: storage key constructed inside a loop body
-  --> $DIR/storage_key_construction_in_loop.rs:40:19
+  --> $DIR/storage_key_construction_in_loop.rs:58:19
    |
 LL |         let key = Symbol::new(&env, "my_key"); // Should Warn — same key every iteration
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         let key = Symbol::new(&env, "my_key"); // Should Warn — same key 
    = note: `#[warn(storage_key_construction_in_loop)]` on by default
 
 warning: storage key constructed inside a loop body
-  --> $DIR/storage_key_construction_in_loop.rs:48:19
+  --> $DIR/storage_key_construction_in_loop.rs:66:19
    |
 LL |         let key = Symbol::new(&env, "counter"); // Should Warn — same key every iteration
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         let key = Symbol::new(&env, "counter"); // Should Warn — same key
    = help: hoist the key construction outside the loop to avoid repeated host allocations
 
 warning: storage key constructed inside a loop body
-  --> $DIR/storage_key_construction_in_loop.rs:57:19
+  --> $DIR/storage_key_construction_in_loop.rs:75:19
    |
 LL |         let key = Symbol::new(&env, "fixed_key"); // Should Warn — same key every iteration
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
