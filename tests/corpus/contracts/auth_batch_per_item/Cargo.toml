@@ -8,4 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 soroban-sdk = "26"
 
+[dev-dependencies]
+soroban-sdk = { version = "26", features = ["testutils"] }
+
 [workspace]
