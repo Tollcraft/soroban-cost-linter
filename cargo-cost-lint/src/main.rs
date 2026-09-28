@@ -522,7 +522,10 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
 
     let mut lint_flags = Vec::new();
     if let Some(lints) = config.lints {
-        for (lint, level) in lints {
+        let mut sorted_lints: Vec<_> = lints.into_iter().collect();
+        sorted_lints.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (lint, level) in sorted_lints {
             let flag = match level.as_str() {
                 "allow" => "-A",
                 "warn" => "-W",
@@ -1312,9 +1315,52 @@ mod tests {
         let result = parse_budget_config(&path.to_string_lossy());
         assert!(result.is_ok());
         let flags = result.unwrap();
-        assert_eq!(flags.len(), 2);
-        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
-        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+        assert_eq!(
+            flags,
+            vec![
+                "-W redundant_env_clone".to_string(),
+                "-D soroban_storage_in_loop".to_string()
+            ]
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_budget_config_deterministic_order() {
+        let dir = std::env::temp_dir().join("cost_lint_test_deterministic_order");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path1 = dir.join("budget1.toml");
+        let mut file1 = fs::File::create(&path1).unwrap();
+        writeln!(
+            file1,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\ncrypto_hash_of_constant = \"allow\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file1);
+
+        let path2 = dir.join("budget2.toml");
+        let mut file2 = fs::File::create(&path2).unwrap();
+        writeln!(
+            file2,
+            "[lints]\nredundant_env_clone = \"warn\"\nsoroban_storage_in_loop = \"deny\"\ncrypto_hash_of_constant = \"allow\""
+        )
+        .unwrap();
+        drop(file2);
+
+        let flags1 = parse_budget_config(&path1.to_string_lossy()).unwrap();
+        let flags2 = parse_budget_config(&path2.to_string_lossy()).unwrap();
+
+        assert_eq!(
+            flags1,
+            vec![
+                "-A crypto_hash_of_constant".to_string(),
+                "-W redundant_env_clone".to_string(),
+                "-D soroban_storage_in_loop".to_string(),
+            ]
+        );
+        assert_eq!(flags1, flags2);
 
         let _ = fs::remove_dir_all(&dir);
     }
