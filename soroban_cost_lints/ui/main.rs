@@ -1,3 +1,10 @@
+//! Fixture program covering the lints registered by the test harness.
+//!
+//! The local `soroban_sdk` declarations intentionally model only the API
+//! shapes needed by the fixtures. Keeping the expensive operations visible in
+//! one file lets UI tests exercise both positive and negative examples without
+//! depending on a deployed contract SDK.
+//
 // Note: at this point three of the lints referenced in
 // `#[allow(...)]` markers below (`expensive_crypto_in_loop`,
 // `redundant_storage_read`,
@@ -9,35 +16,46 @@
 #![allow(unknown_lints)]
 
 pub mod soroban_sdk {
+    //! Minimal SDK-shaped types used by the lint fixtures.
+
     pub struct Env;
     impl Clone for Env {
         fn clone(&self) -> Self { Env }
     }
     impl Env {
+        /// Returns the storage facade used by the fixture expressions.
         pub fn storage(&self) -> storage::Storage {
             storage::Storage
         }
+        /// Returns the ledger facade used by host-call fixtures.
         pub fn ledger(&self) -> ledger::Ledger {
             ledger::Ledger
         }
+        /// Returns the host facade used by invocation fixtures.
         pub fn host(&self) -> host::Host {
             host::Host
         }
+        /// Returns the cryptography facade used by loop-cost fixtures.
         pub fn crypto(&self) -> crypto::Crypto {
             crypto::Crypto
         }
+        /// Returns the pseudo-randomness facade used by loop-cost fixtures.
         pub fn prng(&self) -> prng::Prng {
             prng::Prng
         }
+        /// Returns the event facade used by publish fixtures.
         pub fn events(&self) -> events::Events {
             events::Events
         }
+        /// Returns the deployment facade used by host-call fixtures.
         pub fn deployer(&self) -> deploy::Deployer {
             deploy::Deployer
         }
+        /// Returns the current contract address.
         pub fn current_contract_address(&self) -> Address {
             Address
         }
+        /// Invokes a contract and returns a default fixture value.
         pub fn invoke_contract<T>(&self, _contract: &Address, _func: &Symbol, _args: ()) -> T
         where
             T: Default,
@@ -48,37 +66,52 @@ pub mod soroban_sdk {
 
     pub struct Address;
     impl Address {
+        /// Marks the address as authenticated in the fixture API.
         pub fn require_auth(&self) {}
+        /// Marks the address as authenticated for argument-dependent calls.
         pub fn require_auth_for_args(&self, _args: &[Env]) {}
     }
 
     pub mod storage {
         pub struct Storage;
         impl Storage {
+            /// Returns instance storage.
             pub fn instance(&self) -> Instance { Instance }
+            /// Returns persistent storage.
             pub fn persistent(&self) -> Persistent { Persistent }
+            /// Returns temporary storage.
             pub fn temporary(&self) -> Temporary { Temporary }
         }
 
         pub struct Instance;
         impl Instance {
+            /// Reads a value from instance storage.
             pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to instance storage.
             pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether an instance key exists.
             pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Persistent;
         impl Persistent {
+            /// Reads a value from persistent storage.
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to persistent storage.
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether a persistent key exists.
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            /// Extends the lifetime of a persistent entry.
             pub fn extend_ttl<K>(&self, _k: &K, _threshold: &()) {}
         }
 
         pub struct Temporary;
         impl Temporary {
+            /// Reads a value from temporary storage.
             pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to temporary storage.
             pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether a temporary key exists.
             pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
     }
@@ -86,6 +119,7 @@ pub mod soroban_sdk {
     pub mod ledger {
         pub struct Ledger;
         impl Ledger {
+            /// Returns the current fixture ledger sequence.
             pub fn sequence(&self) -> u32 { 0 }
         }
     }
@@ -95,8 +129,11 @@ pub mod soroban_sdk {
     pub mod crypto {
         pub struct Crypto;
         impl Crypto {
+            /// Computes a fixture SHA-256 digest.
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            /// Computes a fixture Keccak-256 digest.
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            /// Verifies a fixture Ed25519 signature.
             pub fn ed25519_verify(&self, _key: &[u8], _msg: &[u8], _sig: &[u8]) {}
         }
     }
@@ -104,6 +141,7 @@ pub mod soroban_sdk {
     pub mod prng {
         pub struct Prng;
         impl Prng {
+            /// Returns a fixture pseudo-random value in the requested range.
             pub fn u64_in_range(&self, _low: u64, _high: u64) -> u64 { 0 }
         }
     }
@@ -111,6 +149,7 @@ pub mod soroban_sdk {
     pub mod events {
         pub struct Events;
         impl Events {
+            /// Publishes a fixture event with the supplied topics and data.
             pub fn publish<T, D>(&self, _topics: T, _data: D) {}
         }
     }
@@ -118,7 +157,9 @@ pub mod soroban_sdk {
     pub mod deploy {
         pub struct Deployer;
         impl Deployer {
+            /// Selects the current contract as the deployment target.
             pub fn with_current_contract(&self, _salt: [u8; 32]) -> Deployer { Deployer }
+            /// Returns the uploaded WASM hash used by the fixture.
             pub fn uploaded_wasm_hash(&self) -> [u8; 32] { [0; 32] }
         }
     }
@@ -126,8 +167,11 @@ pub mod soroban_sdk {
     pub mod host {
         pub struct Host;
         impl Host {
+            /// Represents a dynamic contract invocation.
             pub fn invoke_contract(&self) {}
+            /// Represents a static host invocation.
             pub fn invoke_static(&self) {}
+            /// Represents a cloned host budget handle.
             pub fn budget_cloned(&self) {}
         }
     }
@@ -138,8 +182,11 @@ pub mod soroban_sdk {
     // two separate `Bytes` definitions here, which stopped this file compiling.
     pub struct Bytes(pub std::vec::Vec<u8>);
     impl Bytes {
+        /// Creates fixture bytes from a string literal.
         pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
+        /// Appends another byte buffer in the fixture API.
         pub fn append(&mut self, _other: &Bytes) {}
+        /// Appends one byte in the fixture API.
         pub fn push_back(&mut self, _val: u8) {}
     }
     impl std::ops::Add for Bytes {
@@ -150,29 +197,39 @@ pub mod soroban_sdk {
     // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
     pub struct Vec;
     impl Vec {
+        /// Creates an empty fixture vector.
         pub fn new() -> Vec { Vec }
+        /// Creates a fixture vector with reserved capacity.
         pub fn with_capacity(_n: u32) -> Vec { Vec }
+        /// Appends one value to the fixture vector.
         pub fn push_back(&mut self, _v: i32) {}
+        /// Reserves additional fixture vector capacity.
         pub fn reserve(&mut self, _additional: u32) {}
     }
 
     // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
     pub struct Map;
     impl Map {
+        /// Inserts a key-value pair into the fixture map.
         pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
+        /// Looks up a value in the fixture map.
         pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
     }
 
     pub struct Symbol;
     impl Symbol {
+        /// Creates a fixture symbol from a string.
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
     }
 
     pub mod vec {
         pub struct Vec<T>(std::marker::PhantomData<T>);
         impl<T> Vec<T> {
+            /// Reports whether the fixture vector contains an item.
             pub fn contains(&self, _item: &T) -> bool { false }
+            /// Finds the position of the first matching fixture item.
             pub fn position(&self, _f: impl FnMut(&T) -> bool) -> Option<usize> { None }
+            /// Finds the first matching fixture item.
             pub fn find(&self, _f: impl FnMut(&T) -> bool) -> Option<&T> { None }
         }
     }
@@ -180,7 +237,9 @@ pub mod soroban_sdk {
     pub mod map {
         pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
         impl<K, V> Map<K, V> {
+            /// Reports whether the fixture map contains a key.
             pub fn contains_key(&self, _k: &K) -> bool { false }
+            /// Returns a reference to a fixture map value.
             pub fn get(&self, _k: &K) -> Option<&V> { None }
         }
     }
@@ -193,7 +252,9 @@ use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 // receiver is an ADT whose def-path does NOT match any known soroban_sdk type.
 struct TokenClient(Env);
 impl TokenClient {
+    /// Sends a fixture token transfer.
     pub fn transfer(&self, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
+    /// Sends a fixture delegated token transfer.
     pub fn transfer_from(&self, _spender: &soroban_sdk::Address, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
 }
 
