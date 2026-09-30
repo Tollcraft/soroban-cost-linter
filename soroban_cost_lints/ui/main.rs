@@ -8,6 +8,13 @@
 // `#[allow(<name>)]` becomes a real suppression with no edit needed.
 #![allow(unknown_lints)]
 
+//! Shared mock SDK and fixture functions used by the lint UI tests.
+//!
+//! The test harness intentionally keeps the SDK surface small. Each mock method
+//! mirrors the shape of a host call that a lint must recognize, while the
+//! fixtures below provide both positive and negative examples. Keeping the
+//! mocks here avoids coupling diagnostic tests to a particular SDK release.
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -90,8 +97,9 @@ pub mod soroban_sdk {
         }
     }
 
-    // Returned by `Env`'s accessors and matched by SOROBAN_HOST_TYPES in the
-    // lint source. Deleted by a merge while the accessors kept referencing them.
+    // These types are returned by `Env`'s accessors. Their names must continue
+    // to match SOROBAN_HOST_TYPES so host-call lints see the same shape as the
+    // real SDK without pulling the SDK into every UI fixture.
     pub mod crypto {
         pub struct Crypto;
         impl Crypto {
@@ -132,10 +140,9 @@ pub mod soroban_sdk {
         }
     }
 
-    // Tuple struct so `Bytes::from(_s)` and `Bytes(buf)` (HEAD's ineffective_bytes_concat) still work.
-    // Also has `append` to support upstream's bytes_append_in_loop fixtures.
-    // One tuple struct carrying every method the fixtures need. A merge left
-    // two separate `Bytes` definitions here, which stopped this file compiling.
+    // One tuple struct supports both concatenation fixtures and the
+    // bytes-append fixtures. Keeping one representation prevents the test
+    // harness from drifting into incompatible mock definitions.
     pub struct Bytes(pub std::vec::Vec<u8>);
     impl Bytes {
         pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
@@ -147,7 +154,8 @@ pub mod soroban_sdk {
         fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
     }
 
-    // Upstream's unit-struct Vec supports `push_back(i32)` for bytes_append_in_loop.
+    // The mock Vec intentionally exposes only the operations used by the UI
+    // fixtures; it is not intended to model collection semantics.
     pub struct Vec;
     impl Vec {
         pub fn new() -> Vec { Vec }
@@ -156,7 +164,8 @@ pub mod soroban_sdk {
         pub fn reserve(&mut self, _additional: u32) {}
     }
 
-    // HEAD's permissive Map: `insert<K, V>` is generic so map_insert_in_loop fixtures still work.
+    // Generic arguments let map fixtures use the same mock for different key
+    // and value types without adding behavior irrelevant to lint diagnostics.
     pub struct Map;
     impl Map {
         pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
