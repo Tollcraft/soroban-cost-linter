@@ -116,18 +116,16 @@ pub struct Baseline {
 /// context-dependent lints (storage-in-loop, unbounded-input) can fire on
 /// code where the loop or collection is genuinely bounded by the contract's
 /// design.
-const ALWAYS_TP: &[&str] = &[
-    "redundant_env_clone",
-    "redundant_address_clone",
-    "symbol_new_for_short_literal",
-    "inefficient_bytes_concat",
-    "soroban_inefficient_bytes_concat",
-    "vec_index_in_loop",
-    "map_insert_in_loop",
-    "unnecessary_host_function_call",
-    "unwrap_on_storage_get",
-    "persistent_read_without_ttl_extension",
-];
+///
+/// The list lives in `tests/corpus/always_true_positive.json`, not in a Rust
+/// literal, because the dogfood workflow's bash side applies the same
+/// classification and its hand-copied version had drifted to six of these ten
+/// names — which made the nightly report false-positive regressions that did
+/// not exist. Both sides now read the one file.
+static ALWAYS_TP: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../tests/corpus/always_true_positive.json"))
+        .expect("tests/corpus/always_true_positive.json must be a JSON array of lint names")
+});
 
 /// Path of the repository root, derived from this crate's manifest directory.
 fn workspace_root() -> PathBuf {
@@ -230,7 +228,7 @@ fn triage_findings(findings: &[Finding]) -> (Vec<Finding>, Vec<Finding>) {
     let mut fps = Vec::new();
 
     for f in findings {
-        if ALWAYS_TP.contains(&f.lint_name.as_str()) {
+        if ALWAYS_TP.contains(&f.lint_name) {
             tps.push(f.clone());
         } else {
             fps.push(f.clone());
@@ -550,8 +548,8 @@ mod tests {
 
     #[test]
     fn always_tp_lints_are_classified_as_true_positives() {
-        for lint in ALWAYS_TP {
-            let findings = vec![finding(lint)];
+        for lint in ALWAYS_TP.iter() {
+            let findings = vec![finding(lint.as_str())];
             let (tps, fps) = triage_findings(&findings);
             assert_eq!(tps.len(), 1, "{lint} should triage as a true positive");
             assert!(fps.is_empty());
