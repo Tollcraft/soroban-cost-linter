@@ -1,5 +1,5 @@
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:205:34
+  --> $DIR/main.rs:214:34
    |
 LL |         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
    |                                  ^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    = note: `#[warn(storage_write_without_read)]` on by default
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:205:9
+  --> $DIR/main.rs:214:9
    |
 LL |         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -17,7 +17,7 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    = note: `#[warn(loop_invariant_storage_access)]` on by default
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:205:9
+  --> $DIR/main.rs:214:9
    |
 LL |         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
    |         ^^^^^^^^^^^^^
@@ -25,7 +25,7 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    = help: hoist this storage operation out of the loop
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:214:30
+  --> $DIR/main.rs:223:30
    |
 LL |     env.storage().instance().set(&"key", &42);
    |                              ^^^^^^^^^^^^^^^^
