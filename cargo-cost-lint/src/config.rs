@@ -1,3 +1,5 @@
+//! Loading and validation of the linter's `budget.toml` configuration.
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -7,7 +9,9 @@ use serde::Deserialize;
 use crate::error::LinterResult;
 
 #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
+/// Lint-level overrides loaded from a budget configuration file.
 pub struct BudgetConfig {
+    /// Optional map of lint names to their `allow`, `warn`, or `deny` level.
     pub lints: Option<HashMap<String, String>>,
 }
 

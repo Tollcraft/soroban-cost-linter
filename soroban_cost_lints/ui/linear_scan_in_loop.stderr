@@ -1,5 +1,5 @@
 warning: linear scan on collection inside a loop — O(n²) cost
-  --> $DIR/linear_scan_in_loop.rs:30:17
+  --> $DIR/linear_scan_in_loop.rs:41:17
    |
 LL |         let _ = v.contains(&target); // Should Warn
    |                 ^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         let _ = v.contains(&target); // Should Warn
    = note: `#[warn(linear_scan_in_loop)]` on by default
 
 warning: linear scan on collection inside a loop — O(n²) cost
-  --> $DIR/linear_scan_in_loop.rs:40:17
+  --> $DIR/linear_scan_in_loop.rs:51:17
    |
 LL |         let _ = v.contains(&target); // Should Warn
    |                 ^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         let _ = v.contains(&target); // Should Warn
    = help: consider b$DIRlding a Map lookup outside the loop for O(1) access
 
 warning: linear scan on collection inside a loop — O(n²) cost
-  --> $DIR/linear_scan_in_loop.rs:78:17
+  --> $DIR/linear_scan_in_loop.rs:89:17
    |
 LL |         let _ = v.position(|x| *x == target); // Should Warn
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
