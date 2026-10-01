@@ -1,5 +1,5 @@
 warning: inefficient Bytes concatenation inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:14:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:21:9
    |
 LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside a loop
    |         ^^^^^^^^^^^^^^
@@ -12,7 +12,7 @@ LL | #![warn(soroban_inefficient_bytes_concat)]
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:14:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:21:9
    |
 LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside a loop
    |         ^^^^^^^^^^^^^^
@@ -21,7 +21,7 @@ LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside 
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:23:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:32:9
    |
 LL |         b.push_back(1);
    |         ^^^^^^^^^^^^^^
