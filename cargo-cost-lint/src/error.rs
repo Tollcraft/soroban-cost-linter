@@ -28,25 +28,34 @@ pub enum LinterError {
 /// `std::result::Result<T, LinterError>`.
 pub type LinterResult<T> = std::result::Result<T, LinterError>;
 
+impl LinterError {
+    fn write_display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(f, "I/O error: {}", error),
+            Self::Json(error) => write!(f, "JSON error: {}", error),
+            Self::Subprocess { code } => write!(f, "subprocess exited with code {:?}", code),
+            Self::MissingPrerequisite(message) | Self::Other(message) => f.write_str(message),
+        }
+    }
+
+    fn source_error(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            Self::Json(error) => Some(error),
+            Self::Subprocess { .. } | Self::MissingPrerequisite(_) | Self::Other(_) => None,
+        }
+    }
+}
+
 impl fmt::Display for LinterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LinterError::Io(e) => write!(f, "I/O error: {}", e),
-            LinterError::Json(e) => write!(f, "JSON error: {}", e),
-            LinterError::Subprocess { code } => write!(f, "subprocess exited with code {:?}", code),
-            LinterError::MissingPrerequisite(msg) => write!(f, "{}", msg),
-            LinterError::Other(msg) => write!(f, "{}", msg),
-        }
+        self.write_display(f)
     }
 }
 
 impl std::error::Error for LinterError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            LinterError::Io(e) => Some(e),
-            LinterError::Json(e) => Some(e),
-            _ => None,
-        }
+        self.source_error()
     }
 }
 
