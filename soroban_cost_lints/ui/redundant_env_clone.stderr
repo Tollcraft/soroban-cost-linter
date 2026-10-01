@@ -1,5 +1,5 @@
 warning: redundant clone on Env object
-  --> $DIR/redundant_env_clone.rs:49:19
+  --> $DIR/redundant_env_clone.rs:56:19
    |
 LL |     let _cloned = env.clone(); //~ WARNING redundant clone on Env object
    |                   ^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |     let _cloned = env.clone(); //~ WARNING redundant clone on Env object
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: redundant clone on Env object
-  --> $DIR/redundant_env_clone.rs:54:15
+  --> $DIR/redundant_env_clone.rs:61:15
    |
 LL |     takes_env(env.clone()); //~ WARNING redundant clone on Env object
    |               ^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |     takes_env(env.clone()); //~ WARNING redundant clone on Env object
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/redundant_env_clone.rs:60:9
+  --> $DIR/redundant_env_clone.rs:67:9
    |
 LL |         env.clone() //~ WARNING redundant clone on Env object
    |         ^^^^^^^^^^^
@@ -24,7 +24,7 @@ LL |         env.clone() //~ WARNING redundant clone on Env object
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/redundant_env_clone.rs:66:15
+  --> $DIR/redundant_env_clone.rs:73:15
    |
 LL |     let env = env.clone(); //~ WARNING redundant clone on Env object
    |               ^^^^^^^^^^^

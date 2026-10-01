@@ -1,8 +1,10 @@
-//! # Redundant Environment Clone UI Test Suite
+//! UI test suite for the `redundant_env_clone` lint rule.
 //!
-//! This module contains a comprehensive UI test suite for the `redundant_env_clone`
-//! lint rule. Each test case is self-contained with a minimal mock of `soroban_sdk::Env`
-//! so the file compiles without the real Soroban SDK dependency.
+//! Each test case is self-contained with a minimal mock of `soroban_sdk::Env`
+//! so the file compiles without the real Soroban SDK dependency. The positive
+//! and negative cases deliberately keep the original binding's later-use
+//! relationship visible to the lint under test.
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -11,6 +13,7 @@ pub mod soroban_sdk {
         }
     }
     impl Env {
+        /// Returns the storage facade used by fixture expressions.
         pub fn storage(&self) -> storage::Storage {
             storage::Storage
         }
@@ -19,6 +22,7 @@ pub mod soroban_sdk {
     pub mod storage {
         pub struct Storage;
         impl Storage {
+            /// Returns instance storage used by the fixture API.
             pub fn instance(&self) -> Instance {
                 Instance
             }
@@ -26,14 +30,17 @@ pub mod soroban_sdk {
 
         pub struct Instance;
         impl Instance {
+            /// Reads a fixture value from instance storage.
             pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> {
                 None
             }
+            /// Writes a fixture value to instance storage.
             pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
         }
     }
 
     pub struct MyStruct {
+        /// Environment field used to exercise non-local receiver handling.
         pub env: Env,
     }
 }
