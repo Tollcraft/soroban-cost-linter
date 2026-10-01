@@ -1,18 +1,18 @@
 warning: inefficient Bytes concatenation inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:14:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:24:9
    |
 LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside a loop
    |         ^^^^^^^^^^^^^^
    |
    = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
 note: the lint level is defined here
-  --> $DIR/soroban_inefficient_bytes_concat.rs:1:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:8:9
    |
 LL | #![warn(soroban_inefficient_bytes_concat)]
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:14:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:24:9
    |
 LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside a loop
    |         ^^^^^^^^^^^^^^
@@ -21,7 +21,7 @@ LL |         b.push_back(1); //~ WARNING inefficient Bytes concatenation inside 
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/soroban_inefficient_bytes_concat.rs:23:9
+  --> $DIR/soroban_inefficient_bytes_concat.rs:33:9
    |
 LL |         b.push_back(1);
    |         ^^^^^^^^^^^^^^
