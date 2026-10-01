@@ -87,7 +87,10 @@ pub fn get_cache_dir(base_dir: Option<&Path>) -> PathBuf {
 /// Computes a deterministic hash of all relevant source files in `dir`.
 /// Respects `.gitignore` rules via the `ignore` crate.
 pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
-    let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::new();
+    // Keep only paths during discovery. Retaining every file's contents until
+    // after sorting needlessly duplicates the workspace in memory, especially
+    // for large generated Rust sources.
+    let mut files: Vec<PathBuf> = Vec::new();
 
     let walker = ignore::WalkBuilder::new(dir)
         .hidden(true)
@@ -113,15 +116,19 @@ pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
             continue;
         }
 
-        if let (Ok(rel_path), Ok(content)) = (path.strip_prefix(dir), fs::read(path)) {
-            files.push((rel_path.to_path_buf(), content));
+        if let Ok(rel_path) = path.strip_prefix(dir) {
+            files.push(rel_path.to_path_buf());
         }
     }
 
-    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.sort();
 
     let mut hasher = DeterministicHasher::new();
-    for (rel_path, content) in files {
+    for rel_path in files {
+        let path = dir.join(&rel_path);
+        let Ok(content) = fs::read(&path) else {
+            continue;
+        };
         hasher.write_str(&rel_path.to_string_lossy());
         hasher.write_bytes(&content);
     }

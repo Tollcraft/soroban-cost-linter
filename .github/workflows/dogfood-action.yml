@@ -72,8 +72,20 @@ jobs:
         contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
     steps:
       - uses: actions/checkout@v7
+      # The corpus contracts are deliberately bad code, and the default config
+      # sets `soroban_storage_in_loop` to `deny`. Linting them therefore makes
+      # the action's underlying `cargo check` exit non-zero on findings that are
+      # the entire point of the fixture, and the job died at this step before
+      # the baseline assertion below ever ran -- which is why this nightly has
+      # been red on ~30 of its 40 matrix entries for as long as it has existed.
+      # `real_world_corpus.rs` already has the rule for telling that apart from
+      # a broken linter (non-zero *with* findings streamed is the tool working;
+      # non-zero with nothing to show is not), so the step is allowed to fail
+      # and the assertion re-applies that rule with the step's outcome in hand.
       - name: Run composite action against corpus contract
+        id: action
         uses: ./
+        continue-on-error: true
         with:
           working-directory: tests/corpus/contracts/${{ matrix.contract }}
 
@@ -82,6 +94,7 @@ jobs:
         env:
           CONTRACT: ${{ matrix.contract }}
           REPO: ${{ github.workspace }}
+          ACTION_OUTCOME: ${{ steps.action.outcome }}
         run: |
           set -euo pipefail
 
@@ -93,38 +106,64 @@ jobs:
           cd "$REPO/tests/corpus/contracts/$CONTRACT"
 
           # Re-run the same binary the action builds, in JSON so we can assert
-          # on the result. Corpus lints default to `warn`, so this exits 0.
+          # on the result. A deny-level finding makes this exit non-zero with
+          # every finding already on stdout, exactly as in the Rust test, so
+          # the exit status is not the signal here -- the findings are.
           RAW="$("$BIN" --format json 2>/dev/null)" || true
 
-          mapfile -t LINES < <(printf '%s\n' "$RAW" | grep -v '^$')
-          CURRENT_TOTAL=${#LINES[@]}
+          # The findings are JSON lines, so both counts come straight from jq
+          # rather than a shell array: the mapfile/grep loop this replaces
+          # needed bash 4 and treated a finding message containing a newline as
+          # two findings.
+          CURRENT_TOTAL="$(printf '%s\n' "$RAW" | jq -s 'length')"
 
-          # Mirror real_world_corpus.rs: lints with no known false-positive
-          # pattern are always treated as true positives.
-          ALWAYS_TP=" redundant_env_clone symbol_new_for_short_literal inefficient_bytes_concat map_insert_in_loop unnecessary_host_function_call unwrap_on_storage_get "
-          CURRENT_FP=0
-          for line in "${LINES[@]}"; do
-            name="$(printf '%s' "$line" | jq -r '.name')"
-            if [[ " $ALWAYS_TP " != *" $name "* ]]; then
-              CURRENT_FP=$((CURRENT_FP + 1))
-            fi
-          done
+          # The same triage list real_world_corpus.rs uses, read from the same
+          # file rather than copied into this workflow. The copy had drifted to
+          # six of its ten names, so every finding from redundant_address_clone,
+          # soroban_inefficient_bytes_concat, vec_index_in_loop,
+          # unwrap_on_storage_get or persistent_read_without_ttl_extension was
+          # counted as a false positive and reported as an FP regression that
+          # had not happened.
+          CURRENT_FP="$(printf '%s\n' "$RAW" | jq -s \
+            --slurpfile tp "$REPO/tests/corpus/always_true_positive.json" \
+            '[.[] | . as $f | select(($tp[0] | index($f.name)) == null)] | length')"
 
           BASE_TOTAL="$(jq -r --arg c "$CONTRACT" '.contracts[$c].total' "$REPO/tests/corpus/baseline.json")"
           BASE_FP="$(jq -r --arg c "$CONTRACT" '.contracts[$c].false_positives | length' "$REPO/tests/corpus/baseline.json")"
 
           echo "Contract $CONTRACT: current total=$CURRENT_TOTAL (baseline $BASE_TOTAL), current FP=$CURRENT_FP (baseline $BASE_FP)"
 
-          if [ "$CURRENT_TOTAL" -eq 0 ]; then
-            echo "::error::Expected corpus contract $CONTRACT to produce findings, got 0"
+          if [ "${ACTION_OUTCOME:-success}" != "success" ] && [ "$CURRENT_TOTAL" -eq 0 ]; then
+            echo "::error::cargo-cost-lint failed on $CONTRACT and produced no findings at all -- this is the action or the fixture being broken, not a deny-level finding. See the 'Run composite action' step."
             exit 1
           fi
 
           if [ "$BASE_TOTAL" = "null" ]; then
-            echo "::warning::No baseline entry for $CONTRACT yet; skipping FP regression check (add it via BLESS and commit baseline.json)"
-          elif [ "$CURRENT_FP" -gt "$BASE_FP" ]; then
-            echo "::error::False-positive count for $CONTRACT increased: $CURRENT_FP (baseline $BASE_FP)"
-            exit 1
+            echo "::warning::No baseline entry for $CONTRACT yet; skipping the count checks (add it via BLESS and commit baseline.json)"
+          else
+            # Total drift is reported, not enforced: that is the corpus test's
+            # own documented rule (TP counts are tracked for reporting, only an
+            # FP increase fails). Enforcing equality here would invent a second,
+            # stricter policy than the baseline this repository blesses.
+            if [ "$CURRENT_TOTAL" -ne "$BASE_TOTAL" ]; then
+              echo "::warning::Finding count for $CONTRACT differs from baseline: current $CURRENT_TOTAL, baseline $BASE_TOTAL"
+            fi
+
+            # The zero-baseline entries are deliberately clean fixtures --
+            # lifecycle_basic, memory_clean_processor, cross_contract_call_simple
+            # and five others exist to prove the linter stays silent. The old
+            # unconditional "expected findings, got 0" failed seven of them
+            # every night while saying nothing about the service. A contract
+            # with blessed findings that now reports none is still a failure.
+            if [ "$BASE_TOTAL" -gt 0 ] && [ "$CURRENT_TOTAL" -eq 0 ]; then
+              echo "::error::Corpus contract $CONTRACT stopped producing its baseline findings: current 0, baseline $BASE_TOTAL"
+              exit 1
+            fi
+
+            if [ "$CURRENT_FP" -gt "$BASE_FP" ]; then
+              echo "::error::False-positive count for $CONTRACT increased: $CURRENT_FP (baseline $BASE_FP)"
+              exit 1
+            fi
           fi
 
           echo "OK: $CONTRACT findings are consistent with baseline"

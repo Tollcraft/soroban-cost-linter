@@ -1,8 +1,8 @@
-// UI test suite for the `redundant_env_clone` lint rule.
-//
-// Each test case is self-contained with a minimal mock of `soroban_sdk::Env`
-// so the file compiles without the real Soroban SDK dependency.
-
+//! # Redundant Environment Clone UI Test Suite
+//!
+//! This module contains a comprehensive UI test suite for the `redundant_env_clone`
+//! lint rule. Each test case is self-contained with a minimal mock of `soroban_sdk::Env`
+//! so the file compiles without the real Soroban SDK dependency.
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {

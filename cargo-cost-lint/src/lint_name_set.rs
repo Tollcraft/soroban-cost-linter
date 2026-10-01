@@ -7,6 +7,13 @@ pub struct LintNameSet {
 }
 
 impl LintNameSet {
+    /// Creates a lookup set from the complete static lint-name list.
+    fn from_names(names: &'static [&str]) -> Self {
+        let mut inner = HashSet::with_capacity(names.len());
+        inner.extend(names.iter().copied());
+        Self { inner }
+    }
+
     pub fn contains(&self, name: &str) -> bool {
         self.inner.contains(name)
     }
@@ -25,8 +32,7 @@ impl LintNameSet {
 /// Converts the slice into a `HashSet` so that `contains` checks are O(1)
 /// instead of O(n).
 pub fn build_lint_name_set(names: &'static [&str]) -> LintNameSet {
-    let inner = names.iter().copied().collect();
-    LintNameSet { inner }
+    LintNameSet::from_names(names)
 }
 
 #[cfg(test)]
