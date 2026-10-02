@@ -45,6 +45,12 @@ pub mod soroban_sdk {
 
 use soroban_sdk::Env;
 
+// Keep the metering parameters in one place so each fixture focuses on the
+// loop shape it is meant to exercise. The lint should remain about repeated
+// host calls, not about unrelated differences in threshold values.
+const TTL_THRESHOLD: u32 = 100;
+const TTL_EXTEND_TO: u32 = 1000;
+
 // =======================================================================
 // extend_ttl_in_loop — Fixtures
 // =======================================================================
@@ -57,7 +63,7 @@ use soroban_sdk::Env;
 #[allow(loop_invariant_storage_access)]
 fn bad_instance_extend_ttl_in_for_loop(env: Env) {
     for _ in 0..10 {
-        env.storage().instance().extend_ttl(100, 1000); // Should Warn
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
     }
 }
 
@@ -65,7 +71,7 @@ fn bad_instance_extend_ttl_in_for_loop(env: Env) {
 fn bad_persistent_extend_ttl_in_while_loop(env: Env, keys: [u32; 3]) {
     let mut i = 0;
     while i < keys.len() {
-        env.storage().persistent().extend_ttl(&keys[i], 100, 1000); // Should Warn
+        env.storage().persistent().extend_ttl(&keys[i], TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
         i += 1;
     }
 }
@@ -74,7 +80,7 @@ fn bad_persistent_extend_ttl_in_while_loop(env: Env, keys: [u32; 3]) {
 fn bad_temporary_extend_ttl_in_loop_loop(env: Env, key: u32) {
     let mut count = 0;
     loop {
-        env.storage().temporary().extend_ttl(&key, 100, 1000); // Should Warn
+        env.storage().temporary().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
         count += 1;
         if count >= 5 {
             break;
@@ -83,13 +89,13 @@ fn bad_temporary_extend_ttl_in_loop_loop(env: Env, key: u32) {
 }
 
 fn good_extend_ttl_outside_loop(env: Env, key: u32) {
-    env.storage().persistent().extend_ttl(&key, 100, 1000); // Good
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO); // Good
 }
 
 #[allow(extend_ttl_in_loop, loop_invariant_storage_access)]
 fn allowed_extend_ttl_in_loop(env: Env) {
     for _ in 0..10 {
-        env.storage().instance().extend_ttl(100, 1000); // Good (allowed)
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO); // Good (allowed)
     }
 }
 
