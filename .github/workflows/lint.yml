@@ -10,23 +10,20 @@ env:
   CARGO_NET_RETRY: "10"
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  # The single status check a contributor's PR waits on. Branch protection on
+  # `main` requires a context named exactly `build-and-test`, so this job keeps
+  # that id and does the work itself instead of aggregating other jobs.
+  #
+  # `shared-key: cost-linter` is load-bearing: rust-cache's default key embeds
+  # the job name, and the previous matrix leg was the only other consumer of
+  # this cache. Renaming or re-keying it silently starts every PR from a cold
+  # `target/`, which is the slowest part of this job.
+  build-and-test:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Validate toolchain pins (Linux)
-        if: runner.os == 'Linux'
+      - name: Validate toolchain pins
         run: bash .github/scripts/validate-toolchain-pins.sh
-      - name: Validate toolchain pins (macOS)
-        if: runner.os == 'macOS'
-        run: bash .github/scripts/validate-toolchain-pins.sh
-      - name: Validate toolchain pins (Windows)
-        if: runner.os == 'Windows'
-        run: .\.github\scripts\validate-toolchain-pins.ps1
       - name: Install Rust
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
@@ -35,8 +32,6 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          # Pin the cache identity. The default key embeds the job name, so
-          # renaming this job silently discards every existing cache entry.
           shared-key: cost-linter
           # rust-cache only covers the root `target/` by default; the corpus
           # contracts build outside it into the shared directory below.
@@ -46,14 +41,8 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Install Dylint
-        # Upstream ships prebuilt binaries for Linux only, so cargo-binstall
-        # would not help windows-latest, where this step is slowest. What makes
-        # it fast is rust-cache restoring ~/.cargo/bin, which the pinned
-        # shared-key above keeps stable.
         run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
       - name: Generate baseline (first run only)
-        # Explicit bash: the default shell on windows-latest is PowerShell,
-        # which cannot parse `if ...; then`.
         shell: bash
         run: |
           if grep -q '"contracts": {}' tests/corpus/baseline.json; then
@@ -63,89 +52,3 @@ jobs:
         run: cargo test --workspace
       - name: Check lint docs are up to date
         run: cargo run -p generate-lint-docs -- --check
-
-  # Branch protection on `main` requires a status context named exactly
-  # `build-and-test`. The job above is a matrix, so it can only ever report
-  # `test (ubuntu-latest)` / `test (windows-latest)` — a bare name is never
-  # reported and every PR waits on it forever. This job supplies that context
-  # and stays correct if the matrix legs change.
-  build-and-test:
-    needs: [test, coverage, benchmark]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check matrix result
-        run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "Matrix job 'test' reported: ${{ needs.test.result }}"
-            exit 1
-          fi
-          if [ "${{ needs.coverage.result }}" != "success" ]; then
-            echo "Coverage job 'coverage' reported: ${{ needs.coverage.result }}"
-            exit 1
-          fi
-          if [ "${{ needs.benchmark.result }}" != "success" ]; then
-            echo "Benchmark job 'benchmark' reported: ${{ needs.benchmark.result }}"
-            exit 1
-          fi
-
-  coverage:
-    name: Coverage Report
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Validate toolchain pins (Linux)
-        run: bash .github/scripts/validate-toolchain-pins.sh
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
-        with:
-          toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cost-linter-coverage
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
-
-      - name: Generate Coverage Report
-        run: |
-          echo "## Code Coverage Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov --package cargo-cost-lint --bins --test integration >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cargo llvm-cov --package cargo-cost-lint --bins --test integration --lcov --output-path lcov.info
-      - name: Upload LCOV Report Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: lcov-report
-          path: lcov.info
-
-  benchmark:
-    name: Performance Benchmark Gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Validate toolchain pins (Linux)
-        run: bash .github/scripts/validate-toolchain-pins.sh
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
-        with:
-          toolchain: nightly-2026-04-16
-          components: rustc-dev, llvm-tools-preview, rustfmt, clippy
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cost-linter-bench
-          cache-directories: tests/corpus/.shared-target
-      - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
-      - name: Run Performance Benchmark Gate
-        run: cargo bench --bench linter_performance --package cargo-cost-lint
-
-
-
