@@ -3,8 +3,6 @@ name: Dogfood Composite Action
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   # The real corpus under tests/corpus/contracts/ is 15 independent Soroban
   # workspaces. Running the composite action against each one means a full
   # Rust toolchain install, a `cargo install` of dylint, and an SDK build per
@@ -17,7 +15,8 @@ on:
 jobs:
   # Lightweight, zero-findings path. This genuinely different test proves the
   # action starts, runs, and exits cleanly against code that produces no
-  # findings. It stays on every PR because it is cheap.
+  # findings. It runs on every merge to `main` and on dispatch, but not on pull
+  # requests: `Lint`'s build-and-test is the one check a PR waits on.
   dogfood-smoke:
     name: Dogfood action (zero-findings fixture)
     runs-on: ubuntu-latest

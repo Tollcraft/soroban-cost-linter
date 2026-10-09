@@ -8,13 +8,10 @@ on:
       - "**/Cargo.toml"
       - "deny.toml"
       - ".github/workflows/security.yml"
-  pull_request:
-    branches: ["main"]
-    paths:
-      - "**/Cargo.lock"
-      - "**/Cargo.toml"
-      - "deny.toml"
-      - ".github/workflows/security.yml"
+  # Not a pull_request trigger: `Lint`'s build-and-test is the single check a
+  # PR waits on. Advisories are still caught on merge to `main` by the path
+  # filter above and daily by the schedule below, so a newly disclosed
+  # vulnerability is found within 24h rather than never.
   schedule:
     # Run daily at 06:00 UTC to catch newly disclosed vulnerabilities
     - cron: "0 6 * * *"
