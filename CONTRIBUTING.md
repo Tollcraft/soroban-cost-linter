@@ -139,7 +139,7 @@ are already part of the public interface. Although they do not fully match the c
 
 ### 4. Code Quality Standards
 
-All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing with `make check`:
+All PRs are checked by CI (Linux), and these checks must pass before a PR can be merged. Run them locally before pushing with `make check`:
 
 ```bash
 make check
@@ -170,8 +170,6 @@ Or run the individual commands:
    ```bash
    cargo run -p generate-lint-docs -- --check
    ```
-
-> **Windows tip:** All commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
 
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
@@ -204,11 +202,7 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 3. Update `.github/workflows/lint.yml`, `action.yml` (the `toolchain` input default), and `docs/integration.md` with the new nightly date.
 4. Run the drift guard to confirm everything agrees:
    ```bash
-   # Linux / macOS
    bash .github/scripts/validate-toolchain-pins.sh
-
-   # Windows (PowerShell)
-   powershell -ExecutionPolicy Bypass -File .github/scripts/validate-toolchain-pins.ps1
    ```
 5. Run the full test suite:
    ```bash
