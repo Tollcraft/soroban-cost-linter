@@ -2,7 +2,7 @@
 
 > Every lint in `soroban-cost-linter` is assigned one of five `LintCategory` values. This page explains what each category means, which metered Soroban resource it maps to, and how to choose one when adding a new lint.
 
-The categories are defined by the `LintCategory` enum in `soroban_cost_lints/src/lib.rs`, and every shipped lint carries its category in the [`LINT_METADATA`](https://github.com/Tollcraft/soroban-cost-linter/blob/main/soroban_cost_lints/src/lib.rs) registry — the single source of truth. The `cargo-cost-lint` CLI reads that registry to enumerate lints (`--list`), to group warnings in the `--report` output, and to label `budget.toml` rows under their category. **If a documentation page and `LINT_METADATA` disagree, trust `LINT_METADATA`.**
+The categories are defined by the `LintCategory` enum in `soroban_cost_lints/src/lib.rs`, and every shipped lint carries its category in the [`LINT_METADATA`](https://github.com/Tollcraft/soroban-cost-linter/blob/main/soroban_cost_lints/src/lib.rs) registry — the single source of truth. The `cargo-cost-lint` CLI reads that registry to enumerate registered lints with their default level, category and documentation URL (`--list-lints`), and to surface the category in `--explain` output and the generated lint reference. **If a documentation page and `LINT_METADATA` disagree, trust `LINT_METADATA`.**
 
 ## The five categories
 
