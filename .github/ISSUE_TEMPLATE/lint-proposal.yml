@@ -1,7 +1,7 @@
 name: 💡 Lint Proposal
 description: Propose a new input-independent costly pattern lint for Soroban
 title: "[Lint]: "
-labels: ["enhancement", "lint"]
+labels: ["enhancement", "rust"]
 body:
   - type: markdown
     attributes:
@@ -11,7 +11,7 @@ body:
     id: lint_name
     attributes:
       label: Proposed Lint Name
-      description: Snake_case name of the lint (e.g., unnecessary_host_function_call).
+      description: Lowercase snake_case name matching the lint as declared in soroban_cost_lints/src/lib.rs (e.g., unnecessary_host_function_call).
       placeholder: my_custom_lint_name
     validations:
       required: true
