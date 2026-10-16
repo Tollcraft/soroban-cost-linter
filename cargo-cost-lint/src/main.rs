@@ -660,9 +660,9 @@ fn main() {
 
     if let Some(ref path) = resolved_config {
         resolved_config_path = Some(path.clone());
-        if verbose {
-            eprintln!("Using config file: {}", path.display());
-        } else if !quiet {
+        // `--verbose` reports the path once, in the `[verbose] config:` block
+        // printed just before `cargo dylint` is spawned.
+        if !verbose && !quiet {
             eprintln!("Using config: {}", path.display());
         }
         match config::BudgetConfig::from_file_validated(path, LINT_NAMES) {
@@ -672,12 +672,18 @@ fn main() {
                 exit(1);
             }
         }
-    } else {
-        if verbose {
-            eprintln!("No budget.toml found, using default lint levels.");
-        } else if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
-            eprintln!("Warning: budget.toml not found, using default lint levels.");
-        }
+    } else if !verbose
+        && !quiet
+        && cli.allow.is_empty()
+        && cli.warn.is_empty()
+        && cli.deny.is_empty()
+    {
+        // Missing-config warning, default verbosity only. `--verbose`
+        // reports the missing config once, as `[verbose] config: (none —
+        // ...)`, and `--quiet` reports nothing. Any `-A`/`-W`/`-D` override
+        // also suppresses this warning: the user chose lint levels for this
+        // run explicitly, so "using default lint levels" would be wrong.
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let lint_flags =

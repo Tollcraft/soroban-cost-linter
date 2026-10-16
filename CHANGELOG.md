@@ -104,6 +104,11 @@ and this project adheres to Semantic Versioning.
   fails the build on any mismatch instead of emitting a partial inventory.
   `unnecessary_host_function_call_legacy`, which had no `LINT_METADATA` row, is
   now registered under `Host`.
+- `cargo-cost-lint --verbose` reported the config twice (`Using config file:` /
+  `No budget.toml found,` plus the `[verbose] config:` line). The `[verbose]
+  config:` line is now the only verbose form; default-verbosity `Using config:`
+  and `Warning: budget.toml not found` are unchanged and, like `--quiet`, now
+  pinned by `cargo-cost-lint/tests/cli_config_notices.rs`.
 
 ## [0.1.1]
 
