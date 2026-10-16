@@ -109,6 +109,10 @@ and this project adheres to Semantic Versioning.
   config:` line is now the only verbose form; default-verbosity `Using config:`
   and `Warning: budget.toml not found` are unchanged and, like `--quiet`, now
   pinned by `cargo-cost-lint/tests/cli_config_notices.rs`.
+- `cargo-cost-lint --verbose` printed `DYLINT_RUSTFLAGS: (empty)` when no lint
+  flags were added, although `cargo dylint` still inherited the caller's
+  `DYLINT_RUSTFLAGS`. The verbose line now shows the inherited value, with the
+  tool's flags appended after it.
 
 ## [0.1.1]
 

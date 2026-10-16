@@ -768,9 +768,11 @@ fn main() {
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
 
-    let mut rustflags_value = String::new();
+    // Seeded from the inherited value so the `[verbose] DYLINT_RUSTFLAGS:`
+    // line reports what the child actually sees, even when no lint flags are
+    // appended (the child then inherits `DYLINT_RUSTFLAGS` untouched).
+    let mut rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
     if !lint_flags.is_empty() {
-        rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
             if !rustflags_value.is_empty() {
                 rustflags_value.push(' ');
