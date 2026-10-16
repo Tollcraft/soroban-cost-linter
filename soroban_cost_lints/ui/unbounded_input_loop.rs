@@ -41,6 +41,15 @@ pub mod soroban_sdk {
             pub fn has<K>(&self, _k: &K) -> bool { false }
         }
     }
+
+    /// Stand-in for `soroban_sdk::Set` so the collection-length bound
+    /// fixture can exercise the `.len()` arm without depending on the real
+    /// SDK: the lint only needs a type whose name matches a collection
+    /// fragment and whose `len(&self) -> usize` method resolves.
+    pub struct Set;
+    impl Set {
+        pub fn len(&self) -> usize { 0 }
+    }
 }
 
 use soroban_sdk::Env;
@@ -57,10 +66,16 @@ fn bad_for_loop_bound_from_param(env: Env, count: u32) {
     }
 }
 
-// Note: while-loop bounds are not currently detected as parameter-derived
+fn bad_for_loop_bound_from_collection_len(env: Env, input: soroban_sdk::Set) {
+    for i in 0..input.len() {
+        env.storage().instance().set(&i, &i); // Should Warn
+    }
+}
+
+// Note: while-loop bounds are not currently detected as input-derived
 // by the lint's block-statement walker. This is a known limitation.
-// Only for-loop bounds (via range expressions in desugared block stmts)
-// are checked.
+// Only for-loop bounds (range expressions and collection iteration in
+// desugared block stmts) are checked.
 
 // --- Negative (should not warn): contract-controlled bound ---
 
