@@ -2737,7 +2737,6 @@ fn registered_lints_all_have_emitting_sites() {
                 continue;
             }
             let content = std::fs::read_to_string(&path).expect("source must be readable");
-            let bytes = content.as_bytes();
             let mut from = 0;
             while let Some(rel) = content[from..].find("span_lint") {
                 let window = &content[from + rel..];
