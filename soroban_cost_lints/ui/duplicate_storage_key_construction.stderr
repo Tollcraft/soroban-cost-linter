@@ -1,11 +1,43 @@
-warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/duplicate_storage_key_construction.rs:65:28
+warning: storage key `balance` is constructed in more than one function body
+  --> $DIR/duplicate_storage_key_construction.rs:51:15
    |
-LL |     let val: Option<i32> = env.storage().persistent().get(&key);
-   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let key = Symbol::new(env, "balance"); // Should Warn — same key as set_balance
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
-   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+   = note: `#[warn(duplicate_storage_key_construction)]` on by default
 
-warning: 1 warning emitted
+warning: storage key `balance` is constructed in more than one function body
+  --> $DIR/duplicate_storage_key_construction.rs:57:15
+   |
+LL |     let key = Symbol::new(env, "balance"); // Should Warn — same key as get_balance
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: storage key `config` is constructed in more than one function body
+  --> $DIR/duplicate_storage_key_construction.rs:64:15
+   |
+LL |     let key = Symbol::new(env, "config"); // Should Warn — same key as write_config and delete_config
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: storage key `config` is constructed in more than one function body
+  --> $DIR/duplicate_storage_key_construction.rs:70:15
+   |
+LL |     let key = Symbol::new(env, "config"); // Should Warn — same key as read_config and delete_config
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: storage key `config` is constructed in more than one function body
+  --> $DIR/duplicate_storage_key_construction.rs:75:15
+   |
+LL |     let key = Symbol::new(env, "config"); // Should Warn — same key as read_config and write_config
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: 5 warnings emitted
 
