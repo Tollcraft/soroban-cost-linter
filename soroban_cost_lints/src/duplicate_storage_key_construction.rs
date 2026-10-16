@@ -72,7 +72,7 @@ impl DuplicateStorageKeyConstruction {
                     s.span,
                     format!("storage key `{key}` is constructed in more than one function body"),
                     None,
-                    "build the key once — as a named constant or in a single accessor — so \
+                    "construct the key once — as a named constant or in a single accessor — so \
                      every storage access shares one construction instead of paying the \
                      symbol-construction host call again",
                 );
@@ -86,23 +86,29 @@ impl<'tcx> LateLintPass<'tcx> for DuplicateStorageKeyConstruction {
         let ExprKind::Call(func, args) = expr.kind else {
             return;
         };
-        let ExprKind::Path(QPath::Resolved(None, sym_path)) = func.kind else {
-            return;
+        // Recognise `Symbol::new(env, <literal>)`. An associated-function call
+        // on a type reaches HIR as `QPath::TypeRelative(Ty, "new")` with the
+        // type's own path as the receiver type (`Symbol::new` with `Symbol`
+        // imported directly, `soroban_sdk::Symbol::new` fully qualified) — the
+        // bare `QPath::Resolved` two-segment shape is the trait/generic form,
+        // which would also match unrelated `into_iter` calls. Match the type's
+        // final segment and the call's final segment.
+        let (type_last, call_seg) = match func.kind {
+            ExprKind::Path(QPath::TypeRelative(ty, seg)) => match ty.kind {
+                rustc_hir::TyKind::Path(QPath::Resolved(_, ty_path)) => {
+                    (ty_path.segments.last(), Some(seg.ident.as_str()))
+                }
+                _ => (None, None),
+            },
+            ExprKind::Path(QPath::Resolved(_, p)) if p.segments.len() >= 2 => (
+                p.segments.get(p.segments.len() - 2),
+                Some(p.segments.last().unwrap().ident.as_str()),
+            ),
+            _ => (None, None),
         };
-
-        // Recognise `Symbol::new(env, <literal>)`. The resolved path may be
-        // plain (`Symbol::new`) or fully qualified
-        // (`soroban_sdk::Symbol::new`): match on the last two segments.
-        let segments = sym_path.segments;
-        if segments.len() < 2 {
-            return;
-        }
-        if segments[segments.len() - 2].ident.as_str() != "Symbol"
-            || segments[segments.len() - 1].ident.as_str() != "new"
-        {
-            return;
-        }
-        if args.len() != 2 {
+        let is_symbol_new =
+            type_last.is_some_and(|seg| seg.ident.as_str() == "Symbol") && call_seg == Some("new");
+        if !is_symbol_new {
             return;
         }
 
