@@ -72,8 +72,9 @@ Open the Ubuntu shell **from inside WSL2**, not from `/mnt/c/`:
 # ✅ Linux filesystem — fast, recommended
 cd ~
 git clone https://github.com/Tollcraft/soroban-cost-linter.git
-cd soroban-cost-linter
+cd soroban-cost-linter/soroban_cost_lints
 cargo build
+cd ..
 ```
 
 ```bash
@@ -81,9 +82,24 @@ cargo build
 #     and trips up scripts that translate CRLF↔LF.
 cd /mnt/c/Users/<you>/projects
 git clone https://github.com/Tollcraft/soroban-cost-linter.git
-cd soroban-cost-linter
+cd soroban-cost-linter/soroban_cost_lints
 cargo build
+cd ..
 ```
+
+> **Important:** Build the cdylib from inside `soroban_cost_lints/` so Cargo picks up its `dylint-link` configuration in `soroban_cost_lints/.cargo/config.toml`. A plain root `cargo build` will not apply `dylint-link` and produces an unsuffixed `libsoroban_cost_lints.so`, which Dylint cannot match.
+
+Confirm that the suffixed library artifact was produced before running:
+
+```bash
+# From the repository root, verify the suffixed artifact exists:
+ls -1 target/debug/*soroban_cost_lints*.so
+```
+
+- ✔ **Expected:** a toolchain-suffixed artifact named `libsoroban_cost_lints@<toolchain>.so`.
+- ✘ **Incorrect:** only `libsoroban_cost_lints.so` (without the `@<toolchain>` suffix).
+
+If only the unsuffixed file is present or Dylint fails to find the library, see [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library).
 
 **Tip:** If you already cloned into `/mnt/c/...` and builds are slow, move the
 checkout under `~/` and add a symlink from the original location. The Linux-side
@@ -91,11 +107,18 @@ checkout under `~/` and add a symlink from the original location. The Linux-side
 
 ### 5. Run the linter
 
+Point Dylint at the built lint library via `DYLINT_LIBRARY_PATH` (or use `cargo dylint --lib soroban_cost_lints`) before invoking `cargo cost-lint`:
+
 ```bash
+# Point Dylint to the directory containing libsoroban_cost_lints@<toolchain>.so
+export DYLINT_LIBRARY_PATH="$HOME/soroban-cost-linter/target/debug"
+
 # From the root of your Soroban contract workspace (still inside WSL2)
 cd ~/projects/<my-soroban-contract>
 cargo cost-lint
 ```
+
+If `cargo cost-lint` cannot find the lints, refer to [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library).
 
 Then proceed to [`docs/integration.md`](integration.md) to wire the linter into
 your editor and CI. WSL2 + Ubuntu lifts the rest of the platform-specific
@@ -227,18 +250,42 @@ $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 
 ### 4. Clone and build the linter
 
+Clone the repository and build the lint cdylib from inside `soroban_cost_lints/`:
+
 ```powershell
 git clone https://github.com/Tollcraft/soroban-cost-linter.git
-cd soroban-cost-linter
+cd soroban-cost-linter\soroban_cost_lints
 cargo build
+cd ..
 ```
+
+> **Important:** Build the cdylib from inside `soroban_cost_lints\` so the `dylint-link` configuration in `soroban_cost_lints\.cargo\config.toml` applies. A plain root `cargo build` produces `libsoroban_cost_lints.dll` without the required `@<toolchain>` suffix, which Dylint cannot match.
+
+Confirm that the suffixed library artifact was produced before running:
+
+```powershell
+# From the repository root, verify the suffixed artifact exists:
+Get-ChildItem target\debug\*soroban_cost_lints*.dll
+```
+
+- ✔ **Expected:** a toolchain-suffixed artifact named `libsoroban_cost_lints@<toolchain>.dll`.
+- ✘ **Incorrect:** only `libsoroban_cost_lints.dll` (without the `@<toolchain>` suffix).
+
+If only the unsuffixed file is present or Dylint cannot find the library, see [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library).
 
 ### 5. Run the linter on a contract
 
+Set `DYLINT_LIBRARY_PATH` (or use `cargo dylint --lib soroban_cost_lints`) so Dylint can locate the compiled lint library before running `cargo cost-lint`:
+
 ```powershell
+# Set DYLINT_LIBRARY_PATH to the target\debug directory containing the built artifact
+$env:DYLINT_LIBRARY_PATH = "$PWD\target\debug"
+
 cd path\to\my-soroban-contract
 cargo cost-lint
 ```
+
+If `cargo cost-lint` fails to discover the lint library, see [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library).
 
 ---
 

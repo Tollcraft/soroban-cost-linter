@@ -402,26 +402,42 @@ fn report_regression(
     eprintln!("{}", "-".repeat(78));
 
     let mut has_regression = false;
+    let mut gaps = Vec::new();
 
     for (name, current_ms) in current {
-        let baseline_ms = baseline.contracts.get(name).copied().unwrap_or(0.0);
-        let delta_ms = current_ms - baseline_ms;
-        let delta_pct = if baseline_ms > 0.0 {
-            (delta_ms / baseline_ms) * 100.0
-        } else {
-            0.0
-        };
-
-        let status_str = if delta_pct > threshold_pct {
-            has_regression = true;
-            "[REGRESSED]"
-        } else {
-            "[OK]"
+        let (baseline_col, delta_col, status_str) = match baseline.contracts.get(name) {
+            Some(&baseline_ms) => {
+                let delta_ms = current_ms - baseline_ms;
+                let delta_pct = if baseline_ms > 0.0 {
+                    (delta_ms / baseline_ms) * 100.0
+                } else {
+                    0.0
+                };
+                let status = if delta_pct > threshold_pct {
+                    has_regression = true;
+                    "[REGRESSED]"
+                } else {
+                    "[OK]"
+                };
+                (
+                    format!("{:>12.2}", baseline_ms),
+                    format!("{:>+8.2} ms ({:>+6.2}%)", delta_ms, delta_pct),
+                    status,
+                )
+            }
+            None => {
+                gaps.push(name.as_str());
+                (
+                    format!("{:>12}", "N/A"),
+                    format!("{:>21}", "N/A"),
+                    "[NO BASELINE]",
+                )
+            }
         };
 
         eprintln!(
-            "{:<35} | {:>12.2} | {:>12.2} | {:>+8.2} ms ({:>+6.2}%) {}",
-            name, baseline_ms, current_ms, delta_ms, delta_pct, status_str
+            "{:<35} | {} | {:>12.2} | {} {}",
+            name, baseline_col, current_ms, delta_col, status_str
         );
     }
 
@@ -444,6 +460,23 @@ fn report_regression(
     // is still caught when it accumulates into a larger total regression.
     if total_delta_pct > threshold_pct {
         has_regression = true;
+    }
+
+    if !gaps.is_empty() {
+        eprintln!(
+            "\nBASELINE GAPS: {} contract(s) missing from baseline: {}",
+            gaps.len(),
+            gaps.join(", ")
+        );
+        let is_bless = env::var("BLESS_BENCH").is_ok()
+            || env::var("BLESS_BENCHMARK").is_ok()
+            || env::var("BLESS").is_ok();
+        if !is_bless {
+            eprintln!(
+                "Error: Baseline gaps detected. Run with BLESS_BENCH=1 to record baseline data for all contracts."
+            );
+            exit(1);
+        }
     }
 
     has_regression
