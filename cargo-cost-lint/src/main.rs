@@ -786,7 +786,12 @@ fn main() {
     cargo_args.extend(package_args);
 
     let has_lintignore = lintignore_opt.is_some();
-    if cli.format != OutputFormat::Text || has_lintignore {
+    // One predicate decides both whether cargo emits JSON messages and
+    // whether they are streamed through the per-finding filters below.
+    // `--diff-only` and `.lintignore` filter per finding, so they need the
+    // stream even in text mode; the raw-echo branch cannot filter.
+    let use_message_stream = cli.format != OutputFormat::Text || has_lintignore || cli.diff_only;
+    if use_message_stream {
         cargo_args.push("--message-format=json".to_string());
     }
 
@@ -835,7 +840,7 @@ fn main() {
         None
     };
 
-    if cli.format != OutputFormat::Text || has_lintignore {
+    if use_message_stream {
         cmd.stdout(Stdio::piped());
         let mut child = cmd.spawn().unwrap_or_else(|e| dylint_launch_failure(e));
 

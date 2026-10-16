@@ -113,6 +113,10 @@ and this project adheres to Semantic Versioning.
   flags were added, although `cargo dylint` still inherited the caller's
   `DYLINT_RUSTFLAGS`. The verbose line now shows the inherited value, with the
   tool's flags appended after it.
+- `--diff-only` was ignored in the default text output when no `.lintignore`
+  was present: findings in unchanged files were still printed. Text-mode
+  `--diff-only` runs now go through the same per-finding filter as the
+  `json`, `github` and `sarif` formats.
 
 ## [0.1.1]
 
