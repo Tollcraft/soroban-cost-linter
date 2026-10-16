@@ -113,12 +113,44 @@ LL |         let _nid = env.ledger().network_id(); // Should Warn
    = help: ledger context values (network_id) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
 
 warning: unnecessary host function call inside loop
-  --> $DIR/ledger_context_read_in_loop.rs:89:20
+  --> $DIR/ledger_context_read_in_loop.rs:75:19
+   |
+LL |         let _ts = ledger.timestamp(); // Should Warn - bound receiver in loop
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: cache the result outside the loop when the call is loop-invariant
+
+warning: reading ledger context `timestamp` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:75:19
+   |
+LL |         let _ts = ledger.timestamp(); // Should Warn - bound receiver in loop
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (timestamp) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: unnecessary host function call inside loop
+  --> $DIR/ledger_context_read_in_loop.rs:82:20
+   |
+LL |         let _seq = ledger.sequence(); // Should Warn - second accessor, second diagnostic
+   |                    ^^^^^^^^^^^^^^^^^
+   |
+   = help: cache the result outside the loop when the call is loop-invariant
+
+warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop.rs:82:20
+   |
+LL |         let _seq = ledger.sequence(); // Should Warn - second accessor, second diagnostic
+   |                    ^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: unnecessary host function call inside loop
+  --> $DIR/ledger_context_read_in_loop.rs:137:20
    |
 LL |         let _seq = env.ledger().sequence(); // Good (allowed)
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: cache the result outside the loop when the call is loop-invariant
 
-warning: 15 warnings emitted
+warning: 19 warnings emitted
 
