@@ -5,7 +5,8 @@
 //! the figures can be copied into the lint documentation.
 //!
 //! Run with:
-//!   cargo test -- --nocapture
+//!   cd cost_benchmarks && cargo test -- --nocapture
+//! (or from repo root: `cargo test --manifest-path cost_benchmarks/Cargo.toml -- --nocapture`)
 //!
 //! The output for each test includes:
 //!   - CPU instruction count delta
@@ -78,7 +79,16 @@ mod support {
         }
     }
 
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    /// Tolerance ratio applied when asserting that the anti-pattern (bad) variant
+    /// is at least as expensive as the recommended (good) variant on cpu_instructions.
+    /// A 5% tolerance avoids machine-flakiness or minor instruction count jitter.
+    const DIRECTION_TOLERANCE_RATIO: f64 = 0.05;
+
     /// Difference between two [`BudgetSnapshot`]s, ready for printing.
+    #[derive(Clone, Copy, Debug)]
     struct BudgetDelta {
         cpu_instructions: u64,
         memory_bytes: u64,
@@ -92,6 +102,49 @@ mod support {
                 lint, variant, scenario, self.cpu_instructions, self.memory_bytes
             );
         }
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    struct BenchmarkPairRecord {
+        bad: Option<BudgetDelta>,
+        good: Option<BudgetDelta>,
+    }
+
+    static RECORDED_PAIRS: Mutex<Option<HashMap<String, BenchmarkPairRecord>>> = Mutex::new(None);
+
+    fn record_and_verify(lint: &str, variant: &str, delta: BudgetDelta) {
+        let pair_to_verify = {
+            let mut guard = RECORDED_PAIRS.lock().unwrap();
+            let map = guard.get_or_insert_with(HashMap::new);
+            let entry = map.entry(lint.to_string()).or_default();
+            match variant {
+                "bad" => entry.bad = Some(delta),
+                "good" => entry.good = Some(delta),
+                _ => {}
+            }
+            if entry.bad.is_some() && entry.good.is_some() {
+                let pair = map.remove(lint).unwrap();
+                Some((pair.bad.unwrap(), pair.good.unwrap()))
+            } else {
+                None
+            }
+        };
+
+        if let Some((bad, good)) = pair_to_verify {
+            assert_cost_direction(lint, bad, good);
+        }
+    }
+
+    fn assert_cost_direction(lint: &str, bad: BudgetDelta, good: BudgetDelta) {
+        let min_expected_bad =
+            (good.cpu_instructions as f64 * (1.0 - DIRECTION_TOLERANCE_RATIO)) as u64;
+        assert!(
+            bad.cpu_instructions >= min_expected_bad,
+            "Cost direction assertion failed for lint '{}': anti-pattern variant (bad: {} cpu) is cheaper than recommended variant (good: {} cpu)",
+            lint,
+            bad.cpu_instructions,
+            good.cpu_instructions
+        );
     }
 
     /// Measures the host cost of `body` and prints it as one result line.
@@ -110,7 +163,9 @@ mod support {
         let before = BudgetSnapshot::capture(env);
         body();
         let after = BudgetSnapshot::capture(env);
-        before.delta_since(after).report(lint, variant, scenario);
+        let delta = before.delta_since(after);
+        delta.report(lint, variant, scenario);
+        record_and_verify(lint, variant, delta);
     }
 
     /// Registers [`DummyContract`] and runs `f` inside its storage context.
