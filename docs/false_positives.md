@@ -30,10 +30,14 @@ This lint uses mutation analysis to leave calls alone when their arguments depen
 
 ### `redundant_env_clone`
 
-This lint fires for every `.clone()` call on `Env`. False positives occur when:
+This lint fires for every clone-shaped call on `Env` — `env.clone()`, and the
+qualified forms `Env::clone(&env)` / `Clone::clone(&env)`. False positives occur when:
 
 - The `Env` is consumed before the clone site and you genuinely need a second handle.
 - The code is generic over a trait that does not guarantee `Env`-like cheap pass-by-value semantics.
+- The receiver is not a local binding (e.g. an `Env` struct field), so no last-use
+  analysis can run: a field that is genuinely reused after the clone is still reported.
+  Suppress such sites with `#[allow(redundant_env_clone)]`.
 
 ### `symbol_new_for_short_literal`
 
