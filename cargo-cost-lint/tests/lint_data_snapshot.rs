@@ -63,12 +63,7 @@ fn lint_data_snapshot_matches_workspace() {
     let update = std::env::var_os("UPDATE_LINT_DATA").is_some();
 
     if update {
-        let _ = fs::remove_dir_all(&snapshot);
-        for (rel, src) in &expected {
-            let dest = snapshot.join(rel);
-            fs::create_dir_all(dest.parent().unwrap()).unwrap();
-            fs::copy(src, &dest).unwrap_or_else(|e| panic!("copy {}: {e}", src.display()));
-        }
+        update_snapshot(&workspace, &snapshot);
         return;
     }
 
@@ -94,4 +89,121 @@ fn lint_data_snapshot_matches_workspace() {
          Run `make sync-lint-data` from the workspace root to refresh it.",
         problems.join("\n  ")
     );
+}
+
+/// Updates `snapshot` from `workspace`, ensuring `docs/lints` is present, readable,
+/// and yields at least as many lint pages as the snapshot currently holds.
+fn update_snapshot(workspace: &Path, snapshot: &Path) {
+    let docs_dir = workspace.join("docs/lints");
+    let entries = fs::read_dir(&docs_dir).unwrap_or_else(|e| {
+        panic!(
+            "failed to read lint docs directory {}: {e}",
+            docs_dir.display()
+        )
+    });
+    let mut source_docs: Vec<PathBuf> = entries
+        .map(|e| {
+            e.unwrap_or_else(|err| {
+                panic!("failed to read entry in {}: {err}", docs_dir.display())
+            })
+            .path()
+        })
+        .filter(|p| {
+            p.extension().and_then(|ext| ext.to_str()) == Some("md")
+                && p.file_name().and_then(|n| n.to_str()) != Some("README.md")
+        })
+        .collect();
+    source_docs.sort();
+
+    let existing_docs_count = md_files(&snapshot.join("docs")).len();
+
+    if source_docs.is_empty() {
+        panic!(
+            "docs directory {} yielded no lint pages; an empty docs/lints is not a valid snapshot source",
+            docs_dir.display()
+        );
+    }
+    if source_docs.len() < existing_docs_count {
+        panic!(
+            "docs directory {} yielded {} lint pages, fewer than the {} currently in snapshot {}; refusing to update",
+            docs_dir.display(),
+            source_docs.len(),
+            existing_docs_count,
+            snapshot.display()
+        );
+    }
+
+    let expected = expected_files(workspace);
+    let _ = fs::remove_dir_all(snapshot);
+    for (rel, src) in &expected {
+        let dest = snapshot.join(rel);
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::copy(src, &dest).unwrap_or_else(|e| panic!("copy {}: {e}", src.display()));
+    }
+}
+
+#[test]
+fn update_snapshot_preserves_docs_when_source_missing() {
+    let unique = format!(
+        "scratch_lint_data_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let temp = std::env::temp_dir().join(unique);
+    let scratch_workspace = temp.join("workspace");
+    let scratch_snapshot = temp.join("lint-data");
+
+    // Set up scratch workspace without docs/lints
+    fs::create_dir_all(scratch_workspace.join("soroban_cost_lints/src")).unwrap();
+    fs::write(
+        scratch_workspace.join("soroban_cost_lints/src/lib.rs"),
+        "// dummy lib.rs",
+    )
+    .unwrap();
+    fs::write(scratch_workspace.join("rust-toolchain"), "nightly").unwrap();
+
+    // Set up snapshot with existing docs
+    let snapshot_docs = scratch_snapshot.join("docs");
+    fs::create_dir_all(&snapshot_docs).unwrap();
+    fs::write(snapshot_docs.join("sample_lint.md"), "# Sample Lint").unwrap();
+    fs::write(scratch_snapshot.join("lib.rs"), "// dummy lib.rs").unwrap();
+    fs::write(scratch_snapshot.join("rust-toolchain"), "nightly").unwrap();
+
+    let missing_docs_dir = scratch_workspace.join("docs/lints");
+
+    // Run the update path and assert failure
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        update_snapshot(&scratch_workspace, &scratch_snapshot);
+    }));
+
+    assert!(result.is_err(), "update must fail when docs/lints is absent");
+    let payload = result.unwrap_err();
+    let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        String::new()
+    };
+
+    assert!(
+        msg.contains(&missing_docs_dir.display().to_string()) || msg.contains("docs/lints"),
+        "failure message must name the missing directory, got: {msg}"
+    );
+
+    // Assert that the snapshot's docs/ tree survives
+    assert!(
+        snapshot_docs.exists(),
+        "snapshot docs directory must survive failed update"
+    );
+    assert!(
+        snapshot_docs.join("sample_lint.md").exists(),
+        "snapshot lint doc must survive failed update"
+    );
+
+    // Clean up
+    let _ = fs::remove_dir_all(&temp);
 }
