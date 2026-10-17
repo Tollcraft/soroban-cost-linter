@@ -2634,6 +2634,17 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                     path
                 );
             }
+
+            // A fixture with no blessed golden asserts nothing: the harness
+            // compares against the `.stderr` sibling, so its Should-Warn /
+            // Should-not-warn annotations are unenforced without one.
+            let golden = path.with_extension("stderr");
+            assert!(
+                golden.exists(),
+                "UI fixture '{:?}' has no blessed .stderr golden at {:?}",
+                path,
+                golden
+            );
         }
         if path.extension().and_then(|ext| ext.to_str()) == Some("stderr") {
             let content = std::fs::read_to_string(&path).expect("stderr must be readable");
