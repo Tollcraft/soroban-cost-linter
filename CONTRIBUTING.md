@@ -230,8 +230,19 @@ The `Dockerfile` reads `rust-toolchain` at build time, so updating the channel t
 {% endhint %}
 
 ### 6. Submitting a Pull Request
-### 7. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
 - If your pull request includes a user-visible change, add an appropriate entry under the **Unreleased** section of `CHANGELOG.md`. The entry will be moved into the next versioned release when a release is cut.
+
+### 7. Re-publishing the Container Image
+
+The `container-publish` workflow publishes the Docker image to GitHub Container Registry (GHCR). It triggers automatically on pushes to `main` that touch `Dockerfile`, `rust-toolchain`, or the workflow file itself.
+
+**Manual runs:** If the workflow failed or you need to republish the image after a dependency-only change (one that does not touch the watched paths), you can trigger a republish manually from the Actions tab:
+
+1. Navigate to the **Actions** tab.
+2. Select the **Container Publish** workflow.
+3. Click **Run workflow** → **Run workflow**.
+
+A manual run produces the same image name (`ghcr.io/<owner>/<repo>-dev`) and tag scheme as an automatic push-triggered run. See the workflow file (`.github/workflows/container-publish.yml`) for details.
