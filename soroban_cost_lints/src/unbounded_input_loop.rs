@@ -38,8 +38,9 @@
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::higher;
+use rustc_hir::def::Res;
 use rustc_hir::intravisit::{Visitor, walk_expr};
-use rustc_hir::{Expr, ExprKind, QPath};
+use rustc_hir::{Expr, ExprKind, ItemKind, Node, PatKind, QPath};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
@@ -116,7 +117,7 @@ impl<'tcx> LateLintPass<'tcx> for UnboundedInputLoop {
 /// - `input.iter()` / `input.iter_combined(..)` — an explicit iterator;
 /// - `input` / `&input` — moving or borrowing the collection directly;
 /// - `0..input.len()` — a range whose end comes from a collection.
-fn iterates_over_input(cx: &LateContext<'_>, iter: &Expr<'_>) -> bool {
+fn iterates_over_input<'tcx>(cx: &LateContext<'tcx>, iter: &'tcx Expr<'tcx>) -> bool {
     match iter.kind {
         ExprKind::MethodCall(path, receiver, _args, _) => {
             // e.g. `for x in input.iter()` / `input.iter_combined(...)`
@@ -126,25 +127,64 @@ fn iterates_over_input(cx: &LateContext<'_>, iter: &Expr<'_>) -> bool {
             // e.g. `for x in &input` / `for x in input`
             is_collection(cx, iter)
         }
-        ExprKind::Call(_, args) => {
-            // e.g. `for x in 0..input.len()`. `any` short-circuits, so the
-            // usual single-argument range costs one type lookup, not two.
-            args.iter().any(|arg| is_input_driven(cx, arg))
+        // A range literal `a..b` is lowered as a `Struct` expression for
+        // `core::ops::range::Range` with `start`/`end` fields — it is *not* a
+        // `Call`, which is why this arm looks for `Struct` and inspects each
+        // field expression ([#788]: `0..input.len()` and `0..count` previously
+        // never reached the bound checks at all).
+        ExprKind::Struct(_, fields, _) => {
+            fields.iter().any(|field| is_input_driven(cx, field.expr))
         }
+        // `for x in (0..a, 0..b)`-style tuples are not reachable today but
+        // the same field-walk argument covers them if HIR shape changes.
+        ExprKind::Tup(parts) => parts.iter().any(|part| is_input_driven(cx, part)),
         _ => false,
     }
 }
 
-/// Whether `expr` is `.len()` on a caller-supplied collection, or is itself a
-/// caller-supplied collection.
-fn is_input_driven(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
+/// Whether `expr` is `.len()` on a caller-supplied collection, is itself a
+/// caller-supplied collection, or is a numeric parameter of the enclosing
+/// entrypoint (i.e. its value is chosen by the caller that invoked the fn).
+fn is_input_driven<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
     match expr.kind {
         // `0..input.len()`: the bound is the length of a caller-sized value.
         ExprKind::MethodCall(path, receiver, _args, _) => {
             path.ident.as_str() == "len" && is_collection(cx, receiver)
         }
-        _ => is_collection(cx, expr),
+        _ => is_collection(cx, expr) || is_entrypoint_parameter(cx, expr),
     }
+}
+
+fn is_entrypoint_parameter<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
+    let ExprKind::Path(QPath::Resolved(None, path)) = expr.kind else {
+        return false;
+    };
+    let Res::Local(local_id) = path.res else {
+        return false;
+    };
+    if !cx.typeck_results().expr_ty(expr).peel_refs().is_integral() {
+        return false;
+    }
+    let owner = cx.tcx.hir_enclosing_body_owner(expr.hir_id);
+    if !matches!(
+        cx.tcx.hir_node_by_def_id(owner),
+        Node::Item(item)
+            if matches!(
+                item.kind,
+                ItemKind::Fn { .. }
+            )
+    ) {
+        // Closure parameters are always contract-controlled; only fn
+        // parameters are caller-supplied.
+        return false;
+    }
+    let Some(body_id) = cx.tcx.hir_node_by_def_id(owner).body_id() else {
+        return false;
+    };
+    let body = cx.tcx.hir_body(body_id);
+    body.params
+        .iter()
+        .any(|param| matches!(param.pat.kind, PatKind::Binding(_, id, _, _) if id == local_id))
 }
 
 /// Conservatively treats any value whose type name matches a known Soroban
@@ -154,7 +194,7 @@ fn is_input_driven(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 /// Note that no `ends_with` check is needed alongside `contains`: a
 /// `contains` hit on `suffix` already implies the name ends with `suffix`, so
 /// testing both would repeat half the work for no additional matches.
-fn is_collection(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
+fn is_collection<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
     let ty = cx.typeck_results().expr_ty(expr).peel_refs();
     type_name_contains_any(ty, COLLECTION_FRAGMENTS)
 }

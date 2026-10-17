@@ -28,7 +28,6 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
-| [`unnecessary_host_function_call_legacy`](unnecessary_host_function_call_legacy.md) | `warn` | legacy unnecessary host function call |
 | [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
@@ -37,16 +36,11 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
 | [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
 | [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
-| [`symbol_key_boundary`](symbol_key_boundary.md) | `warn` | symbol key boundary |
-| [`symbol_key_enum_storage`](symbol_key_enum_storage.md) | `warn` | symbol key enum storage |
-| [`symbol_key_event_topics`](symbol_key_event_topics.md) | `warn` | symbol key event topics |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
 | [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
-| [`u128_where_u64_suffices`](u128_where_u64_suffices.md) | `warn` | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 |
-| [`float_arithmetic_in_contract`](float_arithmetic_in_contract.md) | `warn` | performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
 | [`option_wrapping_in_storage`](option_wrapping_in_storage.md) | `warn` | stores an Option<T> in storage where the key already models absence |
 | [`ledger_context_read_in_loop`](ledger_context_read_in_loop.md) | `warn` | reads a ledger context value inside a loop when it cannot change during the invocation |
