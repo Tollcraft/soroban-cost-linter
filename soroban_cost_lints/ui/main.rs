@@ -206,6 +206,27 @@ fn good_env_used_after_clone(env: Env) {
     let _also_env = env;
 }
 
+fn bad_ufcs_env_clone(env: Env) {
+    let _cloned = Env::clone(&env); // Should Warn — UFCS form
+}
+
+fn bad_ufcs_clone_trait(env: Env) {
+    let _cloned = Clone::clone(&env); // Should Warn — qualified trait form
+}
+
+struct EnvHolder {
+    env: Env,
+}
+
+fn bad_field_env_clone(holder: EnvHolder) {
+    let _cloned = holder.env.clone(); // Should Warn — Env reached through a field
+}
+
+fn good_bound_ref_clone(env: Env) {
+    let r = &env;
+    let _cloned = r.clone(); // Good — bound &Env receiver, produces an owned Env
+}
+
 fn good_fn_takes_env_by_value(env: Env) {
     let cloned = env.clone(); // Good — env used after the clone
     takes_env(cloned);

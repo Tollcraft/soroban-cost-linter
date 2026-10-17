@@ -32,6 +32,25 @@ fn match_soroban_def_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, segments:
     full.ends_with(&suffix)
 }
 
+/// Whether `ty` (references already peeled by the caller where appropriate) is
+/// `soroban_sdk::Env`.
+fn is_soroban_env_ty<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.kind() {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
+    } else {
+        false
+    }
+}
+
+/// The final segment of a qualified path, for qpath shapes written as
+/// `Env::clone(..)` (`QPath::Resolved` or `QPath::TypeRelative`) alike.
+fn qpath_last_segment<'a>(qpath: &'a hir::QPath<'a>) -> Option<&'a hir::PathSegment<'a>> {
+    match qpath {
+        hir::QPath::Resolved(_, path) => path.segments.last(),
+        hir::QPath::TypeRelative(_, segment) => Some(segment),
+    }
+}
+
 /// Soroban storage accessor types. Every method call on one of these reaches
 /// the host's storage subsystem.
 const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
@@ -291,47 +310,77 @@ rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "clone"
-        {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
-            } else {
-                false
-            };
-
-            if is_env {
-                // Clone on &Env produces an owned Env from a reference — genuinely needed.
-                let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
-                if ref_count > 0 {
-                    return;
-                }
-
-                // If the receiver is a local binding that is still used after
-                // the clone, the original and the clone are both live — skip.
-                if let Some(local_id) = receiver.res_local_id() {
-                    if local_used_after_expr(cx, local_id, expr) {
-                        return;
-                    }
-                } else {
-                    // Cannot statically determine whether the receiver is used
-                    // after the clone — be conservative and skip.
-                    return;
-                }
-
-                span_lint_and_help(
-                    cx,
-                    REDUNDANT_ENV_CLONE,
-                    expr.span,
-                    "redundant clone on Env object",
-                    None,
-                    "pass Env by reference or value instead of cloning",
-                );
+        // Two syntactic shapes spell a clone of `Env`:
+        //
+        // * `env.clone()` — an `ExprKind::MethodCall` whose method is `clone`.
+        // * `Env::clone(&env)` / `Clone::clone(&env)` — an `ExprKind::Call` whose
+        //   callee is a path ending in `clone`: the qualified/UFCS spelling of the
+        //   same `Clone` shim.
+        let subject: &'tcx hir::Expr<'tcx> = match expr.kind {
+            hir::ExprKind::MethodCall(path_segment, receiver, _args, _span)
+                if path_segment.ident.name.as_str() == "clone" =>
+            {
+                receiver
             }
+            hir::ExprKind::Call(callee, args) => {
+                let hir::ExprKind::Path(qpath) = callee.kind else {
+                    return;
+                };
+                let Some(segment) = qpath_last_segment(&qpath) else {
+                    return;
+                };
+                if segment.ident.name.as_str() != "clone" || args.len() != 1 {
+                    return;
+                }
+
+                // Only `Clone`-shaped helpers qualify: the call must produce an
+                // `Env`, which rules out unrelated functions also named `clone`.
+                if !is_soroban_env_ty(cx, cx.typeck_results().expr_ty(expr)) {
+                    return;
+                }
+
+                // The shim's argument is `&env`; the `Env` itself is what sits
+                // behind that borrow, so the last-use check applies to it.
+                let arg = &args[0];
+                if let hir::ExprKind::AddrOf(_, _, borrowed) = arg.kind {
+                    borrowed
+                } else {
+                    arg
+                }
+            }
+            _ => return,
+        };
+
+        let receiver_ty = cx.typeck_results().expr_ty(subject);
+        if !is_soroban_env_ty(cx, receiver_ty.peel_refs()) {
+            return;
         }
+
+        // Clone on &Env produces an owned Env from a reference — genuinely needed.
+        let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
+        if ref_count > 0 {
+            return;
+        }
+
+        // When the receiver is a local binding that is still used after the
+        // clone, the original and the clone are both live — skip. Field and
+        // reference-target receivers carry the same `Env` value, so they are
+        // accepted as redundant even though there is no binding to inspect:
+        // there is nothing to "reuse" except the same host object.
+        if let Some(local_id) = subject.res_local_id()
+            && local_used_after_expr(cx, local_id, expr)
+        {
+            return;
+        }
+
+        span_lint_and_help(
+            cx,
+            REDUNDANT_ENV_CLONE,
+            expr.span,
+            "redundant clone on Env object",
+            None,
+            "pass Env by reference or value instead of cloning",
+        );
     }
 }
 

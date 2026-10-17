@@ -21,6 +21,11 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 
+- `redundant_env_clone` now also matches the qualified/UFCS spellings
+  `Env::clone(&env)` and `Clone::clone(&env)`, and accepts receivers of type
+  `Env` that are reached through a struct field or reference target instead of
+  skipping every non-local receiver. Receivers of type `&Env` and bindings that
+  are genuinely reused after the clone remain unflagged.
 - `unnecessary_host_function_call` now covers every host accessor reachable from
   `Env` — `crypto()`, `prng()`, `events()`, `deployer()` and
   `current_contract_address()` alongside `ledger()` — and no longer reports
