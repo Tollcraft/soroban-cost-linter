@@ -1,0 +1,23 @@
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:64:5
+   |
+LL | /     for i in 0..count {
+LL | |         env.storage().instance().set(&i, &i); // Should Warn
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+   = note: `#[warn(unbounded_input_loop)]` on by default
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:70:5
+   |
+LL | /     for i in 0..input.len() {
+LL | |         env.storage().instance().set(&i, &i); // Should Warn
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 2 warnings emitted
+
