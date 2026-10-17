@@ -24,5 +24,15 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link
+      - name: Build corpus contracts
+        run: |
+          cargo build --manifest-path tests/corpus/contracts/token/Cargo.toml
+          cargo build --manifest-path tests/corpus/contracts/timelock/Cargo.toml
+          cargo build --manifest-path tests/corpus/contracts/swap/Cargo.toml
+      - name: Generate baseline (first run only)
+        run: |
+          if grep -q '"contracts": {}' tests/corpus/baseline.json; then
+            BLESS=1 cargo test --test real_world_corpus --workspace
+          fi
       - name: Run tests
         run: cargo test --workspace

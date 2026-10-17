@@ -16,6 +16,8 @@ Storage operations are the **single most expensive resource** Soroban charges fo
 
 ## Example
 
+### Writes (`set`)
+
 ```rust
 // ❌ Bad: one storage write per iteration
 for item in items {
@@ -26,5 +28,19 @@ for item in items {
 ## Suggested Fix
 
 {% hint style="success" %}
-Accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, and perform a single storage read/write operation outside of the loop.
+**For writes** (`env.storage().*.set(&k, &v)`), accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, then perform a single storage write outside of the loop.
+{% endhint %}
+
+### Reads (`get`, `has`)
+
+```rust
+// ❌ Bad: a loop-invariant read is repeated every iteration
+const KEY: Symbol = symbol_short!("counter");
+for _ in 0..10 {
+    let _value = env.storage().instance().get(&KEY);
+}
+```
+
+{% hint style="success" %}
+**For reads** (`get` / `has`), the "buffer mutations" advice does not apply — reads cannot be accumulated. Hoist a loop-invariant read out of the loop (issue it once, bind to a local, reuse) where possible. A read keyed by the loop variable is typically unavoidable; in that case consider pre-fetching a `Vec`/`Map` of keys up front if the read itself dominates the cost.
 {% endhint %}

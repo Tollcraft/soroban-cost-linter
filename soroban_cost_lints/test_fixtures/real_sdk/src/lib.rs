@@ -55,3 +55,13 @@ fn good_host_outside_loop(env: Env) {
     }
     */
 }
+
+// fn good_host_outside_loop(env: Env) {
+//     /*
+//     let host = env.host().clone();
+//     let _ = host.budget_cloned();
+//     for _ in 0..10 {
+//         // do not use host inside loop
+//     }
+//     */
+// }
