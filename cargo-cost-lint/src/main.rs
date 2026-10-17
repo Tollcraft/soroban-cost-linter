@@ -660,9 +660,9 @@ fn main() {
 
     if let Some(ref path) = resolved_config {
         resolved_config_path = Some(path.clone());
-        if verbose {
-            eprintln!("Using config file: {}", path.display());
-        } else if !quiet {
+        // `--verbose` reports the path once, in the `[verbose] config:` block
+        // printed just before `cargo dylint` is spawned.
+        if !verbose && !quiet {
             eprintln!("Using config: {}", path.display());
         }
         match config::BudgetConfig::from_file_validated(path, LINT_NAMES) {
@@ -672,12 +672,18 @@ fn main() {
                 exit(1);
             }
         }
-    } else {
-        if verbose {
-            eprintln!("No budget.toml found, using default lint levels.");
-        } else if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
-            eprintln!("Warning: budget.toml not found, using default lint levels.");
-        }
+    } else if !verbose
+        && !quiet
+        && cli.allow.is_empty()
+        && cli.warn.is_empty()
+        && cli.deny.is_empty()
+    {
+        // Missing-config warning, default verbosity only. `--verbose`
+        // reports the missing config once, as `[verbose] config: (none —
+        // ...)`, and `--quiet` reports nothing. Any `-A`/`-W`/`-D` override
+        // also suppresses this warning: the user chose lint levels for this
+        // run explicitly, so "using default lint levels" would be wrong.
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let lint_flags =
@@ -762,9 +768,11 @@ fn main() {
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
 
-    let mut rustflags_value = String::new();
+    // Seeded from the inherited value so the `[verbose] DYLINT_RUSTFLAGS:`
+    // line reports what the child actually sees, even when no lint flags are
+    // appended (the child then inherits `DYLINT_RUSTFLAGS` untouched).
+    let mut rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
     if !lint_flags.is_empty() {
-        rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
             if !rustflags_value.is_empty() {
                 rustflags_value.push(' ');
@@ -778,7 +786,12 @@ fn main() {
     cargo_args.extend(package_args);
 
     let has_lintignore = lintignore_opt.is_some();
-    if cli.format != OutputFormat::Text || has_lintignore {
+    // One predicate decides both whether cargo emits JSON messages and
+    // whether they are streamed through the per-finding filters below.
+    // `--diff-only` and `.lintignore` filter per finding, so they need the
+    // stream even in text mode; the raw-echo branch cannot filter.
+    let use_message_stream = cli.format != OutputFormat::Text || has_lintignore || cli.diff_only;
+    if use_message_stream {
         cargo_args.push("--message-format=json".to_string());
     }
 
@@ -827,7 +840,7 @@ fn main() {
         None
     };
 
-    if cli.format != OutputFormat::Text || has_lintignore {
+    if use_message_stream {
         cmd.stdout(Stdio::piped());
         let mut child = cmd.spawn().unwrap_or_else(|e| dylint_launch_failure(e));
 
