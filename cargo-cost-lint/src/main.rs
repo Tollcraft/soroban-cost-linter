@@ -987,7 +987,13 @@ fn main() {
                 stdout: recorded_stdout,
                 stderr: String::new(),
             };
-            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
         }
 
         exit(exit_code);
@@ -1016,7 +1022,13 @@ fn main() {
                 stdout: stdout_str,
                 stderr: stderr_str,
             };
-            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
         }
 
         exit(exit_code);

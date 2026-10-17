@@ -285,6 +285,44 @@ mod tests {
     }
 
     #[test]
+    fn test_save_cache_entry_reports_create_dir_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let blocker = tmp.path().join("blocker");
+        fs::write(&blocker, "not a directory").unwrap();
+        let entry = CacheEntry {
+            key: "k".to_string(),
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+
+        let err = save_cache_entry(&blocker.join("cache"), "k", &entry).unwrap_err();
+        assert!(
+            err.starts_with("Failed to create cache directory"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_save_cache_entry_reports_write_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_dir = tmp.path().join("cache");
+        fs::create_dir_all(cache_dir.join("k.json")).unwrap();
+        let entry = CacheEntry {
+            key: "k".to_string(),
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+
+        let err = save_cache_entry(&cache_dir, "k", &entry).unwrap_err();
+        assert!(
+            err.starts_with("Failed to write cache entry"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn test_compute_source_hash_changes_with_content() {
         let tmp = tempfile::tempdir().unwrap();
         let src_dir = tmp.path().join("src");
