@@ -197,6 +197,18 @@ fn long_version() -> &'static str {
 
 /// Validates package selection options against available workspace members
 /// and constructs the command-line arguments to forward to cargo.
+/// `--list-lints` has a text table and a JSON inventory; SARIF and GitHub
+/// annotations describe findings, not the inventory, so they are rejected
+/// instead of silently printing the text table.
+fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
+    match format {
+        OutputFormat::Text | OutputFormat::Json => None,
+        OutputFormat::Sarif | OutputFormat::Github => Some(
+            "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
+        ),
+    }
+}
+
 pub fn validate_and_build_package_args(
     packages: &[String],
     workspace: bool,
@@ -622,6 +634,10 @@ fn main() {
     }
 
     if cli.list_lints {
+        if let Some(message) = list_lints_format_error(&cli.format) {
+            eprintln!("{}", message);
+            exit(2);
+        }
         if cli.format == OutputFormat::Json {
             println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
         } else {
@@ -1517,6 +1533,14 @@ mod tests {
         let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "sarif"])
             .expect("parsing should succeed");
         assert_eq!(cli.format, OutputFormat::Sarif);
+    }
+
+    #[test]
+    fn list_lints_rejects_sarif_and_github_formats() {
+        assert!(list_lints_format_error(&OutputFormat::Text).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Json).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Sarif).is_some());
+        assert!(list_lints_format_error(&OutputFormat::Github).is_some());
     }
 
     #[test]
@@ -2430,24 +2454,29 @@ mod tests {
     }
 
     #[test]
-    fn resolve_color_explicit_always_without_no_color() {
+    fn resolve_color_explicit_always_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Always);
     }
 
     #[test]
-    fn resolve_color_explicit_never_without_no_color() {
+    fn resolve_color_explicit_never_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_auto_with_no_color_resolves_to_never() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Never);
     }
 
