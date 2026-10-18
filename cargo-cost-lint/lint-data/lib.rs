@@ -43,6 +43,7 @@ mod storage_write_without_read;
 mod string_concat_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
+mod val_conversion_chain;
 
 dylint_linting::dylint_library!();
 
@@ -96,6 +97,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         UNBOUNDED_RECURSION,
         UNWRAP_ON_STORAGE_GET,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        VAL_CONVERSION_CHAIN,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
         FLOAT_ARITHMETIC_IN_CONTRACT,
@@ -132,6 +134,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(CryptoHashOfConstant));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+    lint_store.register_late_pass(|_| Box::new(val_conversion_chain::ValConversionChain));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
     lint_store.register_late_pass(|_| Box::new(require_auth_in_loop::RequireAuthInLoop));
@@ -364,6 +367,12 @@ rustc_session::declare_lint! {
     pub VEC_WHERE_SLICE_COULD_BE_USED,
     Warn,
     "soroban_sdk::Vec passed by value where a native Rust slice would suffice"
+}
+
+rustc_session::declare_lint! {
+    pub VAL_CONVERSION_CHAIN,
+    Warn,
+    "a value shuttled through `Val` three or more times across a binding chain"
 }
 
 rustc_session::declare_lint! {
@@ -644,6 +653,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Slices avoid unnecessary heap allocations.",
     },
     LintMeta {
+        name: "val_conversion_chain",
+        category: LintCategory::Compute,
+        description: "a value shuttled through `Val` three or more times across a binding chain",
+        rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a chain of hops moves one value across the boundary repeatedly where a direct conversion would cross it once.",
+    },
+    LintMeta {
         name: "soroban_inefficient_bytes_concat",
         category: LintCategory::Memory,
         description: "inefficient Bytes concatenation inside a loop",
@@ -722,6 +737,7 @@ dylint_lint_impl! {
         UNBOUNDED_RECURSION,
         UNWRAP_ON_STORAGE_GET,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        VAL_CONVERSION_CHAIN,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         U128_WHERE_U64_SUFFICES,
         FLOAT_ARITHMETIC_IN_CONTRACT,

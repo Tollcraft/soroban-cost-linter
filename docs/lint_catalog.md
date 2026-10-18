@@ -40,6 +40,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
 | `vec_where_slice_could_be_used` | warn | soroban_sdk::Vec passed by value where a native Rust slice would suffice | [Link](lints/vec_where_slice_could_be_used.md) |
+| `val_conversion_chain` | warn | a value shuttled through `Val` three or more times across a binding chain | [Link](lints/val_conversion_chain.md) |
 | `soroban_inefficient_bytes_concat` | warn | inefficient Bytes concatenation inside a loop | [Link](lints/soroban_inefficient_bytes_concat.md) |
 | `u128_where_u64_suffices` | warn | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 | [Link](lints/u128_where_u64_suffices.md) |
 | `float_arithmetic_in_contract` | warn | performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred | [Link](lints/float_arithmetic_in_contract.md) |

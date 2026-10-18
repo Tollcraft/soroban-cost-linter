@@ -22,7 +22,7 @@ u32 ──into_val──▶ Val ──try_into_val──▶ Vec<u32> ──into_
 and fires once the chain reaches the configured threshold.
 
 The threshold is the documented named constant `VAL_CONVERSION_CHAIN_MIN_HOPS`
-(declared in `soroban_cost_lints/src/lib.rs`), currently **3**. Two conversions
+(declared in `soroban_cost_lints/src/val_conversion_chain.rs`), currently **3**. Two conversions
 (`T -> Val -> U`) is the minimal round trip a single foreign API boundary
 demands and is left to the sibling [`redundant_val_conversion`](redundant_val_conversion.md)
 lint. Three or more means the value has been bounced through `Val` at least

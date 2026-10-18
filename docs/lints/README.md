@@ -44,6 +44,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
+| [`val_conversion_chain`](val_conversion_chain.md) | `warn` | a value shuttled through `Val` three or more times across a binding chain |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`u128_where_u64_suffices`](u128_where_u64_suffices.md) | `warn` | uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32 |
 | [`float_arithmetic_in_contract`](float_arithmetic_in_contract.md) | `warn` | performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred |
