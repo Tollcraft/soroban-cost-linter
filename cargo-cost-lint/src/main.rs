@@ -31,13 +31,18 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
+    #[arg(
+        long,
+        help = "Emit the lint inventory and exit",
+        conflicts_with_all = ["explain", "clear_cache"]
+    )]
     list_lints: bool,
 
     #[arg(
         long,
         value_name = "LINT",
-        help = "Print the full documentation page for a lint and exit"
+        help = "Print the full documentation page for a lint and exit",
+        conflicts_with_all = ["list_lints", "clear_cache"]
     )]
     explain: Option<String>,
 
@@ -95,7 +100,11 @@ struct Cli {
     #[arg(long = "no-cache", help = "Bypass the lint result cache for this run")]
     no_cache: bool,
 
-    #[arg(long = "clear-cache", help = "Clear the lint result cache and exit")]
+    #[arg(
+        long = "clear-cache",
+        help = "Clear the lint result cache and exit",
+        conflicts_with_all = ["list_lints", "explain"]
+    )]
     clear_cache: bool,
 
     /// Control coloured output: auto, always, never.
@@ -1576,6 +1585,66 @@ mod tests {
             result.is_err(),
             "--quiet and --verbose should not be allowed together"
         );
+    }
+
+    // The three exit-early flags short-circuit `main()` independently, so
+    // combining them used to silently run only the first one. They are now
+    // declared mutually exclusive at parse time (issue #899).
+    fn assert_clap_conflict_error(args: &[&str]) {
+        let err = Cli::try_parse_from(args.iter().copied())
+            .expect_err("the combination should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "expected an argument-conflict error, got: {err}"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("cannot be used with"),
+            "conflict message should explain the conflict: {message}"
+        );
+        assert!(
+            message.contains("--list-lints")
+                || message.contains("--explain")
+                || message.contains("--clear-cache"),
+            "conflict message should name a conflicting flag: {message}"
+        );
+    }
+
+    #[test]
+    fn cli_list_lints_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "soroban_storage_in_loop",
+        ]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_list_lints_are_mutually_exclusive() {
+        assert_clap_conflict_error(&["cargo-cost-lint", "--clear-cache", "--list-lints"]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--clear-cache",
+            "--explain",
+            "redundant_env_clone",
+        ]);
+    }
+
+    #[test]
+    fn cli_all_three_exit_early_flags_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "redundant_env_clone",
+            "--clear-cache",
+        ]);
     }
 
     #[test]
