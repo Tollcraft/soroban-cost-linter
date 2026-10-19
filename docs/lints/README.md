@@ -19,6 +19,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
+| [`storage_read_modify_write`](storage_read_modify_write.md) | `warn` | performs two or more read-modify-write cycles on the same storage key |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
 | [`discarded_storage_read`](discarded_storage_read.md) | `warn` | reads from storage whose result is never used |
 | [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |

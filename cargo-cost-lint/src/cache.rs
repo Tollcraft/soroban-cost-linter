@@ -176,14 +176,18 @@ pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
         return Ok(0);
     }
     let mut count = 0;
-    if let Ok(entries) = fs::read_dir(cache_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let is_json =
-                path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json");
-            if is_json && fs::remove_file(path).is_ok() {
-                count += 1;
-            }
+    let entries = fs::read_dir(cache_dir).map_err(|e| {
+        format!(
+            "Failed to read cache directory {}: {}",
+            cache_dir.display(),
+            e
+        )
+    })?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_json = path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json");
+        if is_json && fs::remove_file(path).is_ok() {
+            count += 1;
         }
     }
     Ok(count)
@@ -531,6 +535,20 @@ mod tests {
         let dir = Path::new("/nonexistent/path/to/cache");
         let count = clear_cache(dir).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_clear_cache_unlistable_dir_is_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A file where a directory is expected exists but cannot be listed.
+        let not_a_dir = tmp.path().join("cache-is-a-file");
+        fs::write(&not_a_dir, "x").unwrap();
+        let err = clear_cache(&not_a_dir).unwrap_err();
+        assert!(
+            err.contains("Failed to read cache directory")
+                && err.contains(&not_a_dir.display().to_string()),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

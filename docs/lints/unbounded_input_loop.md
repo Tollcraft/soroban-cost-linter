@@ -8,6 +8,14 @@
 
 Flags loops whose iteration count is derived from an untrusted function parameter and whose body performs a storage write. Such loops can be abused to exhaust the contract's CPU and memory budget.
 
+All three loop forms are covered:
+
+* `for i in 0..count` — a range whose end is a contract parameter, or iteration over a caller-supplied collection;
+* `while i < count` — a `while` condition comparing against a contract parameter (or a caller-supplied collection's length);
+* `loop` — a bare loop whose `break` is guarded by a parameter-derived comparison, e.g. `if i >= count { break; }`.
+
+Bounds that the contract validates itself — e.g. `let clamped = count.min(100);` and then looping on `clamped` — are intentionally not flagged: the loop is no longer caller-driven.
+
 ## Why is this bad?
 
 {% hint style="danger" %}

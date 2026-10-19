@@ -18,7 +18,7 @@ pair back into `ui/` is the last step of implementing its lint, not the first.
 
 ## Restoring one
 
-Ten of these had a working implementation in git history that a bad merge
+Each of these had a working implementation in git history that a bad merge
 dropped. Start from that commit — the pass body is there, though it will need
 adapting to the pinned `nightly-2026-04-16` rustc API (the usual drift:
 `TyCtxt::hir()` -> `parent_hir_node`, `Node::Local` -> `Node::LetStmt`,
@@ -34,7 +34,6 @@ adapting to the pinned `nightly-2026-04-16` rustc API (the usual drift:
 | `nested_loop_storage_access` | `49101f5` |
 | `redundant_val_conversion` | `1aa0baf` |
 | `std_collection_in_contract` | `a77f614` |
-| `storage_read_modify_write` | `de45105` (see `storage_read_modify_write.pass.rs` below) |
 | `temporary_storage_for_persistent_data` | `ed0d988` |
 
 The remaining six never had an implementation in this repository at all — the
@@ -46,13 +45,6 @@ fixture is the whole specification, and the pass has to be written:
 - `redundant_address_clone`
 - `storage_read_never_written`
 - `vec_index_in_loop`
-
-`storage_read_modify_write.pass.rs` is the one pass whose source survived on
-disk (as `src/storage_read_modify_write.rs`) but was never declared as a `mod`,
-so it was dead and stale. It is kept here verbatim, renamed so `src/` does not
-carry an uncompiled module; wiring it back in means adding the `mod` line, the
-`register_lints` entry and the `register_late_pass` call, and updating its
-rustc API calls.
 
 ## `u128_where_u64_suffices` is a special case
 

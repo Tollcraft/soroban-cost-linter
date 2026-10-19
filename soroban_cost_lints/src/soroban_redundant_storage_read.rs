@@ -44,9 +44,12 @@ const STORAGE_ACCESSOR_SUFFIXES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Observing methods this lint tracks. `has` counts as a read: it inspects the
-/// key without changing it, so a following `get` still pays for the same value.
-const STORAGE_READ_METHODS: &[&str] = &["get", "has"];
+/// Observing methods this lint tracks. `get`, `try_get`, and `has` all meter a
+/// read of the key without changing it, so a following read of the same key is
+/// redundant. `remove`/`update` are mutating writes in the SDK and intentionally
+/// do not participate in this remembered-read set; they clear the tracked read
+/// instead of acting like a second read.
+const STORAGE_READ_METHODS: &[&str] = &["get", "try_get", "has"];
 
 /// The write method that clears a tracked read.
 const STORAGE_WRITE_METHOD: &str = "set";
@@ -201,6 +204,16 @@ mod tests {
         SOROBAN_REDUNDANT_STORAGE_READ_HELP, SOROBAN_REDUNDANT_STORAGE_READ_MSG,
         STORAGE_READ_METHODS, STORAGE_WRITE_METHOD, is_soroban_root, is_storage_accessor_path,
     };
+
+    #[test]
+    fn read_methods_include_try_get_and_exclude_mutating_writes() {
+        assert!(STORAGE_READ_METHODS.contains(&"get"));
+        assert!(STORAGE_READ_METHODS.contains(&"try_get"));
+        assert!(STORAGE_READ_METHODS.contains(&"has"));
+        assert!(!STORAGE_READ_METHODS.contains(&"remove"));
+        assert!(!STORAGE_READ_METHODS.contains(&"update"));
+        assert!(!STORAGE_READ_METHODS.contains(&"set"));
+    }
 
     #[test]
     fn accessor_paths_match_the_three_storage_tiers() {

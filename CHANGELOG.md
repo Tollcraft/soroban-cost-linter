@@ -40,6 +40,7 @@ and this project adheres to Semantic Versioning.
 - Expanded `loop_invariant_storage_access` test coverage from 2 to 11 cases, pinning down the paths the loop-dependence analysis can take: a loop-bound receiver, a loop-mutated key, a per-iteration `let` key, a hoisted key, a `while` loop, a non-terminal method (`extend_ttl`), a closure body, a nested loop, and `#[allow]` suppression. The new cases also pin the per-call granularity: when only an argument is loop-varying, the argument-bearing call is exempt while the invariant receiver chain (`env.storage()`, `.instance()`) is still reported.
 - Expanded the `require_auth_in_loop`, `storage_write_without_read`, `redundant_require_auth` and `soroban_redundant_storage_read` fixtures, and added unit tests for the extracted passes (method tables, storage-accessor paths, and the read/write pairing analysis) so the reachable branches are pinned before the modules are refactored.
 - New lint `val_conversion_chain` flagging values shuttled through `Val` three or more times across a binding chain (`into_val` / `try_into_val` / `from_val` / `try_from_val`), where converting directly to the final representation would cross the host boundary once instead of once per hop.
+- New lint `storage_read_modify_write` flagging storage keys that complete two or more full read-modify-write cycles (`get` then `set`) within one function body, reported from the second cycle onward, since the value never left the host between cycles and the repeat read and write buy nothing.
 
 ### Changed
 

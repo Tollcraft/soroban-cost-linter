@@ -1,14 +1,7 @@
 # soroban_cost_lints
 
-The lint crate for `soroban-cost-linter`. Compiled as a dynamic library and loaded by Dylint at runtime.
+The lint crate for `soroban-cost-linter`. Compiled as a dynamic library (`cdylib`) and loaded by [Dylint](https://github.com/trailofbits/dylint) at runtime. See [`DEVELOPING_LINTS.md`](../DEVELOPING_LINTS.md) for how the library is built and loaded.
 
 ## Registered Lints
 
-| Lint | Description |
-|------|-------------|
-| [`soroban_storage_in_loop`](../docs/lints/soroban_storage_in_loop.md) | Flags storage read/write operations inside loop bodies, suggesting memory aggregation instead. |
-| [`redundant_env_clone`](../docs/lints/redundant_env_clone.md) | Detects unnecessary `.clone()` calls on the Soroban `Env` object. |
-| [`unnecessary_host_function_call`](../docs/lints/unnecessary_host_function_call.md) | Identifies calls to host accessors (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside loops with unchanged inputs, which should be called once and cached. |
-| [`val_conversion_chain`](../docs/lints/val_conversion_chain.md) | Flags a chain of three or more `soroban_sdk` conversions that bounce the same local value through `Val` across a `let` sequence. |
-
-See the [lint reference](../docs/lints/README.md) for full documentation.
+This crate registers **40 lints** via `rustc_session::declare_lint!` in [`src/lib.rs`](src/lib.rs). See [`docs/lints/README.md`](../docs/lints/README.md) for the full generated reference with default severity, category, and documentation links.
