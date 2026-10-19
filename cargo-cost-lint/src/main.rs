@@ -31,13 +31,18 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
+    #[arg(
+        long,
+        help = "Emit the lint inventory and exit",
+        conflicts_with_all = ["explain", "clear_cache"]
+    )]
     list_lints: bool,
 
     #[arg(
         long,
         value_name = "LINT",
-        help = "Print the full documentation page for a lint and exit"
+        help = "Print the full documentation page for a lint and exit",
+        conflicts_with_all = ["list_lints", "clear_cache"]
     )]
     explain: Option<String>,
 
@@ -95,7 +100,11 @@ struct Cli {
     #[arg(long = "no-cache", help = "Bypass the lint result cache for this run")]
     no_cache: bool,
 
-    #[arg(long = "clear-cache", help = "Clear the lint result cache and exit")]
+    #[arg(
+        long = "clear-cache",
+        help = "Clear the lint result cache and exit",
+        conflicts_with_all = ["list_lints", "explain"]
+    )]
     clear_cache: bool,
 
     /// Control coloured output: auto, always, never.
@@ -197,6 +206,18 @@ fn long_version() -> &'static str {
 
 /// Validates package selection options against available workspace members
 /// and constructs the command-line arguments to forward to cargo.
+/// `--list-lints` has a text table and a JSON inventory; SARIF and GitHub
+/// annotations describe findings, not the inventory, so they are rejected
+/// instead of silently printing the text table.
+fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
+    match format {
+        OutputFormat::Text | OutputFormat::Json => None,
+        OutputFormat::Sarif | OutputFormat::Github => Some(
+            "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
+        ),
+    }
+}
+
 pub fn validate_and_build_package_args(
     packages: &[String],
     workspace: bool,
@@ -320,7 +341,7 @@ pub fn build_effective_lint_flags(
 
     for (lints, level_name, flag) in cli_groups {
         for lint in lints {
-            let lint = lint.replace('-', "_");
+            let lint = config::normalize_lint_name(lint);
             if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
@@ -347,7 +368,7 @@ pub fn build_effective_lint_flags(
 
     if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
         for (lint, level) in lints {
-            let lint = lint.replace('-', "_");
+            let lint = config::normalize_lint_name(lint);
             if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
@@ -622,6 +643,10 @@ fn main() {
     }
 
     if cli.list_lints {
+        if let Some(message) = list_lints_format_error(&cli.format) {
+            eprintln!("{}", message);
+            exit(2);
+        }
         if cli.format == OutputFormat::Json {
             println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
         } else {
@@ -1000,7 +1025,13 @@ fn main() {
                 stdout: recorded_stdout,
                 stderr: String::new(),
             };
-            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
         }
 
         exit(exit_code);
@@ -1029,7 +1060,13 @@ fn main() {
                 stdout: stdout_str,
                 stderr: stderr_str,
             };
-            let _ = cache::save_cache_entry(&cache_dir, key_hash, &entry);
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
         }
 
         exit(exit_code);
@@ -1043,7 +1080,7 @@ fn main() {
 /// always reported on stderr as plain text, mirroring the other format-aware
 /// outputs.
 fn print_explanation(lint_name: &str, format: &OutputFormat) {
-    let normalized = lint_name.to_lowercase();
+    let normalized = config::normalize_lint_name(lint_name);
 
     let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
 
@@ -1533,6 +1570,14 @@ mod tests {
     }
 
     #[test]
+    fn list_lints_rejects_sarif_and_github_formats() {
+        assert!(list_lints_format_error(&OutputFormat::Text).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Json).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Sarif).is_some());
+        assert!(list_lints_format_error(&OutputFormat::Github).is_some());
+    }
+
+    #[test]
     fn cli_parses_multiple_flags() {
         let cli = Cli::try_parse_from([
             "cargo-cost-lint",
@@ -1577,6 +1622,66 @@ mod tests {
             result.is_err(),
             "--quiet and --verbose should not be allowed together"
         );
+    }
+
+    // The three exit-early flags short-circuit `main()` independently, so
+    // combining them used to silently run only the first one. They are now
+    // declared mutually exclusive at parse time (issue #899).
+    fn assert_clap_conflict_error(args: &[&str]) {
+        let err = Cli::try_parse_from(args.iter().copied())
+            .expect_err("the combination should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "expected an argument-conflict error, got: {err}"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("cannot be used with"),
+            "conflict message should explain the conflict: {message}"
+        );
+        assert!(
+            message.contains("--list-lints")
+                || message.contains("--explain")
+                || message.contains("--clear-cache"),
+            "conflict message should name a conflicting flag: {message}"
+        );
+    }
+
+    #[test]
+    fn cli_list_lints_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "soroban_storage_in_loop",
+        ]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_list_lints_are_mutually_exclusive() {
+        assert_clap_conflict_error(&["cargo-cost-lint", "--clear-cache", "--list-lints"]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--clear-cache",
+            "--explain",
+            "redundant_env_clone",
+        ]);
+    }
+
+    #[test]
+    fn cli_all_three_exit_early_flags_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "redundant_env_clone",
+            "--clear-cache",
+        ]);
     }
 
     #[test]
@@ -2443,24 +2548,29 @@ mod tests {
     }
 
     #[test]
-    fn resolve_color_explicit_always_without_no_color() {
+    fn resolve_color_explicit_always_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Always);
     }
 
     #[test]
-    fn resolve_color_explicit_never_without_no_color() {
+    fn resolve_color_explicit_never_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_auto_with_no_color_resolves_to_never() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Never);
     }
 

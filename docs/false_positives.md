@@ -18,32 +18,33 @@ The project runs continuous regression and triage checks against real-world Soro
 
 | Metric | Count | Percentage |
 |---|---:|---:|
-| **Total Findings** | 102 | 100.0% |
-| **True Positives (TP)** | 26 | 25.5% |
-| **False Positives (FP)** | 76 | 74.5% |
+| **Total Findings** | 182 | 100.0% |
+| **True Positives (TP)** | 28 | 15.4% |
+| **False Positives (FP)** | 154 | 84.6% |
 
 ### New Cross-Contract Corpus Contracts Triage
 
 | Lint | False Positives | True Positives | Default Level | Tracking / Decision |
 |---|---:|---:|---|---|
-| `loop_invariant_storage_access` | 23 | 0 | warn | Tracking precision enhancements for receiver-chain hoisting and loop-variant arguments |
-| `soroban_storage_in_loop` | 16 | 0 | warn | Intentional batch-write patterns; key variance analysis under design |
-| `storage_write_without_read` | 14 | 0 | warn | Blind overwrites and initialization flows across multi-tx invocations |
-| `vec_where_slice_could_be_used` | 11 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
-| `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
-| `bytes_append_in_loop` | 4 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
-| `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
-| `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
-| `soroban_inefficient_bytes_concat` | 0 | 2 | warn | True positive: inefficient Bytes concatenation inside a loop |
-| `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
-| `symbol_new_for_short_literal` | 0 | 10 | warn | True positive: short literals should use `symbol_short!` |
-| `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
-| `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
-| `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
-| `u128_where_u64_suffices` | 0 | 0 | warn | True positive: provably narrow 128-bit arithmetic operations on wasm32 |
-| `storage_read_never_written` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
-| `float_arithmetic_in_contract` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
-| `duplicate_storage_key_construction` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+| `loop_invariant_storage_access` | 46 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `vec_where_slice_could_be_used` | 32 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `storage_write_without_read` | 29 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `soroban_storage_in_loop` | 22 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `unbounded_input_loop` | 7 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `instance_storage_for_unbounded_data` | 4 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `require_auth_in_loop` | 3 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `contract_call_in_loop` | 3 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `bytes_append_in_loop` | 3 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `storage_key_construction_in_loop` | 2 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `signature_verification_in_loop` | 1 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `formatted_panic_payload` | 1 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `ledger_context_read_in_loop` | 1 | 0 | warn | Baselined false positives; tracking precision improvements |
+| `symbol_new_for_short_literal` | 0 | 13 | warn | True positive findings; no false positives observed |
+| `unwrap_on_storage_get` | 0 | 6 | warn | True positive findings; no false positives observed |
+| `redundant_env_clone` | 0 | 4 | warn | True positive findings; no false positives observed |
+| `unnecessary_host_function_call` | 0 | 3 | warn | True positive findings; no false positives observed |
+| `soroban_inefficient_bytes_concat` | 0 | 1 | warn | True positive findings; no false positives observed |
+| `persistent_read_without_ttl_extension` | 0 | 1 | warn | True positive findings; no false positives observed |
 
 ### Target False-Positive Ratio & Policy
 

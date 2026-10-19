@@ -40,7 +40,7 @@ let value: i32 = env.storage().persistent().get(&key).unwrap_or(0);
 
 ## Scope
 
-- Fires on `.unwrap()` and `.expect()` whose receiver is directly a storage `get`.
+- Fires on `.unwrap()` and `.expect()` whose receiver is directly a storage `get` or `try_get`.
 - Does not fire when the returned `Option` is matched, handled with `unwrap_or`/`unwrap_or_else`, or otherwise consumed without panicking.
 - Does not fire on `unwrap` anywhere other than directly on a storage read (e.g. on SDK collections or plain `Option`s).
 - Does not fire under `#[cfg(test)]` or inside test modules — unwrap in tests is idiomatic.

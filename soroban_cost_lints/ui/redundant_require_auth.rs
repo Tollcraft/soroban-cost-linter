@@ -63,6 +63,28 @@ fn bad_second_fires(env: Env) {
     addr.require_auth(); //~ WARNING require_auth already called on this address
 }
 
+/// Sibling blocks of one function share one authorization scope: the first
+/// block authorizes the address, so the second block's call is redundant.
+fn bad_sibling_blocks(env: Env, choose: bool) {
+    let addr = Address;
+    if choose {
+        addr.require_auth(); // first — no warning
+    } else {
+        addr.require_auth(); //~ WARNING require_auth already called on this address
+    }
+}
+
+/// The same, with plain nested blocks instead of an if/else.
+fn bad_sequential_nested_blocks(env: Env) {
+    let addr = Address;
+    {
+        addr.require_auth(); // first — no warning
+    }
+    {
+        addr.require_auth(); //~ WARNING require_auth already called on this address
+    }
+}
+
 // =======================================================================
 // Non-triggering cases — these MUST NOT produce any warning
 // =======================================================================
@@ -97,6 +119,18 @@ fn good_separated_by_try_invoke_contract(env: Env, target: Address, func: Symbol
 fn good_single_require_auth() {
     let addr = Address;
     addr.require_auth();
+}
+
+/// Two functions are two scopes: an authorization established in one says
+/// nothing about the other, even for the same syntactic address.
+fn good_across_functions_a(env: Env) {
+    let addr = Address;
+    addr.require_auth();
+}
+
+fn good_across_functions_b(env: Env) {
+    let addr = Address;
+    addr.require_auth(); // Good — a different function
 }
 
 /// No `require_auth` calls at all.

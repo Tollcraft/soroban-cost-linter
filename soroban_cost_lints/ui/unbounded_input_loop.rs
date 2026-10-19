@@ -57,16 +57,66 @@ fn bad_for_loop_bound_from_param(env: Env, count: u32) {
     }
 }
 
-// Note: while-loop bounds are not currently detected as parameter-derived
-// by the lint's block-statement walker. This is a known limitation.
-// Only for-loop bounds (via range expressions in desugared block stmts)
-// are checked.
+/// A `while` loop bounded by a contract parameter: `count` is the caller's,
+/// so the iteration count is too.
+fn bad_while_loop_bound_from_param(env: Env, count: u32) {
+    let mut i = 0;
+    while i < count {
+        env.storage().instance().set(&i, &i); // Should Warn
+        i += 1;
+    }
+}
+
+/// A bare `loop` whose exit is a `break` guarded by a parameter-derived
+/// condition is just as caller-driven as a `while`.
+fn bad_loop_break_on_param(env: Env, count: u32) {
+    let mut i = 0;
+    loop {
+        env.storage().instance().set(&i, &i); // Should Warn
+        i += 1;
+        if i >= count {
+            break;
+        }
+    }
+}
 
 // --- Negative (should not warn): contract-controlled bound ---
 
 fn good_constant_bound(env: Env) {
     for i in 0..10 {
         env.storage().instance().set(&i, &1); // Good — constant bound
+    }
+}
+
+/// A `while` loop with a constant bound is contract-controlled, not
+/// caller-controlled.
+fn good_while_constant_bound(env: Env) {
+    let mut i = 0;
+    while i < 10 {
+        env.storage().instance().set(&i, &1); // Good — constant bound
+        i += 1;
+    }
+}
+
+/// A bare `loop` that exits on a constant comparison is not
+/// caller-controlled either.
+fn good_loop_constant_break(env: Env) {
+    let mut i = 0;
+    loop {
+        env.storage().instance().set(&i, &1); // Good — constant exit condition
+        i += 1;
+        if i >= 10 {
+            break;
+        }
+    }
+}
+
+/// A bare `loop` that breaks unconditionally has no caller-derived exit
+/// condition at all, so its iteration count is fixed at one pass.
+fn good_loop_unconditional_break(env: Env) {
+    loop {
+        env.storage().instance().set(&0, &1); // Good — no caller-derived exit
+        break;
     }
 }
 
@@ -88,6 +138,17 @@ fn good_validated_bound(env: Env, count: u32) {
     let clamped = count.min(100); // Contract validates: max 100 iterations
     for i in 0..clamped {
         env.storage().instance().set(&i, &i); // Good — clamped before use
+    }
+}
+
+/// The same validation applies to a `while` loop: the bound here is the
+/// local `clamped`, not the parameter.
+fn good_while_validated_bound(env: Env, count: u32) {
+    let clamped = count.min(100);
+    let mut i = 0;
+    while i < clamped {
+        env.storage().instance().set(&i, &i); // Good — clamped before use
+        i += 1;
     }
 }
 

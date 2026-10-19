@@ -57,6 +57,25 @@ RUN NIGHTLY=$(sed -n 's/^channel = "\(nightly-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)
            ${HOME}/.cargo/git/checkouts && \
     rm /tmp/rust-toolchain
 
+# ── build the linter ────────────────────────────────────────────────────────
+# Copy the full source tree so we can build cargo-cost-lint and the dylint
+# library inside the image.  The library must be linked with dylint-link so
+# it is registered correctly by `cargo dylint`.
+COPY --chown=dev:dev . /tmp/soroban-cost-linter
+
+RUN . "$HOME/.cargo/env" && \
+    cd /tmp/soroban-cost-linter && \
+    # Build the cargo-cost-lint CLI binary
+    cargo build --release --locked --manifest-path cargo-cost-lint/Cargo.toml && \
+    cp target/release/cargo-cost-lint "$HOME/.cargo/bin/" && \
+    # Build the soroban_cost_lints dylint library with the correct linker
+    RUSTFLAGS="-C linker=dylint-link" cargo build --release --locked -p soroban_cost_lints && \
+    mkdir -p "$HOME/.dylint-libs" && \
+    cp target/release/libsoroban_cost_lints@* "$HOME/.dylint-libs/" && \
+    # Clean up build tree to reduce image size
+    cd / && rm -rf /tmp/soroban-cost-linter
+
 # ── runtime environment ─────────────────────────────────────────────────────
 ENV PATH="${HOME}/.cargo/bin:${PATH}"
+ENV DYLINT_LIBRARY_PATH="${HOME}/.dylint-libs"
 WORKDIR /workspace
