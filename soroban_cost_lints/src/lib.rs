@@ -826,14 +826,27 @@ pub(crate) const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "storage", "Temporary"],
 ];
 
+/// Receiver types for [`UnnecessaryHostFunctionCall`].
+///
+/// Every row names a `pub` type in both SDKs pinned here (soroban-sdk
+/// 26.1.1 and 28.0.0): `ledger::Ledger`, `crypto::Crypto`,
+/// `crypto::bls12_381::Bls12_381`, `crypto::bn254::Bn254`, `prng::Prng`,
+/// `events::Events`, `logs::Logs` (logs.rs:92; `Env::logs` returns it and
+/// the `log!` macro expands to `$env.logs().add(...)`), and the three
+/// `deploy::Deployer*` forms (deploy.rs:133/:351/:419). The former
+/// `crypto::CryptoHazmat` row was dead: the type is declared
+/// `pub(crate) struct CryptoHazmat` with a `pub(crate) fn new` in both
+/// SDKs (crypto.rs:212/:214) and no public API returns it, so no user
+/// expression can ever have that receiver type
+/// (`Crypto::verify_secp256k1`/`secp256r1` route through it internally).
 const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "ledger", "Ledger"],
     &["soroban_sdk", "crypto", "Crypto"],
-    &["soroban_sdk", "crypto", "CryptoHazmat"],
     &["soroban_sdk", "crypto", "bls12_381", "Bls12_381"],
     &["soroban_sdk", "crypto", "bn254", "Bn254"],
     &["soroban_sdk", "prng", "Prng"],
     &["soroban_sdk", "events", "Events"],
+    &["soroban_sdk", "logs", "Logs"],
     &["soroban_sdk", "deploy", "Deployer"],
     &["soroban_sdk", "deploy", "DeployerWithAddress"],
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
