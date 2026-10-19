@@ -55,5 +55,21 @@ LL |         addr.req$DIRre_auth(); // False positive — each iteration authori
    |
    = help: collect distinct addresses first and authorize each once before the loop
 
-warning: 7 warnings emitted
+warning: authorization call inside a loop
+  --> $DIR/req$DIRre_auth_in_loop.rs:102:9
+   |
+LL |         Address::req$DIRre_auth(&addr); // Should Warn — UFCS form in a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/req$DIRre_auth_in_loop.rs:110:9
+   |
+LL |         Address::req$DIRre_auth_for_args(&addr, &[i]); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: 9 warnings emitted
 

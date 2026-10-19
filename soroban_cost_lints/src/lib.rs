@@ -40,6 +40,7 @@ mod option_wrapping_in_storage;
 mod redundant_require_auth;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
+mod storage_read_modify_write;
 mod storage_write_without_read;
 mod string_concat_in_loop;
 mod unbounded_input_loop;
@@ -72,6 +73,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         SOROBAN_REDUNDANT_STORAGE_READ,
+        STORAGE_READ_MODIFY_WRITE,
         STORAGE_WRITE_WITHOUT_READ,
         DISCARDED_STORAGE_READ,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
@@ -106,6 +108,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(soroban_redundant_storage_read::SorobanRedundantStorageRead)
     });
+    lint_store.register_late_pass(|_| Box::new(storage_read_modify_write::StorageReadModifyWrite));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
@@ -212,6 +215,12 @@ rustc_session::declare_lint! {
     pub SOROBAN_REDUNDANT_STORAGE_READ,
     Warn,
     "multiple sequential reads of the same storage key without modification"
+}
+
+rustc_session::declare_lint! {
+    pub STORAGE_READ_MODIFY_WRITE,
+    Warn,
+    "performs two or more read-modify-write cycles on the same storage key"
 }
 
 rustc_session::declare_lint! {
@@ -456,6 +465,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Repeatedly reading the same storage entry without intervening writes wastes ledger IO and CPU.",
     },
     LintMeta {
+        name: "storage_read_modify_write",
+        category: LintCategory::Storage,
+        description: "performs two or more read-modify-write cycles on the same storage key",
+        rationale: "A second full read-modify-write cycle on one key pays two metered storage operations for a value that never left the host; read once, accumulate, write once.",
+    },
+    LintMeta {
         name: "storage_write_without_read",
         category: LintCategory::Storage,
         description: "storage write without a corresponding read",
@@ -623,6 +638,7 @@ dylint_lint_impl! {
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         SOROBAN_REDUNDANT_STORAGE_READ,
+        STORAGE_READ_MODIFY_WRITE,
         STORAGE_WRITE_WITHOUT_READ,
         DISCARDED_STORAGE_READ,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
@@ -685,21 +701,34 @@ pub(crate) fn match_soroban_def_path(
     def_id: DefId,
     segments: &[&str],
 ) -> bool {
+    if segments.is_empty() {
+        return false;
+    }
+
     let full = cached_def_path_str(cx.tcx, def_id);
     let suffix = segments.join("::");
     if full == suffix {
         return true;
     }
-    if full.ends_with(&format!("::{}", suffix)) {
-        let root_crate = full.split("::").next().unwrap_or("");
-        if root_crate == segments[0]
-            || root_crate == "soroban_sdk"
-            || root_crate == "soroban_env_host"
-            || root_crate == "soroban_env_common"
-        {
-            return true;
+
+    let full_parts: Vec<_> = full.split("::").collect();
+    if full_parts.first() != segments.first() {
+        return false;
+    }
+    if segments.len() == 1 {
+        return true;
+    }
+
+    let mut matched = 1usize;
+    for part in full_parts.iter().skip(1) {
+        if *part == segments[matched] {
+            matched += 1;
+            if matched == segments.len() {
+                return true;
+            }
         }
     }
+
     false
 }
 
@@ -730,14 +759,27 @@ pub(crate) const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "storage", "Temporary"],
 ];
 
+/// Receiver types for [`UnnecessaryHostFunctionCall`].
+///
+/// Every row names a `pub` type in both SDKs pinned here (soroban-sdk
+/// 26.1.1 and 28.0.0): `ledger::Ledger`, `crypto::Crypto`,
+/// `crypto::bls12_381::Bls12_381`, `crypto::bn254::Bn254`, `prng::Prng`,
+/// `events::Events`, `logs::Logs` (logs.rs:92; `Env::logs` returns it and
+/// the `log!` macro expands to `$env.logs().add(...)`), and the three
+/// `deploy::Deployer*` forms (deploy.rs:133/:351/:419). The former
+/// `crypto::CryptoHazmat` row was dead: the type is declared
+/// `pub(crate) struct CryptoHazmat` with a `pub(crate) fn new` in both
+/// SDKs (crypto.rs:212/:214) and no public API returns it, so no user
+/// expression can ever have that receiver type
+/// (`Crypto::verify_secp256k1`/`secp256r1` route through it internally).
 const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "ledger", "Ledger"],
     &["soroban_sdk", "crypto", "Crypto"],
-    &["soroban_sdk", "crypto", "CryptoHazmat"],
     &["soroban_sdk", "crypto", "bls12_381", "Bls12_381"],
     &["soroban_sdk", "crypto", "bn254", "Bn254"],
     &["soroban_sdk", "prng", "Prng"],
     &["soroban_sdk", "events", "Events"],
+    &["soroban_sdk", "logs", "Logs"],
     &["soroban_sdk", "deploy", "Deployer"],
     &["soroban_sdk", "deploy", "DeployerWithAddress"],
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
@@ -1261,7 +1303,10 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
-            if is_host_function && enclosing_loop_or_closure(cx, expr).is_some() {
+            if let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
+                && is_host_function
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
                 span_lint_and_help(
                     cx,
                     UNNECESSARY_HOST_FUNCTION_CALL,
@@ -1292,7 +1337,7 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
             let is_host = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                match_soroban_def_path(cx, adt_def.did(), &["host", "Host"])
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_env_host", "Host"])
             } else {
                 false
             };
@@ -1848,22 +1893,27 @@ pub struct ExtendTtlInLoop;
 rustc_session::impl_lint_pass!(ExtendTtlInLoop => [EXTEND_TTL_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
-    /// Flags a call to `extend_ttl` on instance, persistent, or temporary
-    /// storage when the call site sits directly inside a loop body.
+    /// Flags a call to `extend_ttl` or `extend_ttl_with_limits` on instance,
+    /// persistent, or temporary storage when the call site sits directly
+    /// inside a loop body.
     ///
-    /// Each `extend_ttl` call is its own metered host call that *also*
-    /// writes ledger state (a rent payment — see
+    /// Each `extend_ttl`/`extend_ttl_with_limits` call is its own metered
+    /// host call that *also* writes ledger state (a rent payment — see
     /// `docs/cost_rationale.md`, "Ledger Space Rent"), so issuing one per
     /// iteration multiplies both costs by the iteration count.
     ///
     /// This is deliberately narrower than [`SOROBAN_STORAGE_IN_LOOP`]'s
     /// direct in-loop check: that pass only treats `get`/`has`/`set` as a
-    /// storage access before checking the loop, so `extend_ttl` never
-    /// reaches it and there is no risk of double-reporting the same call.
-    /// This lint owns the `extend_ttl`-in-loop diagnostic.
+    /// storage access before checking the loop, so neither `extend_ttl` nor
+    /// `extend_ttl_with_limits` reaches it and there is no risk of
+    /// double-reporting the same call. This lint owns the
+    /// `extend_ttl`/`extend_ttl_with_limits`-in-loop diagnostic.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "extend_ttl"
+            && matches!(
+                path_segment.ident.name.as_str(),
+                "extend_ttl" | "extend_ttl_with_limits"
+            )
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
@@ -1881,13 +1931,16 @@ impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
                     expr.span,
                     "extend_ttl called inside a loop",
                     None,
-                    "each extend_ttl call is a separate metered host call that also writes \
-                     ledger state, so calling it once per iteration multiplies both costs by \
-                     the iteration count; batch the extension by collecting the keys/entries \
-                     first and making a single extend_ttl call after the loop (if the entries \
-                     share one accessor, e.g. multiple keys under Persistent), or extend once \
-                     with a threshold sized generously enough to cover the whole batch instead \
-                     of refreshing per-entry per-iteration",
+                    "each extend_ttl/extend_ttl_with_limits call is a separate metered host \
+                     call that also writes ledger state, so calling it once per iteration \
+                     multiplies both costs by the iteration count; batch the extension by \
+                     collecting the keys/entries first and making a single extension call \
+                     after the loop (if the entries share one keyed accessor, e.g. multiple \
+                     keys under Persistent), or extend once with a threshold sized generously \
+                     enough to cover the whole batch instead of refreshing per-entry \
+                     per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes \
+                     threshold arguments rather than a key, so prefer a single generous \
+                     extension there",
                 );
             }
         }

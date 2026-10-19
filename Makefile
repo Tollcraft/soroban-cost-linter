@@ -1,4 +1,4 @@
-.PHONY: fmt fmt-check lint test check-docs sync-lint-data bench doc check
+.PHONY: fmt fmt-check lint test check-docs sync-lint-data bench doc check check-pins
 
 fmt:
 	cargo fmt --all
@@ -26,9 +26,12 @@ bench:
 doc:
 	cargo doc --no-deps --open
 
+check-pins:
+	bash .github/scripts/validate-toolchain-pins.sh
+
 # Note: The corpus baseline regeneration step from CI (which is conditional on
 # tests/corpus/baseline.json being empty and requires cargo-dylint) is omitted
-# here because it requires external tools installed; make check runs the static
-# and test gates that match CI.
-check: fmt-check lint test check-docs
+# here because it requires external tools installed; make check runs the
+# toolchain-pin guard and the static and test gates that match CI.
+check: check-pins fmt-check lint test check-docs
 

@@ -95,7 +95,7 @@ If you prefer to set up the toolchain on your machine directly:
     make check
     ```
 
-    This runs `fmt-check` (`cargo fmt --all -- --check`), `lint` (`cargo clippy --workspace --all-targets -- -D warnings`), `test` (`cargo test --workspace`), and `check-docs` (`cargo run -p generate-lint-docs -- --check`) matching CI gates. See the [`Makefile`](./Makefile) for all available targets.
+    This runs `check-pins` (toolchain-pin drift guard), `fmt-check` (`cargo fmt --all -- --check`), `lint` (`cargo clippy --workspace --all-targets -- -D warnings`), `test` (`cargo test --workspace`), and `check-docs` (`cargo run -p generate-lint-docs -- --check`) matching CI gates. See the [`Makefile`](./Makefile) for all available targets.
 
 ### 3. Adding a New Lint
 - Read the [Scope: Clippy vs. soroban-cost-linter](./docs/scope_boundary.md) guide first. If a pattern is already covered by a Clippy lint and the Soroban cost story does not change the analysis, do not duplicate it here.
@@ -139,7 +139,7 @@ are already part of the public interface. Although they do not fully match the c
 
 ### 4. Code Quality Standards
 
-All PRs are checked by CI (Linux and Windows), and these checks must pass before a PR can be merged. Run them locally before pushing with `make check`:
+All PRs are checked by CI (Linux), and these checks must pass before a PR can be merged. Run them locally before pushing with `make check`:
 
 ```bash
 make check
@@ -147,45 +147,65 @@ make check
 
 Or run the individual commands:
 
-1. Check formatting with rustfmt (or run `make fmt` to automatically fix formatting):
+1. Check the toolchain-pin drift guard (or run `make check-pins`):
+
+   ```bash
+   bash .github/scripts/validate-toolchain-pins.sh
+   ```
+
+2. Check formatting with rustfmt (or run `make fmt` to automatically fix formatting):
 
    ```bash
    cargo fmt --all -- --check
    ```
 
-2. Make sure Clippy passes with no warnings:
+3. Make sure Clippy passes with no warnings:
 
    ```bash
    cargo clippy --workspace --all-targets -- -D warnings
    ```
 
-3. Make sure the test suite passes:
+4. Make sure the test suite passes:
 
    ```bash
    cargo test --workspace
    ```
 
-4. Make sure documentation is up to date:
+5. Make sure documentation is up to date:
 
    ```bash
    cargo run -p generate-lint-docs -- --check
    ```
 
-> **Windows tip:** All commands above work identically in PowerShell. You can also run them in Git Bash if you prefer a Unix-like shell.
-
 Follow the patterns already used in the codebase: `soroban_cost_lints` uses edition 2024, so prefer let-chains (`if let ... && let ...`) over nested `if let` blocks, and match the structure of the existing lint passes when adding a new lint.
 
 ### 4.1 Security and Policy Checks (`cargo-deny`)
 
-This project uses `cargo-deny` in CI (via `.github/workflows/security.yml`) to enforce policies on dependencies. The policy is defined in `deny.toml`. Note that the CI job runs only when manifests (`Cargo.toml`), the lockfile (`Cargo.lock`), or the workflow file change.
+This project uses `cargo-deny` in CI (via `.github/workflows/security.yml`) to enforce policies on dependencies. The policy is defined in `deny.toml`.
 
-**What the policy enforces:**
-- **Licenses:** Only `MIT`, `Apache-2.0`, `Unicode-3.0`, and `Apache-2.0 WITH LLVM-exception` are allowed. Copyleft licenses (like GPL/AGPL) are rejected.
-- **Advisories:** Vulnerabilities, unsoundness, and notice advisories from the RustSec database will cause the check to fail. Unmaintained crates in the workspace are also flagged.
-- **Bans:** Multiple versions of the same crate will trigger a warning.
+**When the check runs** (`.github/workflows/security.yml`):
+- On a path-filtered push to `main`. The workflow triggers when a push touches any of `**/Cargo.lock`, `**/Cargo.toml`, `deny.toml`, or `.github/workflows/security.yml` (`security.yml:4-10`).
+- On a daily schedule at 06:00 UTC, via `cron: "0 6 * * *"` (`security.yml:15-17`). There is deliberately no `pull_request` trigger — the `Lint` workflow's `build-and-test` job is the single check a PR waits on — so the schedule (and the path-filtered push above) exist so that a newly disclosed vulnerability is found within 24 hours rather than never (`security.yml:11-14`).
+- Manually from the Actions tab, via `workflow_dispatch` (`security.yml:19`).
 
-**Exceptions:**
+**What the policy enforces** (`deny.toml`):
+- **Licenses:** The `allow` list is exhaustive — anything not listed is denied, as is any crate whose license cannot be detected (`deny.toml:44-51`). The allowed licenses are:
+  - `MIT` (`deny.toml:52`)
+  - `Apache-2.0` (`deny.toml:53`)
+  - `Unicode-3.0`, required by `unicode-ident` (`deny.toml:54-56`)
+  - `Apache-2.0 WITH LLVM-exception`, the license the Rust project itself uses, reached through `rustc_apfloat`; the LLVM exception only removes a restriction, so it is strictly more permissive than the plain `Apache-2.0` already allowed (`deny.toml:57-62`)
+  - `BSD-3-Clause`, a permissive license pulled in by `soroban-sdk`'s crypto dependencies (`curve25519-dalek`, `ed25519-dalek`, `subtle`) (`deny.toml:63-66`)
+
+  Copyleft licenses such as GPL, AGPL, LGPL and MPL-2.0 are rejected by virtue of not appearing in the list (`deny.toml:44-47`).
+- **Advisories:** Vulnerability, unsoundness and notice advisories always error, and the only way to accept one is to list its ID in `ignore` with a justification (`deny.toml:21-37`). Unmaintained crates are flagged for workspace members (`unmaintained = "workspace"`, `deny.toml:30`), and yanked crates are denied (`yanked = "deny"`, `deny.toml:32`).
+- **Bans:** Multiple versions of the same crate produce a warning (`multiple-versions = "warn"`, `deny.toml:98`); widely duplicated crates are highlighted (`highlight = "all"`, `deny.toml:101`); wildcard versions are allowed (`wildcards = "allow"`, `deny.toml:104`). The `deny` and `skip` lists are both empty (`deny.toml:106-112`).
+- **Sources:** Crates from unknown registries or unknown git repositories are denied (`unknown-registry = "deny"` and `unknown-git = "deny"`, `deny.toml:83-85`). The only allowed git source is `https://github.com/rust-lang/rust-clippy` (`deny.toml:87-91`).
+
+**Exception:** `clippy_utils` is allowed `MIT` and `Apache-2.0` (`deny.toml:70-76`). It comes from a pinned git revision of `rust-clippy`; it follows the same dual MIT/Apache-2.0 license as the Rust project, but its license file may not be detectable from a git source. This exception can be removed if `clippy_utils` is published to crates.io and consumed from there instead of a git repo, or if we stop depending on it.
+
 If you need an exception (e.g., to ignore a specific advisory or allow a license for a specific crate), you can propose adding it to `deny.toml`. Any such exception must include a comment explaining why it is safe for this project and under what condition it can be removed.
+
+The `deny.toml:N` and `security.yml:N` citations above refer to the current contents of those files; refresh them whenever either file changes.
 
 **Running locally:**
 Run the check locally before pushing to catch policy violations early:
@@ -204,11 +224,7 @@ The pinned nightly is declared once in `rust-toolchain` (the single source of tr
 3. Update `.github/workflows/lint.yml`, `action.yml` (the `toolchain` input default), and `docs/integration.md` with the new nightly date.
 4. Run the drift guard to confirm everything agrees:
    ```bash
-   # Linux / macOS
    bash .github/scripts/validate-toolchain-pins.sh
-
-   # Windows (PowerShell)
-   powershell -ExecutionPolicy Bypass -File .github/scripts/validate-toolchain-pins.ps1
    ```
 5. Run the full test suite:
    ```bash
@@ -224,8 +240,19 @@ The `Dockerfile` reads `rust-toolchain` at build time, so updating the channel t
 {% endhint %}
 
 ### 6. Submitting a Pull Request
-### 7. Submitting a Pull Request
 - Ensure your PR targets the `main` branch.
 - Make sure the checks in the section above (`cargo fmt`, `cargo clippy`, `cargo test`) all pass.
 - Provide a clear description of what the lint does and why it saves costs.
 - If your pull request includes a user-visible change, add an appropriate entry under the **Unreleased** section of `CHANGELOG.md`. The entry will be moved into the next versioned release when a release is cut.
+
+### 7. Re-publishing the Container Image
+
+The `container-publish` workflow publishes the Docker image to GitHub Container Registry (GHCR). It triggers automatically on pushes to `main` that touch `Dockerfile`, `rust-toolchain`, or the workflow file itself.
+
+**Manual runs:** If the workflow failed or you need to republish the image after a dependency-only change (one that does not touch the watched paths), you can trigger a republish manually from the Actions tab:
+
+1. Navigate to the **Actions** tab.
+2. Select the **Container Publish** workflow.
+3. Click **Run workflow** → **Run workflow**.
+
+A manual run produces the same image name (`ghcr.io/<owner>/<repo>-dev`) and tag scheme as an automatic push-triggered run. See the workflow file (`.github/workflows/container-publish.yml`) for details.

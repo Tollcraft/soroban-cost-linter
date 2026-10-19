@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Thirty-four lints ship in `v0.1.1`:
+The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. 35 lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -147,7 +147,7 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
 | `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
-| `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--list-lints` | Print every registered lint with its default level and one-line description, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
 | `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
