@@ -166,7 +166,7 @@ warning: extend_ttl called inside a loop
 LL |         env.storage().persistent().extend_ttl(&1, &()); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
    = note: `#[warn(extend_ttl_in_loop)]` on by default
 
 warning: loop-invariant storage operation inside a loop

@@ -1944,22 +1944,27 @@ pub struct ExtendTtlInLoop;
 rustc_session::impl_lint_pass!(ExtendTtlInLoop => [EXTEND_TTL_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
-    /// Flags a call to `extend_ttl` on instance, persistent, or temporary
-    /// storage when the call site sits directly inside a loop body.
+    /// Flags a call to `extend_ttl` or `extend_ttl_with_limits` on instance,
+    /// persistent, or temporary storage when the call site sits directly
+    /// inside a loop body.
     ///
-    /// Each `extend_ttl` call is its own metered host call that *also*
-    /// writes ledger state (a rent payment — see
+    /// Each `extend_ttl`/`extend_ttl_with_limits` call is its own metered
+    /// host call that *also* writes ledger state (a rent payment — see
     /// `docs/cost_rationale.md`, "Ledger Space Rent"), so issuing one per
     /// iteration multiplies both costs by the iteration count.
     ///
     /// This is deliberately narrower than [`SOROBAN_STORAGE_IN_LOOP`]'s
     /// direct in-loop check: that pass only treats `get`/`has`/`set` as a
-    /// storage access before checking the loop, so `extend_ttl` never
-    /// reaches it and there is no risk of double-reporting the same call.
-    /// This lint owns the `extend_ttl`-in-loop diagnostic.
+    /// storage access before checking the loop, so neither `extend_ttl` nor
+    /// `extend_ttl_with_limits` reaches it and there is no risk of
+    /// double-reporting the same call. This lint owns the
+    /// `extend_ttl`/`extend_ttl_with_limits`-in-loop diagnostic.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "extend_ttl"
+            && matches!(
+                path_segment.ident.name.as_str(),
+                "extend_ttl" | "extend_ttl_with_limits"
+            )
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
@@ -1977,13 +1982,16 @@ impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
                     expr.span,
                     "extend_ttl called inside a loop",
                     None,
-                    "each extend_ttl call is a separate metered host call that also writes \
-                     ledger state, so calling it once per iteration multiplies both costs by \
-                     the iteration count; batch the extension by collecting the keys/entries \
-                     first and making a single extend_ttl call after the loop (if the entries \
-                     share one accessor, e.g. multiple keys under Persistent), or extend once \
-                     with a threshold sized generously enough to cover the whole batch instead \
-                     of refreshing per-entry per-iteration",
+                    "each extend_ttl/extend_ttl_with_limits call is a separate metered host \
+                     call that also writes ledger state, so calling it once per iteration \
+                     multiplies both costs by the iteration count; batch the extension by \
+                     collecting the keys/entries first and making a single extension call \
+                     after the loop (if the entries share one keyed accessor, e.g. multiple \
+                     keys under Persistent), or extend once with a threshold sized generously \
+                     enough to cover the whole batch instead of refreshing per-entry \
+                     per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes \
+                     threshold arguments rather than a key, so prefer a single generous \
+                     extension there",
                 );
             }
         }
