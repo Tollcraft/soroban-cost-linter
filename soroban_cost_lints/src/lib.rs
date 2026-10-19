@@ -781,21 +781,34 @@ pub(crate) fn match_soroban_def_path(
     def_id: DefId,
     segments: &[&str],
 ) -> bool {
+    if segments.is_empty() {
+        return false;
+    }
+
     let full = cached_def_path_str(cx.tcx, def_id);
     let suffix = segments.join("::");
     if full == suffix {
         return true;
     }
-    if full.ends_with(&format!("::{}", suffix)) {
-        let root_crate = full.split("::").next().unwrap_or("");
-        if root_crate == segments[0]
-            || root_crate == "soroban_sdk"
-            || root_crate == "soroban_env_host"
-            || root_crate == "soroban_env_common"
-        {
-            return true;
+
+    let full_parts: Vec<_> = full.split("::").collect();
+    if full_parts.first() != segments.first() {
+        return false;
+    }
+    if segments.len() == 1 {
+        return true;
+    }
+
+    let mut matched = 1usize;
+    for part in full_parts.iter().skip(1) {
+        if *part == segments[matched] {
+            matched += 1;
+            if matched == segments.len() {
+                return true;
+            }
         }
     }
+
     false
 }
 
@@ -1357,7 +1370,10 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
-            if is_host_function && enclosing_loop_or_closure(cx, expr).is_some() {
+            if let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
+                && is_host_function
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
                 span_lint_and_help(
                     cx,
                     UNNECESSARY_HOST_FUNCTION_CALL,
@@ -1388,7 +1404,7 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
             let is_host = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                match_soroban_def_path(cx, adt_def.did(), &["host", "Host"])
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_env_host", "Host"])
             } else {
                 false
             };

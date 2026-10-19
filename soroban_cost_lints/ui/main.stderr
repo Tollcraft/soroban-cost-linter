@@ -215,22 +215,6 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:429:21
-   |
-LL |         let _hash = env.crypto().sha256(chunk); // Good — hashes a different input each iteration
-   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
-
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:437:21
-   |
-LL |         let _hash = env.crypto().keccak256(&data[i..]); // Good — argument moves with the counter
-   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
-
-warning: unnecessary host function call inside loop
   --> $DIR/main.rs:444:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
@@ -261,14 +245,6 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
-
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:463:9
-   |
-LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:479:16

@@ -2,7 +2,7 @@
 
 ## What it does
 
-This lint flags uses of the Soroban host object inside loops. Repeated host access can significantly increase runtime cost because the host interaction is expensive and often should be moved outside the loop.
+This lint flags calls made on `soroban_env_host::Host` inside loops. In soroban-sdk 28, `Env::host()` returns this host type; the accessor is `#[doc(hidden)]` in the SDK. Repeated host access can significantly increase runtime cost because the host interaction is expensive and often should be moved outside the loop.
 
 ## Why is this bad
 
