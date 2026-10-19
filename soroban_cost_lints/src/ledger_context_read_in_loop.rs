@@ -9,7 +9,15 @@ use crate::{LEDGER_CONTEXT_READ_IN_LOOP, matches_any_path, ty_adt_def};
 
 declare_lint_pass!(LedgerContextReadInLoop => [LEDGER_CONTEXT_READ_IN_LOOP]);
 
-const LEDGER_READ_METHODS: &[&str] = &["sequence", "timestamp", "network_id", "protocol_version"];
+const LEDGER_READ_METHODS: &[&str] = &[
+    "sequence",
+    "timestamp",
+    "network_id",
+    "protocol_version",
+    // soroban-sdk 26.1.1 ledger.rs:73 and 28.0.0 ledger.rs:73: a fifth
+    // invariant accessor on the same host object (#871).
+    "max_live_until_ledger",
+];
 
 /// `soroban_sdk::Env` — the def-path form the Env check now requires, so a
 /// local type whose printed name merely contains `Env` no longer satisfies it

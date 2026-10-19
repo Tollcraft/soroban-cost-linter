@@ -15,6 +15,10 @@ pub mod soroban_sdk {
             pub fn sequence(&self) -> u32 { 0 }
             pub fn timestamp(&self) -> u64 { 0 }
             pub fn network_id(&self) -> [u8; 32] { [0u8; 32] }
+            // soroban-sdk 26.1.1 ledger.rs:73 and 28.0.0 ledger.rs:73 expose
+            // this fifth invariant accessor; contract code uses it to clamp
+            // TTL extensions.
+            pub fn max_live_until_ledger(&self) -> u32 { 0 }
         }
     }
 }
@@ -52,6 +56,19 @@ fn bad_network_id_in_closure(env: Env) {
     (0..5).for_each(|_| {
         let _nid = env.ledger().network_id(); // Should Warn
     });
+}
+
+fn bad_max_live_until_ledger_in_for_loop(env: Env, entries: [u32; 3]) {
+    for _e in entries.iter() {
+        let _m = env.ledger().max_live_until_ledger(); // Should Warn
+    }
+}
+
+fn bad_bound_ledger_max_live_until_ledger_in_loop(env: Env) {
+    let ledger = env.ledger();
+    for _ in 0..10 {
+        let _m = ledger.max_live_until_ledger(); // Should Warn - bound receiver in loop
+    }
 }
 
 fn bad_all_accessors_in_loop(env: Env) {
@@ -122,6 +139,10 @@ fn good_timestamp_outside_loop(env: Env) {
 
 fn good_network_id_outside_loop(env: Env) {
     let _nid = env.ledger().network_id(); // Good — outside any loop
+}
+
+fn good_max_live_until_ledger_outside_loop(env: Env) {
+    let _m = env.ledger().max_live_until_ledger(); // Good — outside any loop
 }
 
 fn good_sequence_hoisted(env: Env) {
