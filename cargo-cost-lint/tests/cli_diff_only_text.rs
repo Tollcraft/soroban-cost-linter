@@ -71,7 +71,9 @@ fn build_lint_library() -> PathBuf {
 /// One target directory shared by every scratch repo, so the Soroban SDK is
 /// compiled once rather than once per test.
 fn fixture_target_dir() -> PathBuf {
-    workspace_dir().join("target").join("diff-only-fixture-target")
+    workspace_dir()
+        .join("target")
+        .join("diff-only-fixture-target")
 }
 
 fn git(dir: &Path, args: &[&str]) {
@@ -252,8 +254,7 @@ fn plain_run_without_flags_keeps_raw_echo_output() {
     let reference_stderr = text(&reference.stderr);
 
     assert_eq!(
-        wrapped.stdout,
-        reference.stdout,
+        wrapped.stdout, reference.stdout,
         "stdout of a plain run must be cargo's stdout, byte for byte"
     );
 
