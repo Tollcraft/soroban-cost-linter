@@ -419,14 +419,17 @@ pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
         })
         .collect();
 
-    let mut unique_rules = std::collections::HashSet::new();
-    for f in findings {
-        unique_rules.insert(f.name.clone());
-    }
+    // Collect rule names in a `BTreeSet` so `tool.driver.rules` is emitted in
+    // a deterministic (lexicographically sorted) order across runs. A
+    // `HashSet` here iterates in a hash-randomised order, which permuted the
+    // rules array between processes (#876). Deduplication semantics are
+    // unchanged: one rule per distinct lint name.
+    let unique_rules: std::collections::BTreeSet<&str> =
+        findings.iter().map(|f| f.name.as_str()).collect();
     let rules: Vec<SarifRule> = unique_rules
         .into_iter()
         .map(|name| SarifRule {
-            id: name.clone(),
+            id: name.to_string(),
             short_description: SarifRuleShortDescription {
                 text: format!("Cost lint rule: {}", name),
             },
@@ -1312,6 +1315,62 @@ mod tests {
             value["runs"][0]["tool"]["driver"]["name"],
             "cargo-cost-lint"
         );
+    }
+
+    fn sarif_finding(name: &str) -> LintFinding {
+        LintFinding {
+            name: name.to_string(),
+            level: "warning".to_string(),
+            file: "src/lib.rs".to_string(),
+            span: Span {
+                line_start: 1,
+                line_end: 1,
+                column_start: 1,
+                column_end: 2,
+            },
+            message: format!("{} message", name),
+            help: None,
+            suggestion: None,
+        }
+    }
+
+    #[test]
+    fn test_generate_sarif_report_rules_are_deterministically_ordered() {
+        // Issue #876: `tool.driver.rules` must be emitted in a deterministic
+        // order for the same findings, independent of process hash seeding.
+        let findings = vec![
+            sarif_finding("z_lint"),
+            sarif_finding("a_lint"),
+            sarif_finding("m_lint"),
+            sarif_finding("z_lint"),
+        ];
+
+        let report = generate_sarif_report(&findings);
+        let value: serde_json::Value = serde_json::from_str(&report).unwrap();
+        let ids: Vec<&str> = value["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap())
+            .collect();
+        // Deduplicated (one rule per distinct name) and sorted ascending.
+        assert_eq!(ids, vec!["a_lint", "m_lint", "z_lint"]);
+    }
+
+    #[test]
+    fn test_generate_sarif_report_is_byte_identical_across_renders() {
+        // Issue #876 regression guard: rendering the same findings twice must
+        // produce byte-identical SARIF, so unordered iteration can never come
+        // back unnoticed.
+        let findings = vec![
+            sarif_finding("z_lint"),
+            sarif_finding("a_lint"),
+            sarif_finding("m_lint"),
+        ];
+
+        let first = generate_sarif_report(&findings);
+        let second = generate_sarif_report(&findings);
+        assert_eq!(first, second);
     }
 
     #[test]
