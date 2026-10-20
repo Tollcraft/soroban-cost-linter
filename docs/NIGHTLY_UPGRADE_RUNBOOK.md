@@ -20,7 +20,7 @@ The nightly channel is declared once in [`rust-toolchain`](../rust-toolchain). T
 
 Upgrade to a nightly published in the last 1–2 weeks, not an arbitrary future date. Rust's nightly channel publishes once per day, and older nightlies eventually become unavailable in toolchain registries.
 
-A reasonable upgrade target is something like `nightly-2026-05-15` if today is late May 2026 and the current pin is `nightly-2026-04-16`.
+A reasonable upgrade target is something like `nightly-2026-05-15` if today is late May 2026 and the current pin is whatever `channel` is declared in `rust-toolchain` (the single source of truth; never trust a date hardcoded in prose, including this one).
 
 ### Step 2: Find the Matching `clippy_utils` Revision
 
@@ -318,7 +318,7 @@ That report *is* the work this runbook exists to scope. Pick up where it leaves 
 
 ## Future Simplification
 
-Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep all four files (rust-toolchain, Cargo.toml, two workflows) in sync.
+Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep every file named in `NIGHTLY_FILES` (`.github/scripts/bump-nightly.sh`) in sync: `rust-toolchain` (the source of truth), the `clippy_utils` rev in `soroban_cost_lints/Cargo.toml`, and the guarded copies (`.github/workflows/lint.yml`, `.github/workflows/publish.yml`, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) — exactly the set that `.github/scripts/validate-toolchain-pins.sh` checks.
 
 ---
 

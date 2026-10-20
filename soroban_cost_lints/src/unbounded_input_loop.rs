@@ -54,11 +54,20 @@ declare_lint_pass!(UnboundedInputLoop => [UNBOUNDED_INPUT_LOOP]);
 
 /// Storage-mutating methods. Each is a write to host-backed state, so one
 /// call per iteration is one metered write per iteration.
-const WRITE_METHODS: &[&str] = &["set", "put", "make_persistent"];
+///
+/// Checked against soroban-sdk 26.1.1 and 28.0.0 (`storage.rs`): `Persistent`,
+/// `Temporary` and `Instance` all export `set`, `update`, `try_update` and
+/// `remove`. The former `put` and `make_persistent` exist in neither:
+/// `make_persistent` left the storage API before those versions.
+const WRITE_METHODS: &[&str] = &["set", "update", "try_update", "remove"];
 
-/// Methods that turn a collection into an iterator, covering both spellings of
-/// `for x in input.iter()`.
-const ITERATING_METHODS: &[&str] = &["iter", "iter_combined"];
+/// Methods that turn a collection into an iterator, covering the `iter()`
+/// spelling plus the `Map` projections that yield caller-sized iteration.
+///
+/// Checked against soroban-sdk 26.1.1 and 28.0.0 (`vec.rs`, `map.rs`): `Vec`
+/// exports `iter`, `Map` exports `iter`, `keys` and `values`. The former
+/// `iter_combined` was dropped from `Map` and exists in neither version.
+const ITERATING_METHODS: &[&str] = &["iter", "keys", "values"];
 
 /// Type-name fragments identifying a caller-sized collection.
 ///
@@ -151,13 +160,16 @@ fn report(cx: &LateContext<'_>, span: rustc_span::Span) {
 ///
 /// Each arm covers one way of spelling such a loop head:
 ///
-/// - `input.iter()` / `input.iter_combined(..)` — an explicit iterator;
+/// - `input.iter()` / `input.keys()` / `input.values()` — an explicit
+///   iterator or `Map` projection; [`is_collection`] sees the receiver, so
+///   `keys()`/`values()` on a caller-supplied `Map` match even though they
+///   return a `Vec`;
 /// - `input` / `&input` — moving or borrowing the collection directly;
 /// - `0..input.len()` — a range whose end comes from a collection.
 fn iterates_over_input(cx: &LateContext<'_>, iter: &Expr<'_>) -> bool {
     match iter.kind {
         ExprKind::MethodCall(path, receiver, _args, _) => {
-            // e.g. `for x in input.iter()` / `input.iter_combined(...)`
+            // e.g. `for x in input.iter()` / `input.keys()` / `input.values()`
             ITERATING_METHODS.contains(&path.ident.as_str()) && is_collection(cx, receiver)
         }
         ExprKind::Path(QPath::Resolved(_, _)) | ExprKind::AddrOf(..) => {
@@ -405,7 +417,10 @@ fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{COLLECTION_FRAGMENTS, STORAGE_TYPE_FRAGMENTS, WRITE_METHODS, name_contains_any};
+    use super::{
+        COLLECTION_FRAGMENTS, ITERATING_METHODS, STORAGE_TYPE_FRAGMENTS, WRITE_METHODS,
+        name_contains_any,
+    };
 
     /// An empty needle makes `str::contains` return `true` for every name,
     /// which would turn both type tests into a constant `true` and make the
@@ -421,9 +436,19 @@ mod tests {
     /// name here would start flagging read-only calls.
     #[test]
     fn write_methods_are_exact_storage_mutations() {
-        assert_eq!(WRITE_METHODS, ["set", "put", "make_persistent"]);
+        assert_eq!(WRITE_METHODS, ["set", "update", "try_update", "remove"]);
         assert!(!WRITE_METHODS.contains(&"get"));
         assert!(!WRITE_METHODS.contains(&"has"));
+    }
+
+    /// Every name must be exported by the soroban-sdk this crate builds
+    /// against (checked against 26.1.1 and 28.0.0: `iter` on `Vec`/`Map`,
+    /// `keys`/`values` on `Map`). A stale entry like the former
+    /// `iter_combined` silently disables half the detection surface.
+    #[test]
+    fn iterating_methods_are_sdk_iterator_spellings() {
+        assert_eq!(ITERATING_METHODS, ["iter", "keys", "values"]);
+        assert!(!ITERATING_METHODS.contains(&"iter_combined"));
     }
 
     /// An empty fragment list can never match. This documents the contract

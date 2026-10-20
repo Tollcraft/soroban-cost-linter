@@ -713,5 +713,5 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allo
    |
    = help: delete the storage read or use its returned value
 
-error: aborting due to 3 previous errors; 81 warnings emitted
+error: aborting due to 3 previous errors; 85 warnings emitted
 

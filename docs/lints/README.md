@@ -8,16 +8,11 @@
 See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.
 {% endhint %}
 
-## Other
+## Storage
 
 | Lint | Default Severity | Catches |
 | --- | --- | --- |
-| [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
-| [`string_concat_in_loop`](string_concat_in_loop.md) | `warn` | repeatedly concatenating a soroban String inside a loop |
-| [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
 | [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `deny` | storage operations inside a loop |
-| [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
 | [`storage_read_modify_write`](storage_read_modify_write.md) | `warn` | performs two or more read-modify-write cycles on the same storage key |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
@@ -26,27 +21,52 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
-| [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
-| [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
-| [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
-| [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
-| [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
-| [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
-| [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
-| [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
-| [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
-| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
-| [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
-| [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
-| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
-| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
 | [`option_wrapping_in_storage`](option_wrapping_in_storage.md) | `warn` | stores an Option<T> in storage where the key already models absence |
+
+## Compute
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
+| [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
+| [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
+| [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
+| [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
+| [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
+| [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
+| [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
+| [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
 | [`ledger_context_read_in_loop`](ledger_context_read_in_loop.md) | `warn` | reads a ledger context value inside a loop when it cannot change during the invocation |
 | [`redundant_require_auth`](redundant_require_auth.md) | `warn` | require_auth called more than once on the same address in a single function body |
+
+## Memory
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`string_concat_in_loop`](string_concat_in_loop.md) | `warn` | repeatedly concatenating a soroban String inside a loop |
+| [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
+| [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
+| [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
+| [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
+| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`large_constant_array`](large_constant_array.md) | `warn` | embedding a large constant array in contract code |
+
+## Host
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
+
+## Security
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
+| [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).

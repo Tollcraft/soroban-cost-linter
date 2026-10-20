@@ -149,11 +149,13 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--color <WHEN>` | Control coloured output: `auto` (default), `always`, or `never`. Honours the `NO_COLOR` convention when unset |
 | `--diff-only` | Lint only files changed relative to the merge base with the default branch |
 | `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
-| `--list-lints` | Print every registered lint with its default level and one-line description, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
+| `--list-lints` | Print every registered lint with its default level, category and documentation URL, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
 | `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
 | `--version` | Print the crate version and exit |
+| `--color <auto\|always\|never>` | Control coloured output (default: `auto`); honours the `NO_COLOR` convention when the flag is omitted, and an explicit `--color` value overrides it |
+| `--diff-only` | Only report findings in files changed against the merge base with the default branch (whole files are linted, not just changed lines) |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
 

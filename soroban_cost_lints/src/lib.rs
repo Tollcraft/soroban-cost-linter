@@ -1100,7 +1100,19 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
         // --- Direct storage access in a loop ---
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
-            let is_terminal_storage_op = matches!(method_name, "get" | "has" | "set");
+            // Every metered terminal accessor in `SOROBAN_STORAGE_TYPES`:
+            // the reads (`get`, `has`) and the read-modifying writes
+            // (`set`, `update`, `try_update`, `remove`) — each of `update`,
+            // `try_update` and `remove` pays a ledger read plus a ledger
+            // write per call, exactly like `set`.
+            //
+            // `extend_ttl` and `extend_ttl_with_limits` are deliberately kept
+            // OUT of this list: `extend_ttl_in_loop` owns those diagnostics,
+            // so adding them here would double-report the same call.
+            let is_terminal_storage_op = matches!(
+                method_name,
+                "get" | "has" | "set" | "update" | "try_update" | "remove"
+            );
             let is_storage_access = is_terminal_storage_op
                 && is_type_match(
                     cx,
@@ -1109,11 +1121,12 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                 );
 
             if is_storage_access && enclosing_loop_or_closure(cx, expr).is_some() {
-                // Reads (`get`, `has`) and writes (`set`) deserve different
-                // advice: writes can be buffered and flushed once after the
-                // loop, but a loop-variant read cannot be accumulated — the
-                // user typically needs to hoist a loop-invariant read or
-                // batch where possible.
+                // Reads (`get`, `has`) and writes (`set`, `update`,
+                // `try_update`, `remove`) deserve different advice: writes
+                // can be buffered and flushed once after the loop, but a
+                // loop-variant read cannot be accumulated — the user
+                // typically needs to hoist a loop-invariant read or batch
+                // where possible.
                 let help = if matches!(method_name, "get" | "has") {
                     "if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible"
                 } else {
