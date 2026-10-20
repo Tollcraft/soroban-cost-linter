@@ -25,7 +25,7 @@ env.storage().instance().set(&"balance", &(val2.unwrap_or(0) + 20)); // redundan
 
 ## Suggested Fix
 
-{% hint style="success %}
+{% hint style="success" %}
 Read the value once, accumulate all modifications, then write once at the end.
 {% endhint %}
 
@@ -47,5 +47,4 @@ env.storage().instance().set(&"balance", &balance);
 
 ## Known False Positives
 
-- **Cross-function helper patterns:** When two helper functions each perform a read-modify-write on the same key and are called sequentially, the lint correctly fires on the second call. In some cases this is intentional (e.g., separate business-logic modules). Suppress with `#[allow(storage_read_modify_write)]`.
 - **Complex control flow with branching reads:** If a key is read through different code paths (e.g., inside an `if`/`else`), the lint may reset tracking conservatively and miss or flag a cycle depending on the path taken.

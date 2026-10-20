@@ -1,3 +1,13 @@
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop.rs:31:17
+   |
+LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+   = note: `#[warn(string_concat_in_loop)]` on by default
+
+warning: 1 warning emitted
 warning: repeatedly concatenating a soroban String inside a loop
   --> $DIR/string_concat_in_loop.rs:45:18
    |

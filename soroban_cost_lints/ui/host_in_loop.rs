@@ -1,21 +1,24 @@
+pub mod soroban_env_host {
+    pub struct Host;
+    impl Host {
+        pub fn invoke_contract(&self) {}
+        pub fn budget_cloned(&self) {}
+    }
+}
+
 pub mod soroban_sdk {
+    use crate::soroban_env_host;
+
     pub struct Env;
     impl Clone for Env {
         fn clone(&self) -> Self { Env }
     }
     impl Env {
-        pub fn host(&self) -> host::Host {
-            host::Host
+        pub fn host(&self) -> soroban_env_host::Host {
+            soroban_env_host::Host
         }
     }
 
-    pub mod host {
-        pub struct Host;
-        impl Host {
-            pub fn invoke_contract(&self) {}
-            pub fn budget_cloned(&self) {}
-        }
-    }
 }
 
 use soroban_sdk::Env;

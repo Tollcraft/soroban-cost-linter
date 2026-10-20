@@ -3,21 +3,19 @@ use std::io;
 
 /// Central error type for the `cargo-cost-lint` CLI tool.
 ///
-/// All fallible operations in the CLI return `Result<T, LinterError>` so that
-/// error handling is consistent and caller-friendly instead of mixing `unwrap`,
-/// `expect`, `exit`, and ad‑hoc `eprintln!` calls.
+/// Fallible helpers return `Result<T, LinterError>` so errors propagate with
+/// `?` instead of being handled ad hoc at every call site; `main` is the single
+/// place that reports them (stderr) and turns them into an exit code.
+///
+/// Subprocess exits are deliberately not modelled as errors: `cargo dylint`
+/// prints its own diagnostics and `main` forwards the child's exit code
+/// verbatim, so a failing child still exits with the child's code.
 #[derive(Debug)]
 pub enum LinterError {
     /// An I/O error — file read/write, pipe capture, etc.
     Io(io::Error),
     /// JSON (de)serialisation failed.
     Json(serde_json::Error),
-    /// A child process (`cargo dylint`) exited with a non-zero status.
-    // main() reports subprocess exits by calling `exit` with the child's code
-    // directly, so nothing constructs this today; kept as part of the public
-    // error taxonomy.
-    #[allow(dead_code)]
-    Subprocess { code: Option<i32> },
     /// A required prerequisite is missing (e.g. `cargo-dylint` not installed).
     MissingPrerequisite(String),
     /// A generic, human-readable error message for unexpected situations.
@@ -33,7 +31,6 @@ impl LinterError {
         match self {
             Self::Io(error) => write!(f, "I/O error: {}", error),
             Self::Json(error) => write!(f, "JSON error: {}", error),
-            Self::Subprocess { code } => write!(f, "subprocess exited with code {:?}", code),
             Self::MissingPrerequisite(message) | Self::Other(message) => f.write_str(message),
         }
     }
@@ -42,7 +39,7 @@ impl LinterError {
         match self {
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
-            Self::Subprocess { .. } | Self::MissingPrerequisite(_) | Self::Other(_) => None,
+            Self::MissingPrerequisite(_) | Self::Other(_) => None,
         }
     }
 }
@@ -110,21 +107,6 @@ mod tests {
     }
 
     #[test]
-    fn display_subprocess_error_with_code() {
-        let err = LinterError::Subprocess { code: Some(42) };
-        let msg = format!("{}", err);
-        assert!(msg.contains("subprocess exited with code"));
-        assert!(msg.contains("42"));
-    }
-
-    #[test]
-    fn display_subprocess_error_without_code() {
-        let err = LinterError::Subprocess { code: None };
-        let msg = format!("{}", err);
-        assert!(msg.contains("subprocess exited with code None"));
-    }
-
-    #[test]
     fn display_missing_prerequisite() {
         let err = LinterError::MissingPrerequisite("cargo-dylint not installed".to_string());
         let msg = format!("{}", err);
@@ -161,12 +143,6 @@ mod tests {
     #[test]
     fn source_returns_none_for_missing_prerequisite() {
         let err = LinterError::MissingPrerequisite("test".to_string());
-        assert!(err.source().is_none());
-    }
-
-    #[test]
-    fn source_returns_none_for_subprocess() {
-        let err = LinterError::Subprocess { code: Some(1) };
         assert!(err.source().is_none());
     }
 
@@ -231,5 +207,38 @@ mod tests {
     fn linter_result_err() {
         let result: LinterResult<i32> = Err(LinterError::Other("fail".to_string()));
         assert!(result.is_err());
+    }
+
+    /// Guard for the enum's public taxonomy: the `match` below is exhaustive,
+    /// so adding a variant to `LinterError` breaks this test until its
+    /// `Display` output is asserted here — keeping the enum's documentation in
+    /// sync with the variants callers can actually receive (#843).
+    #[test]
+    fn taxonomy_covers_every_variant_with_display() {
+        fn variant_name(err: &LinterError) -> &'static str {
+            match err {
+                LinterError::Io(_) => "io",
+                LinterError::Json(_) => "json",
+                LinterError::MissingPrerequisite(_) => "missing_prerequisite",
+                LinterError::Other(_) => "other",
+            }
+        }
+
+        let io_err = LinterError::Io(io::Error::new(io::ErrorKind::NotFound, "file not found"));
+        assert_eq!(variant_name(&io_err), "io");
+        assert_eq!(format!("{}", io_err), "I/O error: file not found");
+
+        let json_err =
+            LinterError::Json(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err());
+        assert_eq!(variant_name(&json_err), "json");
+        assert!(format!("{}", json_err).starts_with("JSON error"));
+
+        let prereq_err = LinterError::MissingPrerequisite("cargo-dylint not installed".to_string());
+        assert_eq!(variant_name(&prereq_err), "missing_prerequisite");
+        assert_eq!(format!("{}", prereq_err), "cargo-dylint not installed");
+
+        let other_err = LinterError::Other("something went wrong".to_string());
+        assert_eq!(variant_name(&other_err), "other");
+        assert_eq!(format!("{}", other_err), "something went wrong");
     }
 }

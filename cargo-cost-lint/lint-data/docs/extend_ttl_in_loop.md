@@ -6,11 +6,14 @@
 
 ## What it does
 
-Flags a call to `extend_ttl` on instance, persistent, or temporary storage
-(`env.storage().instance().extend_ttl(...)`,
+Flags a call to `extend_ttl` or `extend_ttl_with_limits` on instance,
+persistent, or temporary storage (`env.storage().instance().extend_ttl(...)`,
 `env.storage().persistent().extend_ttl(&key, ...)`,
-`env.storage().temporary().extend_ttl(&key, ...)`) when the call site sits
-directly inside a loop body (`for`, `while`, or `loop`).
+`env.storage().temporary().extend_ttl(&key, ...)`, and the
+`extend_ttl_with_limits` twins of each — including the unkeyed
+`env.storage().instance().extend_ttl_with_limits(extend_to, min_extension,
+max_extension)` form) when the call site sits directly inside a loop body
+(`for`, `while`, or `loop`).
 
 ## Why is this bad?
 
@@ -68,7 +71,7 @@ Batch the extension instead of refreshing per-entry per-iteration:
 
 ## What is not reported
 
-- `extend_ttl` calls outside of a loop body.
+- `extend_ttl` / `extend_ttl_with_limits` calls outside of a loop body.
 - Calls on receivers that are not `soroban_sdk::storage::{Instance,
   Persistent, Temporary}` (or `Storage` itself).
 - Calls suppressed with `#[allow(extend_ttl_in_loop)]`.
@@ -80,10 +83,11 @@ Batch the extension instead of refreshing per-entry per-iteration:
 
 [`soroban_storage_in_loop`](soroban_storage_in_loop.md) has two detection
 arms. Its **direct** in-loop check only treats a method call as a storage
-access when the method name is `get`, `has`, or `set` — `extend_ttl` is not
-in that allowlist, so the direct arm never fires on it. This lint owns the
-direct in-loop `extend_ttl` diagnostic instead, and there is no overlap
-between the two: the same call is never reported twice.
+access when the method name is `get`, `has`, or `set` — neither `extend_ttl`
+nor `extend_ttl_with_limits` is in that allowlist, so the direct arm never
+fires on them. This lint owns the direct in-loop `extend_ttl` /
+`extend_ttl_with_limits` diagnostic instead, and there is no overlap between
+the two: the same call is never reported twice.
 
 `soroban_storage_in_loop` also has a second, inter-procedural arm that walks
 into callees reachable from a loop and flags *any* method call on a
