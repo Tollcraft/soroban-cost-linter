@@ -14,7 +14,7 @@ pub mod soroban_sdk {
         }
     }
 
-    pub use string::String;
+    pub use self::string::String;
 }
 
 use soroban_sdk::{Env, String};
