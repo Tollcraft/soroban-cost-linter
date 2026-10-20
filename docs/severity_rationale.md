@@ -31,7 +31,7 @@ This means a `deny` in `budget.toml` overrides the default, and an `#[allow]` at
 
 ## Why `soroban_storage_in_loop` Defaults to `deny`
 
-This linter ships **41 lints**. Forty default to `warn`. Exactly one — `soroban_storage_in_loop` — defaults to `deny`.
+This linter ships **41 lints**: **40** default to `warn`, and exactly one — `soroban_storage_in_loop` — defaults to `deny`.
 
 That is a deliberate decision, not an oversight. The reasoning comes directly from the [Cost Rationale](cost_rationale.md):
 
