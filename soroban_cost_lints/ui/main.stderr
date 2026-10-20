@@ -215,22 +215,6 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:429:21
-   |
-LL |         let _hash = env.crypto().sha256(chunk); // Good — hashes a different input each iteration
-   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
-
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:437:21
-   |
-LL |         let _hash = env.crypto().keccak256(&data[i..]); // Good — argument moves with the counter
-   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
-
-warning: unnecessary host function call inside loop
   --> $DIR/main.rs:444:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
@@ -261,14 +245,6 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
-
-warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:463:9
-   |
-LL |         env.events().publish((i,), i); // Good — publishes the value of this iteration
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: cache the result outside the loop when the call is loop-invariant
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
   --> $DIR/main.rs:479:16
@@ -303,6 +279,14 @@ warning: storage read result is discarded
    |
 LL |     let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:530:19
+   |
+LL |     let _exists = env.storage().instance().has(&"key1"); // Check first
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: delete the storage read or use its returned value
 
@@ -463,6 +447,14 @@ LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should W
    |
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
+warning: storage read result is discarded
+  --> $DIR/main.rs:776:29
+   |
+LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: persistent storage read without TTL extension — archival cost cliff
   --> $DIR/main.rs:780:8
    |
@@ -470,6 +462,38 @@ LL |     if env.storage().persistent().has(&1) { // Should Warn
    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:786:29
+   |
+LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:790:29
+   |
+LL |     let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:794:29
+   |
+LL |     let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:799:29
+   |
+LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
 
 warning: redundant storage read: this key was already read without modification
   --> $DIR/main.rs:809:27
@@ -480,6 +504,22 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should War
    = help: store the value from the first read and reuse it instead of reading again
    = note: `#[warn(soroban_redundant_storage_read)]` on by default
 
+warning: storage read result is discarded
+  --> $DIR/main.rs:808:27
+   |
+LL |     let _a: Option<i32> = env.storage().instance().get(&key);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:809:27
+   |
+LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: redundant storage read: this key was already read without modification
   --> $DIR/main.rs:814:29
    |
@@ -488,6 +528,14 @@ LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should W
    |
    = help: store the value from the first read and reuse it instead of reading again
 
+warning: storage read result is discarded
+  --> $DIR/main.rs:814:29
+   |
+LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: redundant storage read: this key was already read without modification
   --> $DIR/main.rs:819:14
    |
@@ -495,6 +543,22 @@ LL |     let _b = env.storage().instance().has(&key); // Should Warn
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: store the value from the first read and reuse it instead of reading again
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:818:14
+   |
+LL |     let _a = env.storage().instance().has(&key);
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:819:14
+   |
+LL |     let _b = env.storage().instance().has(&key); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
 
 warning: persistent storage read without TTL extension — archival cost cliff
   --> $DIR/main.rs:823:27
@@ -520,6 +584,22 @@ LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should W
    |
    = help: store the value from the first read and reuse it instead of reading again
 
+warning: storage read result is discarded
+  --> $DIR/main.rs:823:27
+   |
+LL |     let _a: Option<i32> = env.storage().persistent().get(&key);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:824:27
+   |
+LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: redundant storage read: this key was already read without modification
   --> $DIR/main.rs:829:27
    |
@@ -528,5 +608,77 @@ LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Wa
    |
    = help: store the value from the first read and reuse it instead of reading again
 
-error: aborting due to 3 previous errors; 62 warnings emitted
+warning: storage read result is discarded
+  --> $DIR/main.rs:828:27
+   |
+LL |     let _a: Option<i32> = env.storage().temporary().get(&key);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:829:27
+   |
+LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:833:27
+   |
+LL |     let _a: Option<i32> = env.storage().instance().get(&key);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:835:27
+   |
+LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:839:27
+   |
+LL |     let _a: Option<i32> = env.storage().instance().get(&key1);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:840:27
+   |
+LL |     let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:844:27
+   |
+LL |     let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:849:27
+   |
+LL |     let _a: Option<i32> = env.storage().instance().get(&key);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/main.rs:850:27
+   |
+LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+error: aborting due to 3 previous errors; 84 warnings emitted
 

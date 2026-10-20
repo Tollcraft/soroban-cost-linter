@@ -18,11 +18,15 @@
 //! `check_expr` fires for every expression in the crate, so the guards are
 //! ordered cheapest-first and each one that fails returns immediately:
 //!
-//! 1. The expression must desugar to a `for` loop. `while` and `loop` are
-//!    skipped — their bounds are not reliably recoverable, and flagging them
-//!    produced false positives on deliberately bounded loops.
-//! 2. The loop must iterate over caller-supplied input ([`iterates_over_input`]).
-//! 3. The body must contain a storage write ([`contains_storage_write`]).
+//! 1. The expression must be a loop. `for` loops are matched through
+//!    [`higher::ForLoop`]; `while` loops are checked through their condition
+//!    (the block's tail expression), and a bare `loop` through the
+//!    caller-derived condition guarding its `break`. A `loop` with no such
+//!    exit condition is not caller-controlled and stays silent.
+//! 2. The iteration must be driven by caller-supplied input ([`iterates_over_input`]
+//!    for `for` loops, [`bound_is_caller_controlled`] for the other forms).
+//! 3. The body must contain a storage write ([`contains_storage_write`] /
+//!    [`block_contains_storage_write`]).
 //!
 //! Because step 1 hands us the loop body as part of the same
 //! [`higher::ForLoop`] match, step 3 reuses it rather than re-running
@@ -38,8 +42,9 @@
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::higher;
+use rustc_hir::def::Res;
 use rustc_hir::intravisit::{Visitor, walk_expr};
-use rustc_hir::{Expr, ExprKind, QPath};
+use rustc_hir::{BinOpKind, Expr, ExprKind, LoopSource, Node, QPath};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
@@ -68,44 +73,77 @@ const COLLECTION_FRAGMENTS: &[&str] = &["Vec", "Map", "Array", "Bytes", "Set"];
 /// substring-wise for the same reason as [`COLLECTION_FRAGMENTS`].
 const STORAGE_TYPE_FRAGMENTS: &[&str] = &["Storage", "Instance", "Persistent", "Temporary"];
 
+/// Message reported for a caller-driven loop that writes to storage.
+const UNBOUNDED_INPUT_LOOP_MSG: &str = "loop is driven by caller-supplied input and performs storage writes \
+     inside the loop body";
+
+/// Help note attached to [`UNBOUNDED_INPUT_LOOP_MSG`].
+const UNBOUNDED_INPUT_LOOP_HELP: &str = "the number of iterations is controlled by the caller and each iteration \
+     performs a storage write; bound the loop (e.g. cap iterations or batch the \
+     writes) so a single invocation cannot exhaust the budget";
+
 /// Late pass backing [`UNBOUNDED_INPUT_LOOP`].
 impl<'tcx> LateLintPass<'tcx> for UnboundedInputLoop {
-    /// Reports a `for` loop that iterates over caller-supplied input and
-    /// writes to storage in its body.
+    /// Reports a loop that is driven by caller-supplied input and writes to
+    /// storage in its body. All three loop forms are recognized: `for` over a
+    /// caller-supplied collection, `while` with a caller-derived condition,
+    /// and a bare `loop` whose `break` is guarded by a caller-derived
+    /// condition.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
-        // Only `for` loops over a caller-supplied collection are recognized
-        // as input-driven iteration. `while`/`loop` forms are conservatively
-        // skipped to avoid flagging intentionally bounded loops.
+        // `for` loops over a caller-supplied collection are recognized as
+        // input-driven iteration.
         //
         // `body` is carried out of this match so the write check below does
         // not have to desugar the loop a second time to recover it.
-        let Some(higher::ForLoop {
+        if let Some(higher::ForLoop {
             arg: iter, body, ..
         }) = higher::ForLoop::hir(expr)
-        else {
+        {
+            if iterates_over_input(cx, iter) && contains_storage_write(cx, body) {
+                report(cx, expr.span);
+            }
+            return;
+        }
+
+        let ExprKind::Loop(block, _label, source, _) = expr.kind else {
             return;
         };
 
-        if !iterates_over_input(cx, iter) {
-            return;
+        match source {
+            // `while i < count`: the condition is the block's tail
+            // expression; the statements are the body.
+            LoopSource::While => {
+                if let Some(cond) = block.expr
+                    && bound_is_caller_controlled(cx, cond)
+                    && block_contains_storage_write(cx, block)
+                {
+                    report(cx, expr.span);
+                }
+            }
+            // A bare `loop` has no condition of its own; it is caller-driven
+            // exactly when its exit is a `break` guarded by a caller-derived
+            // comparison.
+            LoopSource::Loop => {
+                if exit_is_caller_controlled(cx, block) && block_contains_storage_write(cx, block) {
+                    report(cx, expr.span);
+                }
+            }
+            // Desugared `for` loops were handled by `higher::ForLoop` above.
+            LoopSource::ForLoop => {}
         }
-
-        if !contains_storage_write(cx, body) {
-            return;
-        }
-
-        span_lint_and_help(
-            cx,
-            UNBOUNDED_INPUT_LOOP,
-            expr.span,
-            "loop is driven by caller-supplied input and performs storage writes \
-             inside the loop body",
-            None,
-            "the number of iterations is controlled by the caller and each iteration \
-             performs a storage write; bound the loop (e.g. cap iterations or batch the \
-             writes) so a single invocation cannot exhaust the budget",
-        );
     }
+}
+
+/// Emits the lint at `span`.
+fn report(cx: &LateContext<'_>, span: rustc_span::Span) {
+    span_lint_and_help(
+        cx,
+        UNBOUNDED_INPUT_LOOP,
+        span,
+        UNBOUNDED_INPUT_LOOP_MSG,
+        None,
+        UNBOUNDED_INPUT_LOOP_HELP,
+    );
 }
 
 /// Returns `true` when `iter` yields values whose count depends on a
@@ -147,6 +185,45 @@ fn is_input_driven(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     }
 }
 
+/// Whether a `while` condition or a `break` guard is controlled by the
+/// caller: a numeric comparison (`<`, `<=`, `>`, `>=`) with at least one side
+/// derived from caller input.
+fn bound_is_caller_controlled(cx: &LateContext<'_>, cond: &Expr<'_>) -> bool {
+    match cond.kind {
+        ExprKind::Binary(op, lhs, rhs) => {
+            matches!(
+                op.node,
+                BinOpKind::Lt | BinOpKind::Le | BinOpKind::Gt | BinOpKind::Ge
+            ) && (is_caller_bound(cx, lhs) || is_caller_bound(cx, rhs))
+        }
+        _ => false,
+    }
+}
+
+/// Whether one side of a loop-bound comparison is caller-controlled: either
+/// a caller-supplied collection (or its `.len()`, reusing [`is_input_driven`]),
+/// or an unvalidated contract parameter.
+fn is_caller_bound(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
+    is_input_driven(cx, expr) || is_unvalidated_parameter(cx, expr)
+}
+
+/// Whether `expr` is a function parameter, read directly.
+///
+/// A parameter's binding pattern hangs directly off the function's parameter
+/// list, so its parent node is a [`Node::Param`]. A local introduced by `let`
+/// — including a validated or clamped copy of a parameter — has a
+/// `Node::LetStmt` parent instead and does not match. That is the distinction
+/// this lint relies on to stay silent on validated bounds.
+fn is_unvalidated_parameter(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
+    let ExprKind::Path(QPath::Resolved(None, path)) = expr.kind else {
+        return false;
+    };
+    let Res::Local(binding) = path.res else {
+        return false;
+    };
+    matches!(cx.tcx.parent_hir_node(binding), Node::Param(_))
+}
+
 /// Conservatively treats any value whose type name matches a known Soroban
 /// collection name as being supplied by the caller.
 ///
@@ -182,6 +259,99 @@ fn contains_storage_write<'tcx>(cx: &LateContext<'tcx>, body: &'tcx Expr<'tcx>) 
     let mut visitor = WriteVisitor { cx, found: false };
     visitor.visit_expr(body);
     visitor.found
+}
+
+/// Returns `true` when any statement of `block` performs a storage write.
+///
+/// Used for `while` and `loop` bodies, which arrive as a `Block` whose tail
+/// expression is the condition or a trailing value rather than loop body
+/// content, so only the statements are scanned.
+fn block_contains_storage_write<'tcx>(
+    cx: &LateContext<'tcx>,
+    block: &'tcx rustc_hir::Block<'tcx>,
+) -> bool {
+    block.stmts.iter().any(|stmt| {
+        let mut visitor = WriteVisitor { cx, found: false };
+        visitor.visit_stmt(stmt);
+        visitor.found
+    })
+}
+
+/// Whether a bare `loop` exits through a `break` whose guard is controlled by
+/// the caller, e.g. `if i >= count { break; }` with `count` a parameter.
+fn exit_is_caller_controlled<'tcx>(
+    cx: &LateContext<'tcx>,
+    block: &'tcx rustc_hir::Block<'tcx>,
+) -> bool {
+    let mut finder = ControlledBreakFinder { cx, found: false };
+    finder.visit_block(block);
+    finder.found
+}
+
+/// Searches a loop body for a caller-derived `if` guarding a `break`,
+/// stopping at the first one found.
+///
+/// A `break` inside a nested loop breaks *that* loop, not the one being
+/// examined, so the walk does not descend into nested `Loop` expressions.
+struct ControlledBreakFinder<'v, 'tcx> {
+    cx: &'v LateContext<'tcx>,
+    found: bool,
+}
+
+impl<'v, 'tcx> Visitor<'tcx> for ControlledBreakFinder<'v, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        if self.found {
+            return;
+        }
+
+        if matches!(expr.kind, ExprKind::Loop(..)) {
+            return;
+        }
+
+        if let ExprKind::If(cond, then_block, _) = expr.kind
+            && bound_is_caller_controlled(self.cx, cond)
+            && block_has_unlabeled_break(then_block)
+        {
+            self.found = true;
+            return;
+        }
+
+        walk_expr(self, expr);
+    }
+}
+
+/// Whether the `then` side of a caller-derived `if` contains an (unlabeled)
+/// `break` that would exit the surrounding loop. Nested loops are skipped for
+/// the same reason as in [`ControlledBreakFinder`].
+fn block_has_unlabeled_break<'tcx>(then: &'tcx Expr<'tcx>) -> bool {
+    let mut finder = UnlabeledBreakFinder { found: false };
+    finder.visit_expr(then);
+    finder.found
+}
+
+struct UnlabeledBreakFinder {
+    found: bool,
+}
+
+impl<'hir> Visitor<'hir> for UnlabeledBreakFinder {
+    fn visit_expr(&mut self, expr: &'hir Expr<'hir>) {
+        if self.found {
+            return;
+        }
+
+        if matches!(expr.kind, ExprKind::Loop(..)) {
+            return;
+        }
+
+        if let ExprKind::Break(destination, _) = expr.kind
+            && destination.label.is_none()
+        {
+            self.found = true;
+            return;
+        }
+
+        walk_expr(self, expr);
+    }
 }
 
 /// Searches a loop body for a storage write, stopping at the first one found.

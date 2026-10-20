@@ -269,6 +269,42 @@ fn test_explain_text() {
 }
 
 #[test]
+fn test_explain_kebab_case_name_matches_snake_case() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let kebab = Command::new(bin_path)
+        .arg("--explain")
+        .arg("ledger-context-read-in-loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+    assert!(
+        kebab.status.success(),
+        "kebab-case lint name should resolve successfully"
+    );
+
+    let snake = Command::new(bin_path)
+        .arg("--explain")
+        .arg("ledger_context_read_in_loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+    assert!(
+        snake.status.success(),
+        "snake_case lint name should resolve successfully"
+    );
+
+    let kebab_json: serde_json::Value =
+        serde_json::from_slice(&kebab.stdout).expect("kebab-case output is not valid JSON");
+    let snake_json: serde_json::Value =
+        serde_json::from_slice(&snake.stdout).expect("snake_case output is not valid JSON");
+    assert_eq!(kebab_json["name"], snake_json["name"]);
+    assert_eq!(kebab_json["markdown"], snake_json["markdown"]);
+}
+
+#[test]
 fn test_explain_unknown_lint() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 

@@ -5,6 +5,6 @@ edition = "2021"
 publish = false
 
 [dependencies]
-soroban-sdk = "26"
+soroban-sdk = { version = "28", features = ["testutils"] }
 
 [workspace]

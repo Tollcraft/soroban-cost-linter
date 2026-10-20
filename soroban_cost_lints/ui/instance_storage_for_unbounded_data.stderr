@@ -1,3 +1,12 @@
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:72:34
+   |
+LL |     let _existing: Option<Vec> = env.storage().instance().get(&1u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
 warning: unbounded collection written to instance storage
   --> $DIR/instance_storage_for_unbounded_data.rs:74:5
    |
@@ -7,6 +16,14 @@ LL |     env.storage().instance().set(&1u32, &items); // Should Warn
    = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
    = note: `#[warn(instance_storage_for_unbounded_data)]` on by default
 
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:78:34
+   |
+LL |     let _existing: Option<Map> = env.storage().instance().get(&2u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: unbounded collection written to instance storage
   --> $DIR/instance_storage_for_unbounded_data.rs:80:5
    |
@@ -15,6 +32,14 @@ LL |     env.storage().instance().set(&2u32, &entries); // Should Warn
    |
    = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
 
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:84:36
+   |
+LL |     let _existing: Option<Bytes> = env.storage().instance().get(&3u32);
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: unbounded collection written to instance storage
   --> $DIR/instance_storage_for_unbounded_data.rs:86:5
    |
@@ -22,6 +47,30 @@ LL |     env.storage().instance().set(&3u32, &blob); // Should Warn
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: instance storage is read and rewritten as a single blob on every invocation of the contract, not just calls that touch this field, so a growing Vec/Map/Bytes here means every future call pays for the whole collection's current size and the fee climbs unnoticed across the contract's life without showing up in any single-call test; persistent storage, keyed per entry, is the structurally correct shape for unbounded data
+
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:98:34
+   |
+LL |     let _existing: Option<u32> = env.storage().instance().get(&4u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:103:39
+   |
+LL |     let _existing: Option<[u8; 32]> = env.storage().instance().get(&5u32);
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:109:37
+   |
+LL |     let _existing: Option<Config> = env.storage().instance().get(&6u32);
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
 
 warning: persistent storage read without TTL extension — archival cost cliff
   --> $DIR/instance_storage_for_unbounded_data.rs:117:34
@@ -32,5 +81,21 @@ LL |     let _existing: Option<Vec> = env.storage().persistent().get(&7u32);
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
    = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
 
-warning: 4 warnings emitted
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:117:34
+   |
+LL |     let _existing: Option<Vec> = env.storage().persistent().get(&7u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/instance_storage_for_unbounded_data.rs:124:34
+   |
+LL |     let _existing: Option<Vec> = env.storage().instance().get(&8u32);
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: 12 warnings emitted
 

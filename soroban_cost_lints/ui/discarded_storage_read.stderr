@@ -24,8 +24,16 @@ LL |     env.storage().persistent().get::<u32, i32>(&1); //~ WARNING storage rea
    |
    = help: delete the storage read or use its returned value
 
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read.rs:57:19
+   |
+LL |     let _cached = env.storage().instance().get::<u32, i32>(&1); //~ WARNING storage read result is discarded
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/discarded_storage_read.rs:59:8
+  --> $DIR/discarded_storage_read.rs:74:8
    |
 LL |     if env.storage().persistent().has(&1) {
    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -33,7 +41,7 @@ LL |     if env.storage().persistent().has(&1) {
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/discarded_storage_read.rs:60:17
+  --> $DIR/discarded_storage_read.rs:75:17
    |
 LL |         let _ = env.storage().persistent().get::<u32, i32>(&1);
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -41,12 +49,12 @@ LL |         let _ = env.storage().persistent().get::<u32, i32>(&1);
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: storage read result is discarded
-  --> $DIR/discarded_storage_read.rs:60:17
+  --> $DIR/discarded_storage_read.rs:75:17
    |
 LL |         let _ = env.storage().persistent().get::<u32, i32>(&1);
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: delete the storage read or use its returned value
 
-warning: 6 warnings emitted
+warning: 7 warnings emitted
 

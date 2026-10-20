@@ -417,3 +417,36 @@ fn bench_storage_key_construction_in_loop() {
         }
     });
 }
+
+// ── string_concat_in_loop ──────────────────────────────────────────────────
+
+#[test]
+fn bench_string_concat_in_loop_vs_batch() {
+    let env = Env::default();
+
+    // ── Bad: repeated String::append in loop (O(n²) host copies) ──
+    measure(&env, "string_concat_in_loop", "bad", "String::append in loop", || {
+        let mut result = soroban_sdk::String::from_str(&env, "");
+        for _ in 0..ITER_COUNT {
+            let piece = soroban_sdk::String::from_str(&env, "x");
+            result = result.append(&piece);
+        }
+        std::hint::black_box(&result);
+    });
+
+    // ── Good: accumulate in native String, construct once ──
+    // Note: the soroban_sdk::String host type is immutable and does not expose
+    // capacity pre-allocation or in-place growth methods. The closest honest
+    // single-allocation equivalent is accumulating in a native Rust String with
+    // capacity pre-allocated up front, then performing a single host-side
+    // String::from_str allocation once after the loop.
+    measure(&env, "string_concat_in_loop", "good", "native String + from_str", || {
+        let mut native = std::string::String::with_capacity(ITER_COUNT as usize);
+        for _ in 0..ITER_COUNT {
+            native.push('x');
+        }
+        let result = soroban_sdk::String::from_str(&env, &native);
+        std::hint::black_box(&result);
+    });
+}
+
