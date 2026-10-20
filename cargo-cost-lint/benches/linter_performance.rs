@@ -273,9 +273,9 @@ fn threshold_percent() -> f64 {
 /// environment that value is used; otherwise `target_dir` is passed so the
 /// freshly built library is found automatically.
 ///
-/// Panics when the linter process cannot be spawned or exits with a non-zero
-/// status, which would indicate a broken environment rather than a performance
-/// regression.
+/// Panics when the linter process cannot be spawned, or exits with a non-zero
+/// status while emitting no output on stdout (indicating a broken environment
+/// or compilation failure rather than expected deny-level findings).
 fn run_linter(linter: &Path, contract: &Path, target_dir: &Path) -> Duration {
     let started = Instant::now();
     let output = Command::new(linter)
@@ -288,15 +288,27 @@ fn run_linter(linter: &Path, contract: &Path, target_dir: &Path) -> Duration {
                 .unwrap_or_else(|| target_dir.as_os_str().to_os_string()),
         )
         .output()
-        .unwrap_or_else(|error| panic!("failed to execute {:?}: {error}", linter));
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to execute {:?} for {:?}: {error}",
+                linter,
+                contract.file_name().unwrap_or_default()
+            )
+        });
+    let elapsed = started.elapsed();
 
-    assert!(
-        output.status.success(),
-        "linter failed for {:?}:\n{}",
-        contract.file_name().unwrap_or_default(),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    started.elapsed()
+    if !output.status.success() {
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        if stdout_str.trim().is_empty() {
+            panic!(
+                "linter failed for {:?}:\n{}",
+                contract.file_name().unwrap_or_default(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    elapsed
 }
 
 /// Computes the value at the given `percentile` (0–100) from a **sorted**

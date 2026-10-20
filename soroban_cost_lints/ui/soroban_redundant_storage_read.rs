@@ -72,6 +72,20 @@ fn redundant_read_persistent(env: Env) {
     let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
 }
 
+// Fires: try_get is also a metered read and repeats the same key without an
+// intervening write.
+fn redundant_try_get(env: Env) {
+    let _: Option<i32> = env.storage().instance().try_get(&1);
+    let _: Option<i32> = env.storage().instance().try_get(&1); // Should Warn
+}
+
+// Fires: a `get` followed by `try_get` is still the same read, just observed by a
+// different accessor method.
+fn redundant_get_then_try_get(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&1);
+    let _: Option<i32> = env.storage().instance().try_get(&1); // Should Warn
+}
+
 // Near-miss: a write between the reads clears the tracked key, so the second
 // read is not redundant and must NOT be flagged.
 fn read_write_read(env: Env) {
