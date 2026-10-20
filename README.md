@@ -166,6 +166,8 @@ The cache key is computed deterministically from:
 - **Linter Version:** The version of `cargo-cost-lint`.
 - **Toolchain:** Active `rustc` compiler version and commit.
 - **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+- **Diff Scope:** Whether the run is a full run or `--diff-only`; a cached full-run result is never replayed for a filtered run or the reverse.
+- **`.lintignore`:** Content hash of the resolved `.lintignore`; its absence counts as a distinct input, so adding one invalidates earlier entries.
 
 Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
 
