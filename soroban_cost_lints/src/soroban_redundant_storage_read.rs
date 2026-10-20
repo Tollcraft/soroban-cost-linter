@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn method_tables_and_messages_are_pinned() {
-        assert_eq!(STORAGE_READ_METHODS, ["get", "has"]);
+        assert_eq!(STORAGE_READ_METHODS, ["get", "try_get", "has"]);
         assert_eq!(STORAGE_WRITE_METHOD, "set");
         assert!(!SOROBAN_REDUNDANT_STORAGE_READ_MSG.is_empty());
         assert!(!SOROBAN_REDUNDANT_STORAGE_READ_HELP.is_empty());
