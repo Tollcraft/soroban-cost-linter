@@ -5,7 +5,6 @@
 //! copies and converts the byte slice into a host-backed string each time.
 
 use clippy_utils::diagnostics::span_lint_and_help;
-use clippy_utils::res::MaybeResPath;
 use rustc_hir::{Expr, ExprKind};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;

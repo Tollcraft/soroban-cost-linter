@@ -29,6 +29,7 @@ pub mod soroban_sdk {
         pub struct Instance;
         impl Instance {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
         }
@@ -36,6 +37,7 @@ pub mod soroban_sdk {
         pub struct Persistent;
         impl Persistent {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
             pub fn extend_ttl<K>(&self, _k: &K, _ttl: &()) {}
@@ -44,6 +46,7 @@ pub mod soroban_sdk {
         pub struct Temporary;
         impl Temporary {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
         }
