@@ -19,5 +19,18 @@ LL | |     }
    |
    = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
 
-warning: 2 warnings emitted
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:89:5
+   |
+LL | /     loop {
+LL | |         env.storage().instance().set(&i, &i); // Should Warn
+LL | |         i += 1;
+LL | |         if i >= count {
+...  |
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 3 warnings emitted
 

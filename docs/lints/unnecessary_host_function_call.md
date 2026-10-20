@@ -9,16 +9,23 @@
 Flags calls to Soroban host functions inside a loop body when the call takes the
 same inputs on every iteration.
 
-The lint covers the host accessors reachable from `Env`:
+The lint covers the host accessors reachable from `Env`. The receiver types
+matched by `SOROBAN_HOST_TYPES` are all `pub` types of the pinned SDKs
+(soroban-sdk 26.1.1 and 28.0.0):
 
 | Accessor                        | Type(s) matched                                             |
 | ------------------------------- | ----------------------------------------------------------- |
 | `env.ledger()`                  | `soroban_sdk::ledger::Ledger`                                |
-| `env.crypto()`                  | `soroban_sdk::crypto::Crypto`, `CryptoHazmat`, `Bls12_381`, `Bn254` |
+| `env.crypto()`                  | `soroban_sdk::crypto::Crypto`, `Bls12_381`, `Bn254`          |
 | `env.prng()`                    | `soroban_sdk::prng::Prng`                                    |
 | `env.events()`                  | `soroban_sdk::events::Events`                                |
+| `env.logs()`                    | `soroban_sdk::logs::Logs` (the `log!` macro expands to it)   |
 | `env.deployer()`                | `soroban_sdk::deploy::Deployer`, `DeployerWithAddress`, `DeployerWithAsset` |
 | `env.current_contract_address()`| `soroban_sdk::Env`                                           |
+
+The `crypto::CryptoHazmat` row was removed as dead: the type is
+`pub(crate)` in both pinned SDKs with a `pub(crate)` constructor, so no
+user expression can ever have that receiver type.
 
 Storage accessors (`env.storage()`) are handled by
 [`soroban_storage_in_loop`](soroban_storage_in_loop.md) instead, so they are not

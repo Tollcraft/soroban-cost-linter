@@ -64,7 +64,7 @@ cargo install cargo-dylint dylint-link --version "^6.0.1"
 cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 ```
 
-### 4. Clone and build the linter (filesystem matters)
+### 4. Clone and build the lint library (filesystem matters)
 
 Open the Ubuntu shell **from inside WSL2**, not from `/mnt/c/`:
 
@@ -89,7 +89,27 @@ cargo build
 checkout under `~/` and add a symlink from the original location. The Linux-side
 `target/` directory will then live on the much faster Linux filesystem.
 
-### 5. Run the linter
+### 5. Make the lint library discoverable by Dylint
+
+`cargo build` produces the cdylib inside `target/debug/`, but `cargo cost-lint`
+cannot find it unless you tell Dylint where to look. Verify the artifact exists:
+
+```bash
+ls target/debug/libsoroban_cost_lints@*
+# Expected: target/debug/libsoroban_cost_lints@nightly-2026-04-16.so
+```
+
+Then either set `DYLINT_LIBRARY_PATH` (one-time per shell):
+
+```bash
+export DYLINT_LIBRARY_PATH="$PWD/target/debug"
+```
+
+…or use `cargo dylint --lib` from the repo root, which resolves the library
+automatically. See the [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library)
+section of `docs/troubleshooting.md` for more detail.
+
+### 6. Run the linter
 
 ```bash
 # From the root of your Soroban contract workspace (still inside WSL2)
@@ -225,7 +245,7 @@ For a single shell session, you can also add it temporarily:
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 ```
 
-### 4. Clone and build the linter
+### 4. Clone and build the lint library
 
 ```powershell
 git clone https://github.com/Tollcraft/soroban-cost-linter.git
@@ -233,7 +253,27 @@ cd soroban-cost-linter
 cargo build
 ```
 
-### 5. Run the linter on a contract
+### 5. Make the lint library discoverable by Dylint
+
+`cargo build` produces the cdylib inside `target\debug\`, but `cargo cost-lint`
+cannot find it unless you tell Dylint where to look. Verify the artifact exists:
+
+```powershell
+Get-ChildItem target\debug\soroban_cost_lints@*
+# Expected: target\debug\soroban_cost_lints@nightly-2026-04-16.dll
+```
+
+Then either set `DYLINT_LIBRARY_PATH` (one-time per shell):
+
+```powershell
+$env:DYLINT_LIBRARY_PATH = "$PWD\target\debug"
+```
+
+…or use `cargo dylint --lib` from the repo root, which resolves the library
+automatically. See the [cargo dylint cannot find the lint library](troubleshooting.md#cargo-dylint-cannot-find-the-lint-library)
+section of `docs/troubleshooting.md` for more detail.
+
+### 6. Run the linter on a contract
 
 ```powershell
 cd path\to\my-soroban-contract

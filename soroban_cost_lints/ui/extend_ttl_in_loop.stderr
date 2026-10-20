@@ -1,27 +1,51 @@
 warning: extend_ttl called inside a loop
-  --> $DIR/extend_ttl_in_loop.rs:66:9
+  --> $DIR/extend_ttl_in_loop.rs:72:9
    |
 LL |         env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
    = note: `#[warn(extend_ttl_in_loop)]` on by default
 
 warning: extend_ttl called inside a loop
-  --> $DIR/extend_ttl_in_loop.rs:74:9
+  --> $DIR/extend_ttl_in_loop.rs:80:9
    |
 LL |         env.storage().persistent().extend_ttl(&keys[i], TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
 
 warning: extend_ttl called inside a loop
-  --> $DIR/extend_ttl_in_loop.rs:83:9
+  --> $DIR/extend_ttl_in_loop.rs:89:9
    |
 LL |         env.storage().temporary().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: each extend_ttl call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extend_ttl call after the loop (if the entries share one accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
 
-warning: 3 warnings emitted
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:100:9
+   |
+LL |         env.storage().persistent().extend_ttl_with_limits(k, TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
+
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:109:9
+   |
+LL |         env.storage().instance().extend_ttl_with_limits(TTL_EXTEND_TO, TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
+
+warning: extend_ttl called inside a loop
+  --> $DIR/extend_ttl_in_loop.rs:121:9
+   |
+LL |         env.storage().temporary().extend_ttl_with_limits(&key, TTL_THRESHOLD, TTL_EXTEND_TO); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each extend_ttl/extend_ttl_with_limits call is a separate metered host call that also writes ledger state, so calling it once per iteration multiplies both costs by the iteration count; batch the extension by collecting the keys/entries first and making a single extension call after the loop (if the entries share one keyed accessor, e.g. multiple keys under Persistent), or extend once with a threshold sized generously enough to cover the whole batch instead of refreshing per-entry per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes threshold arguments rather than a key, so prefer a single generous extension there
+
+warning: 6 warnings emitted
 

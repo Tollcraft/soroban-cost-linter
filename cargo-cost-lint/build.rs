@@ -604,6 +604,95 @@ fn parse_toolchain_channel(toolchain_path: &Path) -> Result<String> {
 /// Updated manually when the minimum supported version changes.
 const DYLINT_VERSION_CONSTRAINT: &str = "^6.0.1";
 
+/// Workspace-relative files that repeat the `cargo-dylint` install pin as a
+/// `--version "<constraint>"` argument to `cargo install`.
+///
+/// The pinned nightly has a drift guard (`lint.yml` compares `rust-toolchain`
+/// against the schedule); this constant had none. Bumping an install line in
+/// only one of these files while leaving `DYLINT_VERSION_CONSTRAINT` alone
+/// makes `cargo cost-lint --version` advertise a constraint the CI using it
+/// does not install, so `check_dylint_version_pins` fails the build when the
+/// two sides drift apart.
+///
+/// `soroban_cost_lints/Cargo.toml`'s `dylint` dev-dependency table is
+/// deliberately not a pin site, and `CONTRIBUTING.md`'s prose mentions are
+/// not gated either; this gate covers only the executable install lines.
+const DYLINT_PIN_SITES: &[&str] = &[
+    ".github/workflows/lint.yml",
+    ".github/workflows/nightly-bump.yml",
+    "action.yml",
+    "Dockerfile",
+    "templates/github-action.yml",
+];
+
+/// Collect every `--version "<constraint>"` argument in `content` as
+/// (1-based line, constraint) pairs. Lines with an unterminated quote are
+/// ignored.
+fn extract_version_constraints(content: &str) -> Vec<(usize, String)> {
+    const FLAG: &str = "--version \"";
+    let mut found = Vec::new();
+    for (lineno, line) in content.lines().enumerate() {
+        let mut offset = 0;
+        while let Some(rel) = line[offset..].find(FLAG) {
+            let start = offset + rel + FLAG.len();
+            match line[start..].find('"') {
+                Some(end) => {
+                    found.push((lineno + 1, line[start..start + end].to_string()));
+                    offset = start + end;
+                }
+                None => break,
+            }
+        }
+    }
+    found
+}
+
+/// Read-only drift gate for the duplicated `cargo-dylint` version pin.
+///
+/// Resolves every [`DYLINT_PIN_SITES`] file against the workspace root
+/// (`manifest_dir/..`), extracts each `--version "..."` constraint and
+/// returns `Err(Error::Parse)` naming both sides (the constant here and the
+/// offending line) when any differs from `DYLINT_VERSION_CONSTRAINT`.
+///
+/// A pin site that does not exist is skipped, not failed: that is exactly
+/// the packaged-crate branch of [`run()`] (`build.rs` selects `lint-data/`
+/// when `../soroban_cost_lints/src/lib.rs` is absent), where `cargo package`
+/// has stripped the workspace siblings from the shipped tarball. For the
+/// same reason no `rerun-if-changed` directive is emitted for a missing
+/// file — cargo treats a nonexistent watched path as always-dirty.
+fn check_dylint_version_pins(manifest_dir: &Path) -> Result<()> {
+    let workspace_root = manifest_dir.join("..");
+    for rel in DYLINT_PIN_SITES {
+        let path = workspace_root.join(rel);
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(Error::Parse(format!(
+                    "Failed to read {}: {}",
+                    path.display(),
+                    e
+                )));
+            }
+        };
+        println!("cargo:rerun-if-changed=../{}", rel);
+        for (lineno, constraint) in extract_version_constraints(&content) {
+            if constraint != DYLINT_VERSION_CONSTRAINT {
+                return Err(Error::Parse(format!(
+                    "cargo-dylint version pin drift: `cargo-cost-lint/build.rs` advertises \
+                     DYLINT_VERSION_CONSTRAINT \"{DYLINT_VERSION_CONSTRAINT}\" to `cargo \
+                     cost-lint --version`, but the install line at {}:{} pins --version \
+                     \"{}\". Update both sides together.",
+                    path.display(),
+                    lineno,
+                    constraint
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     // cargo-cost-lint embeds compile-time metadata, documentation explanations,
     // and the pinned toolchain version. Inside the workspace these are read from
@@ -635,6 +724,11 @@ fn run() -> Result<()> {
             "lint-data/docs",
         )
     };
+
+    // Gate the duplicated cargo-dylint version pin against the workspace CI
+    // install lines. A no-op on the packaged-crate branch above, where the
+    // pin sites are absent.
+    check_dylint_version_pins(&manifest_dir)?;
 
     if !lib_rs_path.exists() {
         return Err(Error::Parse(format!(
@@ -1728,5 +1822,106 @@ mod tests {
                 .unwrap()
                 .contains("ws-channel")
         );
+    }
+
+    // ---- cargo-dylint pin gate ------------------------------------------
+
+    #[test]
+    fn extract_version_constraints_finds_every_pin() {
+        let content = "\
+run: cargo install cargo-dylint dylint-link --version \"^6.0.1\" --locked
+two on one line: --version \"a\" and --version \"b\"
+unterminated --version \"oops
+no flag here\n";
+        assert_eq!(
+            extract_version_constraints(content),
+            vec![
+                (1, "^6.0.1".to_string()),
+                (2, "a".to_string()),
+                (2, "b".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn pin_gate_accepts_matching_site_and_skips_missing_sites() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pkg = root.join("cargo-cost-lint");
+        fs::create_dir_all(&pkg).unwrap();
+        write(
+            root,
+            DYLINT_PIN_SITES[0],
+            "        run: cargo install cargo-dylint dylint-link --version \"^6.0.1\" --locked\n",
+        );
+        assert!(check_dylint_version_pins(&pkg).is_ok());
+
+        // No site exists at all: the packaged-crate branch, a no-op not a failure.
+        let bare = tempfile::tempdir().unwrap();
+        assert!(check_dylint_version_pins(&bare.path().join("pkg")).is_ok());
+    }
+
+    #[test]
+    fn pin_gate_reports_drift_naming_both_sides() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pkg = root.join("cargo-cost-lint");
+        fs::create_dir_all(&pkg).unwrap();
+        write(
+            root,
+            "action.yml",
+            "header\n    run: cargo install cargo-dylint dylint-link --version \"^5.0.0\" --locked\n",
+        );
+        let msg = parse_err(check_dylint_version_pins(&pkg));
+        assert!(msg.contains(DYLINT_VERSION_CONSTRAINT), "{msg}");
+        assert!(msg.contains("\"^5.0.0\""), "{msg}");
+        assert!(msg.contains("action.yml:2"), "{msg}");
+    }
+
+    #[test]
+    fn pin_gate_surfaces_unreadable_site() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pkg = root.join("cargo-cost-lint");
+        fs::create_dir_all(&pkg).unwrap();
+        fs::create_dir_all(root.join("action.yml")).unwrap();
+        assert!(parse_err(check_dylint_version_pins(&pkg)).contains("Failed to read"));
+    }
+
+    #[test]
+    fn run_passes_gate_on_packaged_crate_snapshot() {
+        // `fixture()` lays out a packaged tree: every DYLINT_PIN_SITES file is
+        // absent, so the gate is skipped, not failed, on the snapshot branch.
+        let f = fixture(&valid_lib(), &["lint_a", "lint_b"]);
+        run_with(Some(&f.pkg), Some(&f.out)).unwrap();
+    }
+
+    #[test]
+    fn run_fails_when_a_workspace_pin_site_drifts_from_build_rs() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg = dir.path().join("cargo-cost-lint");
+        let out = dir.path().join("out");
+        fs::create_dir_all(&pkg).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        write(dir.path(), "soroban_cost_lints/src/lib.rs", &valid_lib());
+        write(
+            dir.path(),
+            "rust-toolchain",
+            "[toolchain]\nchannel = \"ws-channel\"\n",
+        );
+        write(dir.path(), "docs/lints/lint_a.md", "a");
+        write(dir.path(), "docs/lints/lint_b.md", "b");
+        write(
+            dir.path(),
+            "Dockerfile",
+            "FROM scratch\n    cargo install cargo-dylint dylint-link --version \"^7.0.0\" --locked && \\\n",
+        );
+        let msg = parse_err(run_with(Some(&pkg), Some(&out)));
+        assert!(msg.contains("pin drift"), "{msg}");
+        assert!(
+            msg.contains(DYLINT_VERSION_CONSTRAINT) && msg.contains("\"^7.0.0\""),
+            "{msg}"
+        );
+        assert!(msg.contains("Dockerfile:2"), "{msg}");
     }
 }

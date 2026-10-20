@@ -38,8 +38,10 @@ Measured with `Env::default()` in the [`cost_benchmarks`](https://github.com/Tol
 
 | Pattern | Iterations | CPU instructions (delta) | Memory bytes (delta) |
 | --- | --- | --- | --- |
-| `Symbol::new(&env, "hello")` (bad) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+| `Symbol::new(&env, "hello")` (bad) | 100 | 0 | 0 |
 | `symbol_short!("hello")` (good) | 100 | ≈ 0 (compile-time constant) | ≈ 0 (compile-time constant) |
+
+The bad-row figures are the `cpu:` / `mem:` deltas printed by `cd cost_benchmarks && cargo test bench_symbol_new_vs_short -- --nocapture` over the harness's 100 iterations (`ITER_COUNT = 100`); they read 0 because native SDK-side symbol construction consumes no metered host work in the `Env::default()` test environment — see the measurement caveats in `cost_benchmarks/src/lib.rs`.
 
 {% hint style="info" %}
 The saving per call is small in absolute terms, but many contracts create dozens of symbols at init. Using `symbol_short!` where possible eliminates every one of those host crossings.

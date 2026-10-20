@@ -1,5 +1,14 @@
 #![no_std]
-use soroban_sdk::Env;
+use soroban_sdk::{Bytes, Env, String, Symbol};
+
+mod mycrate {
+    pub mod bytes {
+        pub struct Bytes;
+        impl Bytes {
+            pub fn append(&mut self, _other: &Self) {}
+        }
+    }
+}
 
 fn bad_storage_in_loop(env: Env) {
     for _ in 0..10 {
@@ -54,6 +63,35 @@ fn good_host_outside_loop(env: Env) {
         // do not use host inside loop
     }
     */
+}
+
+fn bad_real_host_in_loop(env: Env) {
+    for _ in 0..2 {
+        let _budget = env.host().budget_cloned();
+    }
+}
+
+fn bad_nested_sdk_paths(env: Env) {
+    let _symbol = Symbol::new(&env, "short");
+    let text = String::from_str(&env, "bytes");
+    let _bytes = text.to_bytes();
+    let buffer = [1u8, 2, 3];
+    for _ in 0..2 {
+        let _text = String::from_bytes(&env, &buffer);
+    }
+
+    let mut bytes = Bytes::new(&env);
+    let suffix = Bytes::from_slice(&env, &[1u8]);
+    for _ in 0..2 {
+        bytes.append(&suffix);
+    }
+}
+
+fn good_custom_bytes_lookalike(mut bytes: mycrate::bytes::Bytes) {
+    let other = mycrate::bytes::Bytes;
+    for _ in 0..2 {
+        bytes.append(&other); // Should Not Warn
+    }
 }
 
 // =======================================================================

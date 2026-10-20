@@ -15,6 +15,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `redundant_env_clone` | warn | redundant clone on Env object | [Link](lints/redundant_env_clone.md) |
 | `unnecessary_host_function_call` | warn | unnecessary host function call inside loop | [Link](lints/unnecessary_host_function_call.md) |
 | `soroban_redundant_storage_read` | warn | multiple sequential reads of the same storage key without modification | [Link](lints/soroban_redundant_storage_read.md) |
+| `storage_read_modify_write` | warn | performs two or more read-modify-write cycles on the same storage key | [Link](lints/storage_read_modify_write.md) |
 | `storage_write_without_read` | warn | storage write without a corresponding read | [Link](lints/storage_write_without_read.md) |
 | `discarded_storage_read` | warn | reads from storage whose result is never used | [Link](lints/discarded_storage_read.md) |
 | `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
