@@ -84,3 +84,56 @@ fn test_readme_lint_count() {
         word
     );
 }
+
+#[test]
+fn test_severity_rationale_lint_count() {
+    let ws = workspace_dir();
+    let doc = fs::read_to_string(ws.join("docs/severity_rationale.md"))
+        .expect("Failed to read docs/severity_rationale.md");
+    let lib_rs = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+        .expect("Failed to read lib.rs");
+
+    // Count declare_lint! blocks and their levels
+    let total = lib_rs.matches("declare_lint! {").count();
+    let deny_count = lib_rs
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "Deny,"
+        })
+        .count();
+    let warn_count = lib_rs
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "Warn,"
+        })
+        .count();
+
+    // The doc may state the count as a numeral ("**40 lints**") or a word
+    // ("**Forty lints**"). Accept either form.
+    let expected_num = format!("ships **{} lints**", total);
+    assert!(
+        doc.contains(&expected_num),
+        "severity_rationale.md lint count doesn't match registry! Expected '{}', total declared: {}",
+        expected_num,
+        total
+    );
+
+    // Check deny count: "Exactly one ... defaults to deny"
+    assert_eq!(
+        deny_count, 1,
+        "severity_rationale says 'Exactly one defaults to deny' but registry has {} Deny lints",
+        deny_count
+    );
+
+    // Check warn count consistency
+    assert_eq!(
+        warn_count + deny_count,
+        total,
+        "Warn({}) + Deny({}) != total({})",
+        warn_count,
+        deny_count,
+        total
+    );
+}

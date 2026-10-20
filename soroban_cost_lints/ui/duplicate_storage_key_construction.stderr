@@ -7,5 +7,14 @@ LL |     let val: Option<i32> = env.storage().persistent().get(&key);
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
    = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
 
-warning: 1 warning emitted
+warning: storage read result is discarded
+  --> $DIR/duplicate_storage_key_construction.rs:140:29
+   |
+LL |     let _val: Option<i32> = env.storage().instance().get(&key);
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
+warning: 2 warnings emitted
 

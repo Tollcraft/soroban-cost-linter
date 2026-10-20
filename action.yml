@@ -72,12 +72,12 @@ runs:
         # "Could not find `--lib soroban_cost_lints`" and was silently ignored.
         DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
       run: |
-        cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > /tmp/dylint-register.log 2>&1 || {
+        cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > "${RUNNER_TEMP:-/tmp}/dylint-register.log" 2>&1 || {
           echo "::error::dylint registration failed:"
-          cat /tmp/dylint-register.log
+          cat "${RUNNER_TEMP:-/tmp}/dylint-register.log"
           exit 1
         }
-        echo "dylint registration done ($(wc -l < /tmp/dylint-register.log) lines logged)"
+        echo "dylint registration done ($(wc -l < "${RUNNER_TEMP:-/tmp}/dylint-register.log") lines logged)"
 
     - name: Build CLI
       shell: bash

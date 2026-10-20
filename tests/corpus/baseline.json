@@ -2,10 +2,10 @@
   "version": 1,
   "description": "Baseline lint findings for real-world corpus. Generated on t=1790443304 with 189 findings (28 TP, 161 FP, 85.19% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 167,
-    "total_true_positives": 28,
-    "total_false_positives": 139,
-    "false_positive_rate_percent": 83.23
+    "total_findings": 180,
+    "total_true_positives": 25,
+    "total_false_positives": 155,
+    "false_positive_rate_percent": 86.11
   },
   "contracts": {
     "auth_batch_per_item": {
@@ -646,9 +646,16 @@
       "false_positives": []
     },
     "lifecycle_storage_churn": {
-      "total": 0,
+      "total": 1,
       "true_positives": [],
-      "false_positives": []
+      "false_positives": [
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 13,
+          "message": "storage write without a corresponding read"
+        }
+      ]
     },
     "lifecycle_ttl": {
       "total": 1,
@@ -944,21 +951,8 @@
       ]
     },
     "symbol_key_boundary": {
-      "total": 2,
-      "true_positives": [
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        }
-      ],
+      "total": 0,
+      "true_positives": [],
       "false_positives": []
     },
     "symbol_key_enum_storage": {
@@ -1005,7 +999,7 @@
       ]
     },
     "symbol_key_event_topics": {
-      "total": 3,
+      "total": 2,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -1018,12 +1012,6 @@
           "file": "src/lib.rs",
           "line": 12,
           "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unnecessary_host_function_call",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "unnecessary host function call inside loop"
         }
       ],
       "false_positives": []
