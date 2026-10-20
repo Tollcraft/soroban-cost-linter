@@ -64,7 +64,7 @@ LL |     env.storage().instance().set(&"flag", &true); // Good — bool
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage write without a corresponding read
-  --> $DIR/option_wrapping_in_storage.rs:97:30
+  --> $DIR/option_wrapping_in_storage.rs:127:30
    |
 LL |     env.storage().instance().set(&"key", &val); // Good (allowed)
    |                              ^^^^^^^^^^^^^^^^^

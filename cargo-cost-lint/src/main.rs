@@ -743,6 +743,13 @@ fn main() {
         let source_hash = cache::compute_source_hash(Path::new("."))
             .unwrap_or_else(|_| "unknown-source".to_string());
         let toolchain = cache::get_toolchain_version();
+        // The diff scope and the resolved .lintignore change what a run
+        // reports, so they join the cache key (#793).
+        let diff_scope = if cli.diff_only { "diff-only" } else { "all" };
+        let lintignore_hash = match lintignore_opt.as_ref() {
+            Some(li) => cache::compute_file_hash(&li.path),
+            None => cache::ABSENT_LINTIGNORE_HASH.to_string(),
+        };
         let key = cache::CacheKey {
             linter_version: env!("CARGO_PKG_VERSION").to_string(),
             toolchain,
@@ -750,6 +757,8 @@ fn main() {
             package_args: package_args.clone(),
             output_format: format!("{:?}", cli.format),
             source_hash,
+            diff_scope: diff_scope.to_string(),
+            lintignore_hash,
         };
         Some(key.compute_hash())
     } else {
