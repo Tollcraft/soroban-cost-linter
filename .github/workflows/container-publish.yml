@@ -1,3 +1,20 @@
+# Container Publish
+#
+# Publishes the Docker image for this repository.
+#
+# Triggers:
+#   - Push: on main when Dockerfile, rust-toolchain, or this workflow is modified.
+#   - workflow_dispatch: manually from the Actions tab when a re-publish is needed
+#     (e.g. after a previous publish failed, or after a dependency-only image rebuild
+#     that does not touch any of the watched paths). A manual run produces the same
+#     image name and tag scheme as a push-triggered run.
+#
+# When to use a manual run:
+#   Use workflow_dispatch when you need to republish the image without making a
+#   content-changing commit to the watched paths (Dockerfile, rust-toolchain, or
+#   this workflow). This is the intended escape hatch after a failed publish or
+#   after a dependency-only rebuild.
+
 name: Publish Container Image
 
 on:
@@ -7,6 +24,7 @@ on:
       - "Dockerfile"
       - "rust-toolchain"
       - ".github/workflows/container-publish.yml"
+  workflow_dispatch:
 
 jobs:
   publish:

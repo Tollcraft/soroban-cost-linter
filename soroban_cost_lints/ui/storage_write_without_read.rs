@@ -110,6 +110,13 @@ fn try_get_before_set(env: Env) {
     env.storage().persistent().set(&1, &2); // Good
 }
 
+/// A write before a later read is still a write without a corresponding read,
+/// even though the same key is observed later in the function body.
+fn write_then_read(env: Env) {
+    env.storage().instance().set(&1, &2); // Should Warn
+    let _: Option<i32> = env.storage().instance().get::<i32, i32>(&1); // read later, not earlier
+}
+
 /// `remove` before `set` on the same receiver and key.
 fn remove_before_set(env: Env) {
     let _ = env.storage().temporary().remove(&1);

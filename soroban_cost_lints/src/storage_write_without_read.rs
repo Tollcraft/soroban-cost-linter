@@ -21,7 +21,6 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
-use std::collections::HashSet;
 
 use crate::{SOROBAN_STORAGE_TYPES, STORAGE_WRITE_WITHOUT_READ, matches_any_path, ty_adt_def};
 
@@ -67,26 +66,26 @@ fn access_pair<'tcx>(
     args: &'tcx [hir::Expr<'tcx>],
 ) -> Option<(String, String)> {
     let key = args.first()?;
-    let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_default();
-    let key_snippet = snippet_opt(cx, key.span).unwrap_or_default();
+    let receiver_snippet = snippet_opt(cx, receiver.span)?;
+    let key_snippet = snippet_opt(cx, key.span)?;
     Some((receiver_snippet, key_snippet))
 }
 
 /// Collects storage reads (`get`, `try_get`, `has`, `remove`, `update`) as
-/// `(receiver, key)` source-text pairs for later cross-referencing.
+/// ordered `(receiver, key, span)` triples for later cross-referencing.
 struct ReadVisitor<'a, 'tcx> {
     cx: &'a LateContext<'tcx>,
-    reads: HashSet<(String, String)>,
+    reads: Vec<(String, String, rustc_span::Span)>,
 }
 
 impl<'tcx> Visitor<'tcx> for ReadVisitor<'_, 'tcx> {
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = expr.kind
             && STORAGE_READ_METHODS.contains(&path_segment.ident.name.as_str())
             && is_storage_receiver(self.cx, receiver)
-            && let Some(pair) = access_pair(self.cx, receiver, args)
+            && let Some((receiver_snippet, key_snippet)) = access_pair(self.cx, receiver, args)
         {
-            self.reads.insert(pair);
+            self.reads.push((receiver_snippet, key_snippet, span));
         }
         intravisit::walk_expr(self, expr);
     }
@@ -135,7 +134,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
 
         let mut read_visitor = ReadVisitor {
             cx,
-            reads: HashSet::new(),
+            reads: Vec::new(),
         };
         read_visitor.visit_body(body);
 
@@ -146,11 +145,14 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
         write_visitor.visit_body(body);
 
         for (receiver, key, span) in &write_visitor.writes {
-            let has_read = read_visitor
-                .reads
-                .iter()
-                .any(|(read_receiver, read_key)| read_receiver == receiver && read_key == key);
-            if !has_read {
+            let has_prior_read =
+                read_visitor
+                    .reads
+                    .iter()
+                    .any(|(read_receiver, read_key, read_span)| {
+                        read_receiver == receiver && read_key == key && read_span.lo() < span.lo()
+                    });
+            if !has_prior_read {
                 span_lint_and_help(
                     cx,
                     STORAGE_WRITE_WITHOUT_READ,
