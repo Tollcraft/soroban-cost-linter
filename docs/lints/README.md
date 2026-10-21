@@ -23,7 +23,6 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
-| [`val_conversion_chain`](val_conversion_chain.md) | `warn` | a value shuttled through `Val` three or more times across a binding chain |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
 | [`option_wrapping_in_storage`](option_wrapping_in_storage.md) | `warn` | stores an Option<T> in storage where the key already models absence |
 
@@ -40,6 +39,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
 | [`unbounded_recursion`](unbounded_recursion.md) | `warn` | unbounded recursion driven by caller-supplied input |
+| [`val_conversion_chain`](val_conversion_chain.md) | `warn` | a value shuttled through `Val` three or more times across a binding chain |
 | [`ledger_context_read_in_loop`](ledger_context_read_in_loop.md) | `warn` | reads a ledger context value inside a loop when it cannot change during the invocation |
 | [`redundant_require_auth`](redundant_require_auth.md) | `warn` | require_auth called more than once on the same address in a single function body |
 

@@ -49,6 +49,7 @@
   * [unbounded\_recursion](lints/unbounded_recursion.md)
   * [unwrap\_on\_storage\_get](lints/unwrap_on_storage_get.md)
   * [vec\_where\_slice\_could\_be\_used](lints/vec_where_slice_could_be_used.md)
+  * [val\_conversion\_chain](lints/val_conversion_chain.md)
   * [soroban\_inefficient\_bytes\_concat](lints/soroban_inefficient_bytes_concat.md)
   * [duplicate\_storage\_key\_construction](lints/duplicate_storage_key_construction.md)
   * [option\_wrapping\_in\_storage](lints/option_wrapping_in_storage.md)
