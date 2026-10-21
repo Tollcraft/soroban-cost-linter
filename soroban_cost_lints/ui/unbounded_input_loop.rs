@@ -25,6 +25,11 @@ pub mod soroban_sdk {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            // Return types are simplified to `()`; the lint matches these by
+            // method name only (see `WRITE_METHODS` in the lint source).
+            pub fn update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> V) {}
+            pub fn try_update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> Option<V>) {}
+            pub fn remove<K>(&self, _k: &K) {}
         }
 
         pub struct Persistent;
@@ -32,6 +37,9 @@ pub mod soroban_sdk {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> V) {}
+            pub fn try_update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> Option<V>) {}
+            pub fn remove<K>(&self, _k: &K) {}
         }
 
         pub struct Temporary;
@@ -39,11 +47,22 @@ pub mod soroban_sdk {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> V) {}
+            pub fn try_update<K, V>(&self, _k: &K, _f: impl FnOnce(Option<V>) -> Option<V>) {}
+            pub fn remove<K>(&self, _k: &K) {}
         }
+    }
+
+    // Models `soroban_sdk::Map`: the lint's `is_collection` test sees the
+    // receiver of `keys()`/`values()`, so only the name and projections matter.
+    pub struct Map<K, V>(core::marker::PhantomData<(K, V)>);
+    impl<K: Clone, V: Clone> Map<K, V> {
+        pub fn keys(&self) -> Vec<K> { Vec::new() }
+        pub fn values(&self) -> Vec<V> { Vec::new() }
     }
 }
 
-use soroban_sdk::Env;
+use soroban_sdk::{Env, Map};
 
 // =======================================================================
 // unbounded_input_loop — Fixtures
@@ -149,6 +168,49 @@ fn good_while_validated_bound(env: Env, count: u32) {
     while i < clamped {
         env.storage().instance().set(&i, &i); // Good — clamped before use
         i += 1;
+    }
+}
+
+// --- Positive (should warn): SDK-current write and iterator spellings (#872) ---
+
+/// `remove` deletes a ledger entry — a metered write. Iterating a
+/// caller-supplied `Vec` parameter and removing one key per iteration is the
+/// documented shape.
+fn bad_persistent_remove_over_param_vec(env: Env, items: Vec<u32>) {
+    for item in items {
+        env.storage().persistent().remove(&item); // Should Warn
+    }
+}
+
+/// `update` is a read-modify-write on a caller-named key.
+fn bad_instance_update_over_map_keys(env: Env, roles: Map<u32, u32>) {
+    for k in roles.keys() {
+        env.storage().instance().update(&k, |prev| prev.unwrap_or(0) + 1); // Should Warn
+    }
+}
+
+/// `try_update` is the fallible sibling of `update` — also a write.
+fn bad_instance_try_update_over_map_values(env: Env, roles: Map<u32, u32>) {
+    for v in roles.values() {
+        // The explicit `Option<u32>` annotation is needed because the mock's
+        // `try_update` leaves `V` inferrable only from the closure argument.
+        env.storage().instance().try_update(&v, |prev: Option<u32>| prev); // Should Warn
+    }
+}
+
+// --- Negative (should not warn): caller-driven iteration with only reads ---
+
+/// `keys()` still marks caller-driven iteration, but `get`/`has` are not in
+/// `WRITE_METHODS`, so a read-only loop stays silent. The `allow` silences the
+/// sibling read lint, which fires orthogonally on `has()` without a TTL
+/// extension; this fixture is about `unbounded_input_loop` only.
+#[allow(persistent_read_without_ttl_extension)]
+fn good_map_keys_loop_only_reads(env: Env, roles: Map<u32, u32>) {
+    for k in roles.keys() {
+        if env.storage().persistent().has(&k) {
+            // Good — read-only body, no metered write per iteration.
+            continue;
+        }
     }
 }
 

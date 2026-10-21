@@ -50,19 +50,24 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
         i += 1;
     }
 
-    if let Some(start) = content.find("pub const LINT_METADATA: &[LintMetadata] = &[") {
-        let after = &content[start + "pub const LINT_METADATA: &[LintMetadata] = &[".len()..];
+    if let Some(start) = content.find("pub const LINT_METADATA: &[") {
+        let after = &content[start + "pub const LINT_METADATA: &[".len()..];
         if let Some(end) = after.find("];") {
             let meta_block = &after[..end];
-            let meta_entries: Vec<&str> = meta_block.split("LintMetadata {").skip(1).collect();
-            for entry_str in meta_entries {
+            for entry_str in split_metadata_entries(meta_block) {
                 let mut lint_var = String::new();
                 let mut category = String::new();
                 for line in entry_str.lines() {
                     let t = line.trim().trim_end_matches(',');
-                    if let Some(val) = t.strip_prefix("lint:") {
+                    // `name: "..."` is the current `LintMeta` shape;
+                    // `lint: IDENT` is the legacy `LintMetadata` shape.
+                    if let Some(val) = t.strip_prefix("name:") {
+                        lint_var = val.trim().trim_matches('"').to_string();
+                    } else if let Some(val) = t.strip_prefix("lint:") {
                         lint_var = val.trim().to_string();
                     } else if let Some(val) = t.strip_prefix("category:") {
+                        // Normalise `LintCategory::Storage` down to `Storage` so
+                        // the value can be compared against `CATEGORY_ORDER`.
                         let raw = val.trim();
                         category = raw
                             .strip_prefix("LintCategory::")
@@ -71,11 +76,13 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
                     }
                 }
                 if !lint_var.is_empty() && !category.is_empty() {
-                    for entry in &mut entries {
-                        if entry.name_snake == lint_var {
-                            entry.category = Some(category.clone());
-                            break;
-                        }
+                    // The metadata row names the lint in snake case (its doc
+                    // name) while `declare_lint!` declares it in SCREAMING_CASE.
+                    if let Some(entry) = entries
+                        .iter_mut()
+                        .find(|e| e.name_snake == lint_var || e.name_doc == lint_var)
+                    {
+                        entry.category = Some(category.clone());
                     }
                 }
             }
@@ -83,6 +90,36 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
     }
 
     entries
+}
+
+/// Splits the body of a `LINT_METADATA` array literal into one slice per
+/// struct entry.
+///
+/// Accepts both the current `LintMeta { .. }` shape and the legacy
+/// `LintMetadata { .. }` shape, so fixtures written against either spelling
+/// keep parsing.
+fn split_metadata_entries(block: &str) -> Vec<&str> {
+    const MARKERS: [&str; 2] = ["LintMetadata {", "LintMeta {"];
+    let mut cuts: Vec<(usize, usize)> = Vec::new();
+    for marker in MARKERS {
+        let mut from = 0;
+        while let Some(pos) = block[from..].find(marker) {
+            let at = from + pos;
+            cuts.push((at, at + marker.len()));
+            from = at + marker.len();
+        }
+    }
+    cuts.sort_by_key(|(at, _)| *at);
+    cuts.iter()
+        .enumerate()
+        .map(|(i, (_, entry_start))| {
+            let entry_end = cuts
+                .get(i + 1)
+                .map(|(next, _)| *next)
+                .unwrap_or(block.len());
+            &block[*entry_start..entry_end]
+        })
+        .collect()
 }
 
 /// Index of the line holding the `}` that balances the `{` opening the
@@ -290,27 +327,38 @@ fn skip_raw_string(content: &str, start: usize) -> Option<usize> {
         .map(|rel| i + rel + terminator.len())
 }
 
+/// The five `LintCategory` variants that `LINT_METADATA` actually uses, in
+/// the order their sections are rendered in the generated reference.
+///
+/// Every variant of `LintCategory` (`soroban_cost_lints/src/lib.rs`) must be
+/// listed here: a lint whose parsed category is missing from this list falls
+/// into the `Other` bucket, and the
+/// `known_category_lints_never_land_in_other` test fails locally until the
+/// variant is registered.
+const CATEGORY_ORDER: [&str; 5] = ["Storage", "Compute", "Memory", "Host", "Security"];
+
+/// Section heading for each entry of [`CATEGORY_ORDER`]. Kept as a map so a
+/// display name can diverge from the enum variant without touching the order.
+const CATEGORY_LABELS: [(&str, &str); 5] = [
+    ("Storage", "Storage"),
+    ("Compute", "Compute"),
+    ("Memory", "Memory"),
+    ("Host", "Host"),
+    ("Security", "Security"),
+];
+
 fn generate_readme(entries: &[LintEntry]) -> String {
-    let category_order = [
-        "StorageOperations",
-        "Compute",
-        "Memory",
-        "EntryLifecycle",
-        "SymbolOperations",
-    ];
-    let category_labels: BTreeMap<&str, &str> = [
-        ("StorageOperations", "Storage Operations"),
-        ("Compute", "CPU/Compute"),
-        ("Memory", "Memory"),
-        ("EntryLifecycle", "Entry Lifecycle"),
-        ("SymbolOperations", "Symbol Operations"),
-    ]
-    .into_iter()
-    .collect();
+    let category_labels: BTreeMap<&str, &str> = CATEGORY_LABELS.into_iter().collect();
 
     let mut categorized: BTreeMap<&str, Vec<&LintEntry>> = BTreeMap::new();
     for entry in entries {
-        let cat = entry.category.as_deref().unwrap_or("Other");
+        // A lint without parsed metadata — or with a category this generator
+        // does not know — lands in `Other` instead of being dropped silently.
+        let cat = entry
+            .category
+            .as_deref()
+            .filter(|c| CATEGORY_ORDER.contains(c))
+            .unwrap_or("Other");
         categorized.entry(cat).or_default().push(entry);
     }
 
@@ -325,7 +373,7 @@ fn generate_readme(entries: &[LintEntry]) -> String {
     md.push_str("See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.\n");
     md.push_str("{% endhint %}\n\n");
 
-    for cat in &category_order {
+    for cat in &CATEGORY_ORDER {
         if let Some(entries) = categorized.get(*cat) {
             let label = category_labels.get(cat).unwrap_or(cat);
             md.push_str(&format!("## {}\n\n", label));
@@ -770,17 +818,17 @@ multiline description"
             "{}\n\n{}",
             SINGLE_LINT,
             r#"
-                pub const LINT_METADATA: &[LintMetadata] = &[
-                    LintMetadata {
-                        lint: SOROBAN_STORAGE_IN_LOOP,
-                        category: LintCategory::StorageOperations,
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
                     },
                 ];
             "#
         );
         let entries = parse_lib_rs(&input);
         let md = generate_readme(&entries);
-        assert!(md.contains("## Storage Operations"));
+        assert!(md.contains("## Storage"));
         assert!(!md.contains("## Other"));
     }
 
@@ -790,13 +838,13 @@ multiline description"
             "{}\n\n{}",
             TWO_LINTS,
             r#"
-                pub const LINT_METADATA: &[LintMetadata] = &[
-                    LintMetadata {
-                        lint: SOROBAN_STORAGE_IN_LOOP,
-                        category: LintCategory::StorageOperations,
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
                     },
-                    LintMetadata {
-                        lint: REDUNDANT_ENV_CLONE,
+                    LintMeta {
+                        name: "redundant_env_clone",
                         category: LintCategory::Memory,
                     },
                 ];
@@ -804,10 +852,68 @@ multiline description"
         );
         let entries = parse_lib_rs(&input);
         let md = generate_readme(&entries);
-        // StorageOperations should appear before Memory
-        let storage_pos = md.find("## Storage Operations").unwrap();
+        // Storage should appear before Memory
+        let storage_pos = md.find("## Storage").unwrap();
         let memory_pos = md.find("## Memory").unwrap();
         assert!(storage_pos < memory_pos);
+    }
+
+    /// The real `LINT_METADATA` shape: a `LintMeta` struct literal keyed by
+    /// the snake-case `name` string. Parsing this without a `LintCategory::`
+    /// prefix is what keeps every shipped lint out of the `Other` bucket.
+    #[test]
+    fn parse_current_lint_meta_shape_with_string_name() {
+        let input = format!(
+            "{}\n\n{}",
+            SINGLE_LINT,
+            r#"
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
+                        description: "storage operations inside a loop",
+                        rationale: "storage is expensive",
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].category.as_deref(), Some("Storage"));
+    }
+
+    /// Pins the category mapping end-to-end against the real `lib.rs`: every
+    /// registered lint must carry a category that `CATEGORY_ORDER` renders, so
+    /// no lint with a known `LINT_METADATA` category can drift into `Other`
+    /// (and a renamed or newly added `LintCategory` variant fails here until
+    /// it is registered in `CATEGORY_ORDER`/`CATEGORY_LABELS`).
+    #[test]
+    fn known_category_lints_never_land_in_other() {
+        let ws = workspace_root();
+        let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+            .expect("Failed to read lib.rs — run from workspace root");
+        let entries = parse_lib_rs(&content);
+        assert!(!entries.is_empty(), "no lints parsed from lib.rs");
+        for entry in &entries {
+            let category = entry.category.as_deref().unwrap_or_else(|| {
+                panic!(
+                    "lint '{}' has no parsed category — LINT_METADATA row missing or unmatched",
+                    entry.name_snake
+                )
+            });
+            assert!(
+                CATEGORY_ORDER.contains(&category),
+                "lint '{}' parsed category '{}' is not registered in CATEGORY_ORDER",
+                entry.name_snake,
+                category
+            );
+        }
+        let md = generate_readme(&entries);
+        assert!(
+            !md.contains("## Other"),
+            "a registered lint fell into the Other bucket:\n{}",
+            md
+        );
     }
 
     // ------------------------------------------------------------------

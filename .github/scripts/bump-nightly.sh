@@ -88,6 +88,7 @@ NIGHTLY_FILES=(
   "CONTRIBUTING.md"
   "README.md"
   "docs/windows_setup.md"
+  "docs/troubleshooting.md"
 )
 for f in "${NIGHTLY_FILES[@]}"; do
   if [ -f "$f" ]; then

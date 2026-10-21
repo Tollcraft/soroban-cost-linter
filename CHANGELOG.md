@@ -105,6 +105,19 @@ and this project adheres to Semantic Versioning.
   fails the build on any mismatch instead of emitting a partial inventory.
   `unnecessary_host_function_call_legacy`, which had no `LINT_METADATA` row, is
   now registered under `Host`.
+- `cargo-cost-lint --verbose` reported the config twice (`Using config file:` /
+  `No budget.toml found,` plus the `[verbose] config:` line). The `[verbose]
+  config:` line is now the only verbose form; default-verbosity `Using config:`
+  and `Warning: budget.toml not found` are unchanged and, like `--quiet`, now
+  pinned by `cargo-cost-lint/tests/cli_config_notices.rs`.
+- `cargo-cost-lint --verbose` printed `DYLINT_RUSTFLAGS: (empty)` when no lint
+  flags were added, although `cargo dylint` still inherited the caller's
+  `DYLINT_RUSTFLAGS`. The verbose line now shows the inherited value, with the
+  tool's flags appended after it.
+- `--diff-only` was ignored in the default text output when no `.lintignore`
+  was present: findings in unchanged files were still printed. Text-mode
+  `--diff-only` runs now go through the same per-finding filter as the
+  `json`, `github` and `sarif` formats.
 
 ## [0.1.1]
 

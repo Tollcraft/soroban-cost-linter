@@ -21,7 +21,7 @@ jobs:
       # precedence over anything requested here, so a mismatch would silently
       # install one toolchain and build with another.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
@@ -34,13 +34,44 @@ jobs:
       # `cargo-cost-lint` is a workspace member, so its artifacts land in the
       # workspace-root `target/`, not `cargo-cost-lint/target/`. Build by
       # package name to make the output location unambiguous.
-      - name: Build binary
-        run: cargo build --release --package cargo-cost-lint
+      #
+      # Both builds pass `--locked`, as every other build in this repo does
+      # (`action.yml:61,87`, `lint.yml`, `nightly-bump.yml`): without it a
+      # release asset is not reproducible from `Cargo.lock`.
+      - name: Install Dylint
+        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
 
-      # Generate a checksum of the exact artefact that gets uploaded, so
-      # downloaders can run `sha256sum -c SHA256SUMS` to verify integrity.
+      - name: Build binary
+        run: cargo build --release --locked --package cargo-cost-lint
+
+      # The CLI is a wrapper: it spawns `cargo dylint --lib soroban_cost_lints`,
+      # so a release carrying only the binary ships an inert executable. Build
+      # the lint library too, exactly as the composite action does. `dylint-link`
+      # renames the cdylib to the versioned `lib<name>@<toolchain>.so` form that
+      # `cargo dylint --lib soroban_cost_lints` resolves; a plain build emits an
+      # unsuffixed `libsoroban_cost_lints.so`, which the downloaded CLI cannot
+      # find through `DYLINT_LIBRARY_PATH`.
+      - name: Build lint library
+        env:
+          RUSTFLAGS: -C linker=dylint-link
+        run: cargo build --release --locked -p soroban_cost_lints
+
+      # Generate a checksum of the exact artefacts that get uploaded, so
+      # downloaders can run `sha256sum -c SHA256SUMS` to verify integrity. The
+      # glob resolves to the one versioned library produced above; the explicit
+      # existence check keeps this step from writing a checksum file for a
+      # library that was never built.
       - name: Generate SHA256SUMS
-        run: sha256sum target/release/cargo-cost-lint > SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          lint_library=(target/release/libsoroban_cost_lints@*.so)
+          if [ ! -e "${lint_library[0]}" ]; then
+            echo "::error::no versioned lint library matched ${lint_library[0]}; the dylint-link build did not produce one"
+            ls -l target/release
+            exit 1
+          fi
+          sha256sum target/release/cargo-cost-lint "${lint_library[@]}" > SHA256SUMS
 
       - name: Create release and upload binary
         uses: softprops/action-gh-release@v3
@@ -56,8 +87,31 @@ jobs:
           # tags such as v0.0.0-ci-test) as a pre-release, so it is never
           # presented as the latest stable release.
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # The two-artefact install contract, recorded on the release itself so
+          # a downloader learns where `DYLINT_LIBRARY_PATH` must point without
+          # reading the workflow. `generate_release_notes` is appended below this.
+          body: |
+            ## Running a lint from these assets
+
+            `cargo-cost-lint` shells out to `cargo dylint --lib
+            soroban_cost_lints`, so the CLI alone cannot lint anything. Install
+            both assets together:
+
+            1. Install the pinned nightly with the `rustc-dev` and
+               `llvm-tools-preview` components, then Dylint:
+               `cargo install cargo-dylint dylint-link --version "^6.0.1" --locked`
+            2. Download `cargo-cost-lint` and
+               `libsoroban_cost_lints@nightly-2026-04-16-x86_64-unknown-linux-gnu.so`
+               into one directory and keep the library's released file name — it
+               encodes the toolchain the library was built against, and a
+               mismatched nightly fails to load.
+            3. Export the directory as the library path:
+               `export DYLINT_LIBRARY_PATH="$PWD"`
+            4. Verify integrity, then run the linter in your Soroban workspace:
+               `sha256sum -c SHA256SUMS` and `cargo cost-lint`
           files: |
             target/release/cargo-cost-lint
+            target/release/libsoroban_cost_lints@*.so
             SHA256SUMS
           # Without this the action reports success while uploading nothing,
           # which is how v0.1.0 came to be published with no assets.

@@ -1,5 +1,5 @@
 warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
-  --> $DIR/unbounded_input_loop.rs:74:5
+  --> $DIR/unbounded_input_loop.rs:93:5
    |
 LL | /     loop {
 LL | |         env.storage().instance().set(&i, &i); // Should Warn
@@ -12,5 +12,37 @@ LL | |     }
    = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
    = note: `#[warn(unbounded_input_loop)]` on by default
 
-warning: 1 warning emitted
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:180:5
+   |
+LL | /     for item in items {
+LL | |         env.storage().persistent().remove(&item); // Should Warn
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:187:5
+   |
+LL | /     for k in roles.keys() {
+LL | |         env.storage().instance().update(&k, |prev| prev.unwrap_or(0) + 1); // Should Warn
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop.rs:194:5
+   |
+LL | /     for v in roles.values() {
+LL | |         // The explicit `Option<u32>` annotation is needed because the mock's
+LL | |         // `try_update` leaves `V` inferrable only from the closure argument.
+LL | |         env.storage().instance().try_update(&v, |prev: Option<u32>| prev); // Should Warn
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 4 warnings emitted
 

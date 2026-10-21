@@ -146,12 +146,16 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--workspace` | Lint all packages in the workspace |
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
+| `--color <WHEN>` | Control coloured output: `auto` (default), `always`, or `never`. Honours the `NO_COLOR` convention when unset |
+| `--diff-only` | Lint only files changed relative to the merge base with the default branch |
 | `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
-| `--list-lints` | Print every registered lint with its default level and one-line description, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
+| `--list-lints` | Print every registered lint with its default level, category and documentation URL, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
 | `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
 | `--version` | Print the crate version and exit |
+| `--color <auto\|always\|never>` | Control coloured output (default: `auto`); honours the `NO_COLOR` convention when the flag is omitted, and an explicit `--color` value overrides it |
+| `--diff-only` | Only report findings in files changed against the merge base with the default branch (whole files are linted, not just changed lines) |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
 
@@ -166,6 +170,8 @@ The cache key is computed deterministically from:
 - **Linter Version:** The version of `cargo-cost-lint`.
 - **Toolchain:** Active `rustc` compiler version and commit.
 - **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+- **Diff Scope:** Whether the run is a full run or `--diff-only`; a cached full-run result is never replayed for a filtered run or the reverse.
+- **`.lintignore`:** Content hash of the resolved `.lintignore`; its absence counts as a distinct input, so adding one invalidates earlier entries.
 
 Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
 

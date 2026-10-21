@@ -5,7 +5,7 @@ use rustc_middle::ty::{self, Ty};
 use rustc_session::declare_lint_pass;
 use rustc_span::sym;
 
-use crate::OPTION_WRAPPING_IN_STORAGE;
+use crate::{OPTION_WRAPPING_IN_STORAGE, SOROBAN_STORAGE_TYPES, matches_any_path, ty_adt_def};
 
 declare_lint_pass!(OptionWrappingInStorage => [OPTION_WRAPPING_IN_STORAGE]);
 
@@ -47,19 +47,18 @@ impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
 
 /// Returns `true` if `expr` is the receiver of a storage `.set()` call
 /// (i.e. the receiver is one of Instance, Persistent, or Temporary).
-fn is_storage_set_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    let ty = cx.typeck_results().expr_ty(expr);
-    is_storage_type(ty)
+fn is_storage_set_receiver<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
+    is_storage_type(cx, cx.typeck_results().expr_ty(expr))
 }
 
 /// Returns `true` if `ty` is one of the Soroban storage container types
-/// (Storage, Instance, Persistent, Temporary).
-fn is_storage_type(ty: Ty<'_>) -> bool {
-    let ty_str = format!("{:?}", ty);
-    ty_str.contains("Instance")
-        || ty_str.contains("Persistent")
-        || ty_str.contains("Temporary")
-        || ty_str.contains("Storage")
+/// (`soroban_sdk::storage::{Storage, Instance, Persistent, Temporary}`), after
+/// peeling references so `&Persistent` behaves like `Persistent`. The def-path
+/// match replaces the old Debug-printed substring test, which over-matched any
+/// user type whose printed name contained one of those words (#796).
+fn is_storage_type<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
+    ty_adt_def(ty.peel_refs())
+        .is_some_and(|adt_def| matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES))
 }
 
 /// Returns `true` if `ty` is exactly `Option<T>` (not a struct that merely
