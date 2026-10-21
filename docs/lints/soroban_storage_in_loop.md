@@ -16,7 +16,7 @@ Storage operations are the **single most expensive resource** Soroban charges fo
 
 ## Example
 
-### Writes (`set`)
+### Writes (`set`, `update`, `try_update`, `remove`)
 
 ```rust
 // ❌ Bad: one storage write per iteration
@@ -50,7 +50,7 @@ cargo test bench_storage_in_loop_vs_batch -- --nocapture
 ## Suggested Fix
 
 {% hint style="success" %}
-**For writes** (`env.storage().*.set(&k, &v)`), accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, then perform a single storage write outside of the loop.
+**For writes** (`env.storage().*.set(&k, &v)` and the mutating accessors `update`, `try_update`, `remove`), accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, then perform a single storage write outside of the loop.
 {% endhint %}
 
 ### Reads (`get`, `has`)

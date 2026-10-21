@@ -52,6 +52,7 @@ check_nightly_in_file "templates/github-action.yml"
 check_nightly_in_file "CONTRIBUTING.md"
 check_nightly_in_file "README.md"
 check_nightly_in_file "docs/windows_setup.md"
+check_nightly_in_file "docs/troubleshooting.md"
 
 # ---- Check clippy_utils git rev matches the nightly date ----
 CLIPPY_REV=$(sed -n 's/.*rev = "\([a-f0-9]\{40\}\)".*/\1/p' soroban_cost_lints/Cargo.toml)

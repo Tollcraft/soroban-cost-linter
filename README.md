@@ -25,7 +25,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. 42 lints ship in `v0.1.1`:
+The linter runs as a Dylint library against the Rust compiler's HIR to catch specific Soroban anti-patterns (with a single early AST pass for the `format_args!` nodes the HIR no longer exposes). 36 lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -82,7 +82,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manua
 > covered in the same page; **Visual Studio Build Tools is required** because
 > the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
+Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
 
@@ -146,12 +146,16 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--workspace` | Lint all packages in the workspace |
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
+| `--color <WHEN>` | Control coloured output: `auto` (default), `always`, or `never`. Honours the `NO_COLOR` convention when unset |
+| `--diff-only` | Lint only files changed relative to the merge base with the default branch |
 | `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
-| `--list-lints` | Print every registered lint with its default level and one-line description, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
+| `--list-lints` | Print every registered lint with its default level, category and documentation URL, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
 | `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
 | `--version` | Print the crate version and exit |
+| `--color <auto\|always\|never>` | Control coloured output (default: `auto`); honours the `NO_COLOR` convention when the flag is omitted, and an explicit `--color` value overrides it |
+| `--diff-only` | Only report findings in files changed against the merge base with the default branch (whole files are linted, not just changed lines) |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
 
@@ -166,6 +170,8 @@ The cache key is computed deterministically from:
 - **Linter Version:** The version of `cargo-cost-lint`.
 - **Toolchain:** Active `rustc` compiler version and commit.
 - **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+- **Diff Scope:** Whether the run is a full run or `--diff-only`; a cached full-run result is never replayed for a filtered run or the reverse.
+- **`.lintignore`:** Content hash of the resolved `.lintignore`; its absence counts as a distinct input, so adding one invalidates earlier entries.
 
 Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
 

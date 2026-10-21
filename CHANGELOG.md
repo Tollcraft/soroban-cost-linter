@@ -98,6 +98,29 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `DEVELOPING_LINTS.md` named `dylint_lint_impl!` as the registration point that
+  loads a lint pass. It is not: the crate-local macro only expands to
+  `impl_lint_pass!(SorobanCostLints => [ ... ])`, and the pass is loaded by the
+  `lint_store.register_late_pass(...)` call inside `register_lints`. The guide
+  now names every real registration point, explains what `dylint_lint_impl!`
+  does (and that omitting a lint from it does not stop that lint's pass from
+  firing), and documents the build-time cross-check that keeps the
+  `dylint_lint_impl!` list, the `register_lints` list and `LINT_METADATA` in
+  step.
+- `docs/SUMMARY.md` listed twelve of the thirty-five shipped lints, so the
+  other twenty-three lint pages were unreachable from the docs sidebar. The
+  "Lints" chapter now carries one entry per registered lint, in the order
+  `docs/lint_catalog.md` uses, and
+  `cargo run -p generate-lint-docs -- --check` fails when the summary drifts
+  from the registered set, links a lint twice, or links a page that does not
+  exist.
+- `README.md` and `CONTRIBUTING.md` described the linter as hooking into the
+  Rust compiler's AST. The shipped passes are HIR consumers; only
+  `formatted_panic_payload` needs an early AST pass, for the `format_args!`
+  nodes the HIR no longer exposes.
+- `CONTRIBUTING.md` told contributors to regenerate `docs/lints/lint-registry.json`,
+  a file the generator never writes. It now names the two files the generator
+  does write, `docs/lints/README.md` and `docs/lint_catalog.md`.
 - `cargo-cost-lint`'s `build.rs` read `LINT_METADATA` with the pre-refactor
   `LintMetadata { lint: .. }` shape, so the registry never matched and every
   lint's `category` silently came out as `Unknown` in `--list-lints`. The build
@@ -106,6 +129,19 @@ and this project adheres to Semantic Versioning.
   fails the build on any mismatch instead of emitting a partial inventory.
   `unnecessary_host_function_call_legacy`, which had no `LINT_METADATA` row, is
   now registered under `Host`.
+- `cargo-cost-lint --verbose` reported the config twice (`Using config file:` /
+  `No budget.toml found,` plus the `[verbose] config:` line). The `[verbose]
+  config:` line is now the only verbose form; default-verbosity `Using config:`
+  and `Warning: budget.toml not found` are unchanged and, like `--quiet`, now
+  pinned by `cargo-cost-lint/tests/cli_config_notices.rs`.
+- `cargo-cost-lint --verbose` printed `DYLINT_RUSTFLAGS: (empty)` when no lint
+  flags were added, although `cargo dylint` still inherited the caller's
+  `DYLINT_RUSTFLAGS`. The verbose line now shows the inherited value, with the
+  tool's flags appended after it.
+- `--diff-only` was ignored in the default text output when no `.lintignore`
+  was present: findings in unchanged files were still printed. Text-mode
+  `--diff-only` runs now go through the same per-finding filter as the
+  `json`, `github` and `sarif` formats.
 
 ## [0.1.1]
 
