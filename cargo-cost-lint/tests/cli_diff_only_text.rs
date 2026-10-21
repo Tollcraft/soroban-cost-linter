@@ -13,6 +13,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::Mutex;
+
+// These tests share the Dylint driver cache and fixture target directory.
+// Concurrent cargo-dylint invocations can replace the cached driver while
+// another test is executing it (ETXTBSY on Linux).
+static FIXTURE_LOCK: Mutex<()> = Mutex::new(());
 
 const CARGO_TOML: &str = r#"[package]
 name = "diff-only-fixture"
@@ -145,6 +151,7 @@ fn text(bytes: &[u8]) -> String {
 
 #[test]
 fn diff_only_text_mode_reports_only_the_changed_file() {
+    let _guard = FIXTURE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let lib_dir = build_lint_library();
     let repo = scratch_repo("src/alpha.rs");
 
@@ -167,6 +174,7 @@ fn diff_only_text_mode_reports_only_the_changed_file() {
 
 #[test]
 fn diff_only_text_mode_with_unchanged_only_diff_reports_nothing() {
+    let _guard = FIXTURE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let lib_dir = build_lint_library();
     let repo = scratch_repo("README.md");
 
@@ -188,6 +196,7 @@ fn diff_only_text_mode_with_unchanged_only_diff_reports_nothing() {
 
 #[test]
 fn diff_only_machine_formats_filter_identically() {
+    let _guard = FIXTURE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let lib_dir = build_lint_library();
     let repo = scratch_repo("src/alpha.rs");
 
@@ -225,6 +234,7 @@ fn normalize_cargo_stderr(stderr: &str) -> Vec<String> {
 
 #[test]
 fn plain_run_without_flags_keeps_raw_echo_output() {
+    let _guard = FIXTURE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let lib_dir = build_lint_library();
     let repo = scratch_repo("src/alpha.rs");
 
