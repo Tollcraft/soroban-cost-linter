@@ -56,6 +56,8 @@
   * [ledger\_context\_read\_in\_loop](lints/ledger_context_read_in_loop.md)
   * [redundant\_require\_auth](lints/redundant_require_auth.md)
   * [large\_constant\_array](lints/large_constant_array.md)
+  * [collection\_len\_in\_loop\_condition](lints/collection_len_in_loop_condition.md)
+  * [cross\_contract\_result\_discarded](lints/cross_contract_result_discarded.md)
 
 ## Branding
 

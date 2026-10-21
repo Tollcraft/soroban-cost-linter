@@ -31,6 +31,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod collection_len_in_loop_condition;
+mod cross_contract_result_discarded;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod large_constant_array;
@@ -103,6 +105,8 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         LEDGER_CONTEXT_READ_IN_LOOP,
         REDUNDANT_REQUIRE_AUTH,
         LARGE_CONSTANT_ARRAY,
+        COLLECTION_LEN_IN_LOOP_CONDITION,
+        CROSS_CONTRACT_RESULT_DISCARDED,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -169,6 +173,12 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(redundant_require_auth::RedundantRequireAuth));
     lint_store.register_late_pass(|_| Box::new(unbounded_input_loop::UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(large_constant_array::LargeConstantArray));
+    lint_store.register_late_pass(|_| {
+        Box::new(collection_len_in_loop_condition::CollectionLenInLoopCondition)
+    });
+    lint_store.register_late_pass(|_| {
+        Box::new(cross_contract_result_discarded::CrossContractResultDiscarded)
+    });
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -392,6 +402,18 @@ rustc_session::declare_lint! {
     pub LARGE_CONSTANT_ARRAY,
     Warn,
     "embedding a large constant array in contract code"
+}
+
+rustc_session::declare_lint! {
+    pub COLLECTION_LEN_IN_LOOP_CONDITION,
+    Warn,
+    "collection len() called in a loop condition without mutation"
+}
+
+rustc_session::declare_lint! {
+    pub CROSS_CONTRACT_RESULT_DISCARDED,
+    Warn,
+    "cross-contract call result discarded"
 }
 
 pub struct SorobanCostLints;
@@ -641,6 +663,18 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "embedding a large constant array in contract code",
         rationale: "Embedding large constant arrays in the contract code increases Wasm binary size, which drives up deployment costs and loads. Consider using host-managed Bytes or storing large data in persistent storage.",
     },
+    LintMeta {
+        name: "collection_len_in_loop_condition",
+        category: LintCategory::Compute,
+        description: "collection len() called in a loop condition without mutation",
+        rationale: "len() on a Soroban Vec or Map is a host call; re-evaluating it in a while condition pays that host call on every iteration for a length that cannot change when the loop never mutates the collection.",
+    },
+    LintMeta {
+        name: "cross_contract_result_discarded",
+        category: LintCategory::Compute,
+        description: "cross-contract call result discarded",
+        rationale: "A cross-contract invocation pays host dispatch, a fresh VM context for the callee and conversion of the return value across the boundary; discarding that value pays the full cost for an answer that is thrown away.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -682,6 +716,8 @@ dylint_lint_impl! {
         LEDGER_CONTEXT_READ_IN_LOOP,
         REDUNDANT_REQUIRE_AUTH,
         LARGE_CONSTANT_ARRAY,
+        COLLECTION_LEN_IN_LOOP_CONDITION,
+        CROSS_CONTRACT_RESULT_DISCARDED,
     ]
 }
 

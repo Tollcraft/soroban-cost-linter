@@ -108,6 +108,11 @@ fn good_separated_by_invoke_contract(env: Env, target: Address, func: Symbol) {
 }
 
 /// Same address but separated by a `try_invoke_contract` call.
+///
+/// The result is discarded deliberately — this fixture pins how
+/// `redundant_require_auth` resets across a fallible cross-contract call, not
+/// whether the call's value is used.
+#[allow(cross_contract_result_discarded)]
 fn good_separated_by_try_invoke_contract(env: Env, target: Address, func: Symbol) {
     let addr = Address;
     addr.require_auth();

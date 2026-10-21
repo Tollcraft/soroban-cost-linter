@@ -29,17 +29,15 @@ adapting to the pinned `nightly-2026-04-16` rustc API (the usual drift:
 | --- | --- |
 | `blind_storage_write` | `8659a92` |
 | `bytes_slice_copy_in_loop` | `04d5b1b` |
-| `collection_len_in_loop_condition` | `016a778` |
 | `excessive_vec_capacity` | `833d958` |
 | `nested_loop_storage_access` | `49101f5` |
 | `redundant_val_conversion` | `1aa0baf` |
 | `std_collection_in_contract` | `a77f614` |
 | `temporary_storage_for_persistent_data` | `ed0d988` |
 
-The remaining six never had an implementation in this repository at all — the
+The remaining five never had an implementation in this repository at all — the
 fixture is the whole specification, and the pass has to be written:
 
-- `cross_contract_result_discarded`
 - `instance_storage_write_in_loop`
 - `persistent_storage_for_ephemeral_data`
 - `redundant_address_clone`

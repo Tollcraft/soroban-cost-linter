@@ -399,11 +399,6 @@ pub fn build_effective_lint_flags(
     Ok(effective_flags.into_values().collect())
 }
 
-#[allow(dead_code)]
-fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
-    build_effective_lint_flags(Some(config), &[], &[], &[])
-}
-
 /// Container for `.lintignore` suppression patterns.
 #[derive(Clone, Debug)]
 pub struct LintIgnore {
@@ -1182,7 +1177,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_ok());
         let flags = result.unwrap();
         assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
@@ -1193,7 +1188,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loops".to_string(), "deny".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown lint name"));
     }
@@ -1203,7 +1198,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown lint level"));
     }
