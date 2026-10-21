@@ -12,6 +12,7 @@ extern crate rustc_span;
 use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use clippy_utils::macros::{FormatArgsStorage, is_panic, root_macro_call_first_node};
+use clippy_utils::res::MaybeDef;
 use clippy_utils::res::MaybeResPath;
 use clippy_utils::source::snippet_opt;
 use clippy_utils::ty::peel_and_count_ty_refs;
@@ -21,12 +22,14 @@ use clippy_utils::{get_parent_expr, is_in_test};
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
+use rustc_hir::def::DefKind;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
 use rustc_hir::{HirId, HirIdSet};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DesugaringKind;
 use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::sym;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1216,60 +1219,159 @@ pub struct RedundantEnvClone;
 
 rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
-/// Detection: for every `MethodCall` whose segment is named `clone`, peel
-/// references off the receiver and check whether the underlying ADT
-/// resolves to `soroban_sdk::Env`. No loop analysis is needed — the lint
-/// is purely structural.
+/// Detection: a clone of a `soroban_sdk::Env` is reported when the value being
+/// copied is an owned `Env` that is not needed afterwards.
+///
+/// Three spellings name the same operation, and all three are reported:
+///
+/// * `env.clone()` — the method form.
+/// * `Env::clone(&env)` — the type-qualified form of the trait method.
+/// * `Clone::clone(&env)` — the qualified trait form.
+///
+/// No loop analysis is needed — the lint is purely structural.
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
-    /// Flags a `.clone()` call whose receiver is a `soroban_sdk::Env`.
+    /// Flags a clone of a `soroban_sdk::Env`.
     ///
     /// `Env` is a cheap handle to the host and is almost always better passed
-    /// by reference or value than cloned; the clone adds needless work. Matches
-    /// the `clone` method name and confirms the receiver type resolves to
-    /// `soroban_sdk::Env` before emitting a help note.
+    /// by reference or value than cloned; the clone adds needless work.
+    ///
+    /// The cloned value may be reached through a local, through a field or
+    /// through a reference target; only an *owned* `Env` is reported, because
+    /// cloning a `&Env` legitimately produces the owned `Env` the caller
+    /// asked for. A local that is still read after the clone is left alone as
+    /// well: there the original and the copy are both live.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "clone"
-        {
-            let is_env = if let Some(adt_def) =
-                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
-            {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
-            } else {
-                false
-            };
+        let Some(subject) = env_clone_subject(cx, expr) else {
+            return;
+        };
 
-            if is_env {
-                // Clone on &Env produces an owned Env from a reference — genuinely needed.
-                let receiver_ty = cx.typeck_results().expr_ty(receiver);
-                let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
-                if ref_count > 0 {
-                    return;
-                }
-            }
-
-            // If the receiver is a local binding that is still used after
-            // the clone, the original and the clone are both live — skip.
-            if let Some(local_id) = receiver.res_local_id() {
-                if local_used_after_expr(cx, local_id, expr) {
-                    return;
-                }
-            } else {
-                // Cannot statically determine whether the receiver is used
-                // after the clone — be conservative and skip.
-                return;
-            }
-
-            span_lint_and_help(
-                cx,
-                REDUNDANT_ENV_CLONE,
-                expr.span,
-                "redundant clone on Env object",
-                None,
-                "pass Env by reference or value instead of cloning",
-            );
+        // Only `soroban_sdk::Env` is worth reporting.
+        let subject_ty = cx.typeck_results().expr_ty(subject);
+        let Some(adt_def) = ty_adt_def(subject_ty.peel_refs()) else {
+            return;
+        };
+        if !match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"]) {
+            return;
         }
+
+        // Clone on &Env produces an owned Env from a reference — genuinely needed.
+        let (_inner, ref_count, _) = peel_and_count_ty_refs(subject_ty);
+        if ref_count > 0 {
+            return;
+        }
+
+        // If the receiver is a local binding that is still used after
+        // the clone, the original and the clone are both live — skip.
+        if clone_subject_is_live_after(cx, subject, expr) {
+            return;
+        }
+
+        span_lint_and_help(
+            cx,
+            REDUNDANT_ENV_CLONE,
+            expr.span,
+            "redundant clone on Env object",
+            None,
+            "pass Env by reference or value instead of cloning",
+        );
     }
+}
+
+/// The expression whose `Env` value a clone expression duplicates.
+///
+/// * `env.clone()` — a method call; the receiver is the subject.
+/// * `Env::clone(&env)` / `Clone::clone(&env)` — a call whose callee path
+///   resolves to the `Clone` trait's `clone` method; the subject is the
+///   borrowed argument, with the borrow peeled off.
+///
+/// Returns `None` for every other expression.
+fn env_clone_subject<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    match expr.kind {
+        hir::ExprKind::MethodCall(path_segment, receiver, _args, _span)
+            if path_segment.ident.name.as_str() == "clone" =>
+        {
+            Some(receiver)
+        }
+        hir::ExprKind::Call(callee, args) => {
+            let hir::ExprKind::Path(qpath) = callee.kind else {
+                return None;
+            };
+            if !is_clone_trait_method(cx, &qpath, callee.hir_id) {
+                return None;
+            }
+            let [arg] = args else {
+                return None;
+            };
+            // The shim takes `&self`, so the argument is a borrow of the value
+            // that gets copied. Peel the borrow to reach the `Env` itself.
+            Some(match arg.kind {
+                hir::ExprKind::AddrOf(_, _, borrowed) => borrowed,
+                _ => arg,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Whether the value a clone expression copies is still read afterwards.
+///
+/// A local that is read again after the clone keeps both the original and the
+/// copy alive, so the copy buys nothing there. A subject that is not a local —
+/// a field, say — is not consumed by the clone at all, so the copy is always
+/// redundant.
+///
+/// The rule lives in one place so that the other "redundant clone" lints can
+/// share the same last-use analysis instead of writing a second copy of it.
+fn clone_subject_is_live_after<'tcx>(
+    cx: &LateContext<'tcx>,
+    subject: &'tcx hir::Expr<'tcx>,
+    clone_expr: &'tcx hir::Expr<'tcx>,
+) -> bool {
+    subject
+        .res_local_id()
+        .is_some_and(|local_id| local_used_after_expr(cx, local_id, clone_expr))
+}
+
+/// Whether the callee of a call expression is the `Clone` trait's `clone`
+/// method — the shim behind `env.clone()`, `Env::clone(&env)` and
+/// `Clone::clone(&env)`.
+///
+/// The check runs on the resolved `DefId`, so a user-defined function that
+/// merely happens to be called `clone` is not mistaken for the trait method.
+/// The implementing type is deliberately not checked here: the caller
+/// confirms that the value being copied is a `soroban_sdk::Env`.
+fn is_clone_trait_method<'tcx>(
+    cx: &LateContext<'tcx>,
+    qpath: &hir::QPath<'tcx>,
+    hir_id: HirId,
+) -> bool {
+    let Some(def_id) = cx.qpath_res(qpath, hir_id).opt_def_id() else {
+        return false;
+    };
+    if cx.tcx.item_name(def_id) != sym::clone {
+        return false;
+    }
+    let Some(parent) = def_id.assoc_fn_parent(cx) else {
+        return false;
+    };
+    // `Clone::clone` written as a trait path resolves to the trait's own
+    // method, whose parent is the `Clone` trait.
+    if parent.is_diag_item(cx, sym::Clone) {
+        return true;
+    }
+    // `Env::clone` resolves to the trait method's implementation, whose parent
+    // is the `impl Clone for Env` block; the block's trait reference points
+    // back at `Clone`.
+    matches!(cx.tcx.def_kind(parent), DefKind::Impl { of_trait: true })
+        && cx
+            .tcx
+            .impl_trait_ref(parent)
+            .skip_binder()
+            .def_id
+            .is_diag_item(cx, sym::Clone)
 }
 
 /// Concrete pass that fires [`UNNECESSARY_HOST_FUNCTION_CALL`].

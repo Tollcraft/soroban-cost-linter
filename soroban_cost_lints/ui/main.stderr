@@ -180,8 +180,32 @@ LL |     let _cloned = env.clone(); // Should Warn
    = help: pass Env by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 
+warning: redundant clone on Env object
+  --> $DIR/main.rs:366:19
+   |
+LL |     let _cloned = Env::clone(&env); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: redundant clone on Env object
+  --> $DIR/main.rs:370:19
+   |
+LL |     let _cloned = Clone::clone(&env); // Should Warn
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: redundant clone on Env object
+  --> $DIR/main.rs:378:19
+   |
+LL |     let _cloned = holder.env.clone(); // Should Warn — Env reached through a field
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:401:20
+  --> $DIR/main.rs:414:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -190,7 +214,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
-  --> $DIR/main.rs:401:20
+  --> $DIR/main.rs:414:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -199,7 +223,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(ledger_context_read_in_loop)]` on by default
 
 warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
-  --> $DIR/main.rs:415:20
+  --> $DIR/main.rs:428:20
    |
 LL |         let _seq = env.ledger().sequence(); // Good (allowed)
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -207,7 +231,7 @@ LL |         let _seq = env.ledger().sequence(); // Good (allowed)
    = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:422:21
+  --> $DIR/main.rs:435:21
    |
 LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -215,7 +239,7 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:444:18
+  --> $DIR/main.rs:457:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -223,7 +247,7 @@ LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:450:21
+  --> $DIR/main.rs:463:21
    |
 LL |         let _addr = env.current_contract_address(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -231,7 +255,7 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:457:20
+  --> $DIR/main.rs:470:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -239,7 +263,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
-  --> $DIR/main.rs:457:20
+  --> $DIR/main.rs:470:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -247,7 +271,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:479:16
+  --> $DIR/main.rs:492:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -255,19 +279,19 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:483:16
+  --> $DIR/main.rs:496:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:491:16
+  --> $DIR/main.rs:504:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: storage key `hello_world` is constructed in more than one function body
-  --> $DIR/main.rs:487:16
+  --> $DIR/main.rs:500:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -276,7 +300,7 @@ LL |     let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars 
    = note: `#[warn(duplicate_storage_key_construction)]` on by default
 
 warning: storage key `hello_world` is constructed in more than one function body
-  --> $DIR/main.rs:495:16
+  --> $DIR/main.rs:508:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -284,7 +308,7 @@ LL |     let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
    = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
 
 warning: storage key `hello` is constructed in more than one function body
-  --> $DIR/main.rs:479:16
+  --> $DIR/main.rs:492:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -292,7 +316,7 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
 
 warning: storage key `hello` is constructed in more than one function body
-  --> $DIR/main.rs:513:16
+  --> $DIR/main.rs:526:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -300,7 +324,7 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
    = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:521:30
+  --> $DIR/main.rs:534:30
    |
 LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
    |                              ^^^^^^^^^^^^^^^^
@@ -308,7 +332,7 @@ LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior 
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:525:26
+  --> $DIR/main.rs:538:26
    |
 LL |     let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -316,7 +340,7 @@ LL |     let _: Option<i32> = env.storage().instance().get(&"key1"); // Read fir
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:530:19
+  --> $DIR/main.rs:543:19
    |
 LL |     let _exists = env.storage().instance().has(&"key1"); // Check first
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -324,7 +348,7 @@ LL |     let _exists = env.storage().instance().has(&"key1"); // Check first
    = help: delete the storage read or use its returned value
 
 warning: inefficient bytes concatenation in a loop
-  --> $DIR/main.rs:546:18
+  --> $DIR/main.rs:559:18
    |
 LL |         result = result + Bytes::from("x"); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -333,7 +357,7 @@ LL |         result = result + Bytes::from("x"); // Should Warn
    = note: `#[warn(inefficient_bytes_concat)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:573:9
+  --> $DIR/main.rs:586:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -342,7 +366,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: Map::insert inside a loop is expensive
-  --> $DIR/main.rs:573:9
+  --> $DIR/main.rs:586:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -351,7 +375,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(map_insert_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:589:9
+  --> $DIR/main.rs:602:9
    |
 LL |         map.insert(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^
@@ -359,7 +383,7 @@ LL |         map.insert(&i, &1); // Good (allowed)
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:599:28
+  --> $DIR/main.rs:612:28
    |
 LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -368,7 +392,7 @@ LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should
    = note: `#[warn(contract_call_in_loop)]` on by default
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:606:28
+  --> $DIR/main.rs:619:28
    |
 LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -376,7 +400,7 @@ LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:621:30
+  --> $DIR/main.rs:634:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -384,7 +408,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:630:30
+  --> $DIR/main.rs:643:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -392,7 +416,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:641:30
+  --> $DIR/main.rs:654:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -400,7 +424,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:651:30
+  --> $DIR/main.rs:664:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -408,7 +432,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:661:30
+  --> $DIR/main.rs:674:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -416,7 +440,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:670:30
+  --> $DIR/main.rs:683:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -424,7 +448,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:677:30
+  --> $DIR/main.rs:690:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -432,7 +456,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:686:30
+  --> $DIR/main.rs:699:30
    |
 LL |     let client = TokenClient(env.clone());
    |                              ^^^^^^^^^^^
@@ -440,7 +464,7 @@ LL |     let client = TokenClient(env.clone());
    = help: pass Env by reference or value instead of cloning
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:703:9
+  --> $DIR/main.rs:716:9
    |
 LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -448,7 +472,7 @@ LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: signature verification inside a loop
-  --> $DIR/main.rs:703:9
+  --> $DIR/main.rs:716:9
    |
 LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -457,7 +481,7 @@ LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
    = note: `#[warn(signature_verification_in_loop)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:720:9
+  --> $DIR/main.rs:733:9
    |
 LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -465,7 +489,7 @@ LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:755:28
+  --> $DIR/main.rs:768:28
    |
 LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -473,7 +497,7 @@ LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/main.rs:776:29
+  --> $DIR/main.rs:789:29
    |
 LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -481,7 +505,7 @@ LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should W
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:776:29
+  --> $DIR/main.rs:789:29
    |
 LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -489,7 +513,7 @@ LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Should W
    = help: delete the storage read or use its returned value
 
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/main.rs:780:8
+  --> $DIR/main.rs:793:8
    |
 LL |     if env.storage().persistent().has(&1) { // Should Warn
    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -497,7 +521,7 @@ LL |     if env.storage().persistent().has(&1) { // Should Warn
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:786:29
+  --> $DIR/main.rs:799:29
    |
 LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -505,7 +529,7 @@ LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:790:29
+  --> $DIR/main.rs:803:29
    |
 LL |     let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -513,7 +537,7 @@ LL |     let _val: Option<i32> = env.storage().instance().get(&1); // Good — n
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:794:29
+  --> $DIR/main.rs:807:29
    |
 LL |     let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -521,7 +545,7 @@ LL |     let _val: Option<i32> = env.storage().temporary().get(&1); // Good — 
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:799:29
+  --> $DIR/main.rs:812:29
    |
 LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -529,7 +553,7 @@ LL |     let _val: Option<i32> = env.storage().persistent().get(&1); // Good (al
    = help: delete the storage read or use its returned value
 
 warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:809:27
+  --> $DIR/main.rs:822:27
    |
 LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -538,7 +562,7 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should War
    = note: `#[warn(soroban_redundant_storage_read)]` on by default
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:808:27
+  --> $DIR/main.rs:821:27
    |
 LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -546,7 +570,7 @@ LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:809:27
+  --> $DIR/main.rs:822:27
    |
 LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -554,7 +578,7 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Should War
    = help: delete the storage read or use its returned value
 
 warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:814:29
+  --> $DIR/main.rs:827:29
    |
 LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -562,7 +586,7 @@ LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should W
    = help: store the value from the first read and reuse it instead of reading again
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:814:29
+  --> $DIR/main.rs:827:29
    |
 LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -570,7 +594,7 @@ LL |     let _val: Option<i32> = env.storage().instance().get(&key); // Should W
    = help: delete the storage read or use its returned value
 
 warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:819:14
+  --> $DIR/main.rs:832:14
    |
 LL |     let _b = env.storage().instance().has(&key); // Should Warn
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -578,7 +602,7 @@ LL |     let _b = env.storage().instance().has(&key); // Should Warn
    = help: store the value from the first read and reuse it instead of reading again
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:818:14
+  --> $DIR/main.rs:831:14
    |
 LL |     let _a = env.storage().instance().has(&key);
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -586,7 +610,7 @@ LL |     let _a = env.storage().instance().has(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:819:14
+  --> $DIR/main.rs:832:14
    |
 LL |     let _b = env.storage().instance().has(&key); // Should Warn
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -594,7 +618,7 @@ LL |     let _b = env.storage().instance().has(&key); // Should Warn
    = help: delete the storage read or use its returned value
 
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/main.rs:823:27
+  --> $DIR/main.rs:836:27
    |
 LL |     let _a: Option<i32> = env.storage().persistent().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -602,7 +626,7 @@ LL |     let _a: Option<i32> = env.storage().persistent().get(&key);
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: persistent storage read without TTL extension — archival cost cliff
-  --> $DIR/main.rs:824:27
+  --> $DIR/main.rs:837:27
    |
 LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -610,7 +634,7 @@ LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should W
    = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
 
 warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:824:27
+  --> $DIR/main.rs:837:27
    |
 LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -618,7 +642,7 @@ LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should W
    = help: store the value from the first read and reuse it instead of reading again
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:823:27
+  --> $DIR/main.rs:836:27
    |
 LL |     let _a: Option<i32> = env.storage().persistent().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -626,7 +650,7 @@ LL |     let _a: Option<i32> = env.storage().persistent().get(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:824:27
+  --> $DIR/main.rs:837:27
    |
 LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -634,7 +658,7 @@ LL |     let _b: Option<i32> = env.storage().persistent().get(&key); // Should W
    = help: delete the storage read or use its returned value
 
 warning: redundant storage read: this key was already read without modification
-  --> $DIR/main.rs:829:27
+  --> $DIR/main.rs:842:27
    |
 LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -642,7 +666,7 @@ LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Wa
    = help: store the value from the first read and reuse it instead of reading again
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:828:27
+  --> $DIR/main.rs:841:27
    |
 LL |     let _a: Option<i32> = env.storage().temporary().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -650,7 +674,7 @@ LL |     let _a: Option<i32> = env.storage().temporary().get(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:829:27
+  --> $DIR/main.rs:842:27
    |
 LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -658,7 +682,7 @@ LL |     let _b: Option<i32> = env.storage().temporary().get(&key); // Should Wa
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:833:27
+  --> $DIR/main.rs:846:27
    |
 LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -666,7 +690,7 @@ LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:835:27
+  --> $DIR/main.rs:848:27
    |
 LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -674,7 +698,7 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good — w
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:839:27
+  --> $DIR/main.rs:852:27
    |
 LL |     let _a: Option<i32> = env.storage().instance().get(&key1);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -682,7 +706,7 @@ LL |     let _a: Option<i32> = env.storage().instance().get(&key1);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:840:27
+  --> $DIR/main.rs:853:27
    |
 LL |     let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -690,7 +714,7 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key2); // Good — 
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:844:27
+  --> $DIR/main.rs:857:27
    |
 LL |     let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -698,7 +722,7 @@ LL |     let _a: Option<i32> = env.storage().instance().get(&key); // Good — o
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:849:27
+  --> $DIR/main.rs:862:27
    |
 LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -706,12 +730,12 @@ LL |     let _a: Option<i32> = env.storage().instance().get(&key);
    = help: delete the storage read or use its returned value
 
 warning: storage read result is discarded
-  --> $DIR/main.rs:850:27
+  --> $DIR/main.rs:863:27
    |
 LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: delete the storage read or use its returned value
 
-error: aborting due to 3 previous errors; 85 warnings emitted
+error: aborting due to 3 previous errors; 88 warnings emitted
 
