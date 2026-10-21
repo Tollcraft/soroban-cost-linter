@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1792530607 with 177 findings (25 TP, 152 FP, 85.88% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1792575592 with 135 findings (21 TP, 114 FP, 84.44% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 177,
-    "total_true_positives": 25,
-    "total_false_positives": 152,
-    "false_positive_rate_percent": 85.88
+    "total_findings": 135,
+    "total_true_positives": 21,
+    "total_false_positives": 114,
+    "false_positive_rate_percent": 84.44
   },
   "contracts": {
     "auth_batch_per_item": {
-      "total": 14,
+      "total": 10,
       "true_positives": [],
       "false_positives": [
         {
@@ -49,18 +49,6 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 101,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 101,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "require_auth_in_loop",
           "file": "src/lib.rs",
           "line": 110,
@@ -83,23 +71,11 @@
           "file": "src/lib.rs",
           "line": 120,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 120,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 120,
-          "message": "loop-invariant storage operation inside a loop"
         }
       ]
     },
     "auth_layered_admin": {
-      "total": 21,
+      "total": 15,
       "true_positives": [
         {
           "lint_name": "unwrap_on_storage_get",
@@ -140,18 +116,6 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 83,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 83,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 135,
@@ -182,18 +146,6 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 133,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 133,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 183,
@@ -216,23 +168,11 @@
           "file": "src/lib.rs",
           "line": 181,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 181,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 181,
-          "message": "loop-invariant storage operation inside a loop"
         }
       ]
     },
     "auth_multi_party": {
-      "total": 15,
+      "total": 11,
       "true_positives": [],
       "false_positives": [
         {
@@ -258,18 +198,6 @@
           "file": "src/lib.rs",
           "line": 89,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 89,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 89,
-          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "loop_invariant_storage_access",
@@ -312,18 +240,6 @@
           "file": "src/lib.rs",
           "line": 146,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 146,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 146,
-          "message": "loop-invariant storage operation inside a loop"
         }
       ]
     },
@@ -353,7 +269,7 @@
       ]
     },
     "bounded_input_loop_fixture": {
-      "total": 15,
+      "total": 7,
       "true_positives": [],
       "false_positives": [
         {
@@ -369,18 +285,6 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 30,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 30,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 44,
@@ -393,18 +297,6 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 44,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 44,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
           "line": 57,
@@ -417,34 +309,10 @@
           "message": "loop-invariant storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 57,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 57,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
           "line": 58,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
         }
       ]
     },
@@ -473,7 +341,7 @@
       ]
     },
     "compute_input_validation": {
-      "total": 6,
+      "total": 4,
       "true_positives": [],
       "false_positives": [
         {
@@ -487,18 +355,6 @@
           "file": "src/lib.rs",
           "line": 14,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 14,
-          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "loop_invariant_storage_access",
@@ -563,15 +419,8 @@
       ]
     },
     "cross_contract_call_outside_loop": {
-      "total": 1,
-      "true_positives": [
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "redundant clone on Env object"
-        }
-      ],
+      "total": 0,
+      "true_positives": [],
       "false_positives": []
     },
     "cross_contract_call_simple": {
@@ -932,7 +781,7 @@
       "false_positives": []
     },
     "symbol_key_enum_storage": {
-      "total": 7,
+      "total": 5,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -965,18 +814,6 @@
           "file": "src/lib.rs",
           "line": 52,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 52,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 52,
-          "message": "loop-invariant storage operation inside a loop"
         }
       ]
     },
@@ -999,26 +836,8 @@
       "false_positives": []
     },
     "timelock": {
-      "total": 19,
+      "total": 12,
       "true_positives": [
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 51,
-          "message": "redundant clone on Env object"
-        },
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 69,
-          "message": "redundant clone on Env object"
-        },
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 107,
-          "message": "redundant clone on Env object"
-        },
         {
           "lint_name": "unnecessary_host_function_call",
           "file": "src/lib.rs",
@@ -1064,34 +883,10 @@
           "message": "loop-invariant storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 94,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 94,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
           "line": 95,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 95,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 95,
-          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "instance_storage_for_unbounded_data",
@@ -1120,7 +915,7 @@
       ]
     },
     "token": {
-      "total": 24,
+      "total": 16,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -1179,34 +974,10 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
           "line": 51,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 51,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 51,
-          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "vec_where_slice_could_be_used",
@@ -1227,34 +998,10 @@
           "message": "storage operation inside a loop"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 64,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 64,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
           "line": 65,
           "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 65,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 65,
-          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "duplicate_storage_key_construction",
