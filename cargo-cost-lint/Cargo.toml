@@ -24,6 +24,11 @@ tempfile = "3.8"
 assert_cmd = "2.0"
 predicates = "3.0"
 
+[[bench]]
+name = "linter_performance"
+harness = false
+path = "benches/linter_performance.rs"
+
 [[bin]]
 name = "cargo-cost-lint"
 path = "src/main.rs"

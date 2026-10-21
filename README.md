@@ -63,8 +63,8 @@ The fastest way to get a working environment is the pre-built container image, w
 the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
 
 ```bash
-docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
-docker run --rm -it -v "$(pwd)":/workspace ghcr.io/Tollcraft/soroban-cost-linter:latest bash
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/tollcraft/soroban-cost-linter-dev:latest bash
 # Inside the container:
 cargo test --workspace
 ```

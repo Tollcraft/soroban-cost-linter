@@ -31,7 +31,7 @@ A prebuilt image is also published to the GitHub Container Registry on every pus
 that touches the Dockerfile or the toolchain pin:
 
 ```bash
-docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
 ```
 
 #### Manual Local Setup
