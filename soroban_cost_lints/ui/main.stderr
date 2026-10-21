@@ -7,23 +7,6 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    = help: consider reading the value before writing or using `.has()` to check existence
    = note: `#[warn(storage_write_without_read)]` on by default
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:275:9
-   |
-LL |         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-   = note: `#[warn(loop_invariant_storage_access)]` on by default
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:275:9
-   |
-LL |         env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
-   |         ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
 warning: storage write without a corresponding read
   --> $DIR/main.rs:284:30
    |
@@ -48,22 +31,6 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[deny(soroban_storage_in_loop)]` on by default
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:320:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:320:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
 
 warning: persistent storage read without TTL extension — archival cost cliff
   --> $DIR/main.rs:327:30
@@ -91,22 +58,6 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: delete the storage read or use its returned value
    = note: `#[warn(discarded_storage_read)]` on by default
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:327:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:327:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
 error: storage operation inside a loop
   --> $DIR/main.rs:334:12
    |
@@ -122,22 +73,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:334:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:334:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
 
 warning: storage write without a corresponding read
   --> $DIR/main.rs:341:30
@@ -154,22 +90,6 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |                                  ^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:347:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:347:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:358:19
@@ -737,5 +657,5 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allo
    |
    = help: delete the storage read or use its returned value
 
-error: aborting due to 3 previous errors; 88 warnings emitted
+error: aborting due to 3 previous errors; 78 warnings emitted
 
