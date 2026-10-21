@@ -1,4 +1,5 @@
 #![warn(collection_len_in_loop_condition)]
+#![allow(vec_where_slice_could_be_used)]
 #![allow(clippy::all)]
 #![allow(unused)]
 
@@ -42,6 +43,9 @@ pub fn firing_case(env: Env, vec: Vec<u32>) {
     }
 }
 
+// The `push_back` is what suppresses `collection_len_in_loop_condition`; it is
+// also a growth call in a loop, which `bytes_append_in_loop` owns separately.
+#[allow(bytes_append_in_loop)]
 pub fn non_firing_case_mutated(env: Env, mut vec: Vec<u32>) {
     let mut i = 0;
     // #[allow(collection_len_in_loop_condition)] // Should not fire because of push_back

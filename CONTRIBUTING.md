@@ -6,7 +6,7 @@ First off, thank you for considering contributing to `soroban-cost-linter`!
 
 ### 1. Understanding the Architecture
 
-This tool leverages Dylint to hook into the Rust compiler's AST and High-Level Intermediate Representation (HIR). Familiarity with `rustc` internals (like `rustc_hir`, `rustc_middle`) and `clippy` source code is highly beneficial.
+This tool leverages Dylint to hook into the Rust compiler's High-Level Intermediate Representation (HIR). Familiarity with `rustc` internals (like `rustc_hir`, `rustc_middle`) and `clippy` source code is highly beneficial.
 
 ### 2. Getting Started
 
@@ -102,10 +102,10 @@ If you prefer to set up the toolchain on your machine directly:
 - Find a structural anti-pattern in Soroban that is input-independent and costly, and that is **not** already covered by a Clippy lint with the same cost-relevant semantics.
 - Assign the lint to one of the five [lint categories](docs/lint_categories.md) and add it to the `LINT_METADATA` registry in `soroban_cost_lints/src/lib.rs`.
 - Add a UI test fixture in `soroban_cost_lints/ui/<lint_name>.rs` with its blessed `.stderr` output (covering both positive triggering cases and negative non-triggering cases).
-- Implement the lint using the `dylint` framework, checking the AST or HIR for the specific pattern.
+- Implement the lint using the `dylint` framework, checking the HIR for the specific pattern.
 - Update the `LINT_METADATA` entry with the correct category.
 - Measure linter overhead with `cargo bench -p cargo-cost-lint`.
-- Run `cargo run -p generate-lint-docs` from the workspace root to regenerate `docs/lints/README.md` and `docs/lints/lint-registry.json`.
+- Run `cargo run -p generate-lint-docs` from the workspace root to regenerate `docs/lints/README.md` and `docs/lint_catalog.md`. The generator writes exactly those two files; `cargo run -p generate-lint-docs -- --check` fails when either is stale, or when `docs/SUMMARY.md` no longer lists every shipped lint.
 - Run `make sync-lint-data` to refresh the snapshot in `cargo-cost-lint/lint-data/` that a packaged `cargo-cost-lint` builds from.
 
 ### Lint Naming Convention

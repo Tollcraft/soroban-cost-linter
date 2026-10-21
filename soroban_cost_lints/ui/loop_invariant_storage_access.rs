@@ -54,11 +54,27 @@ use soroban_sdk::Env;
 use soroban_sdk::storage::Instance;
 
 // Fires: a storage access inside a loop whose operands do not depend on the
-// loop. `env` is a constant receiver, so every call in the chain
-// (`storage` / `instance` / `get`) is loop-invariant.
+// loop. `env` is a constant receiver, so the whole chain
+// (`storage` / `instance` / `get`) is loop-invariant. The chain is reported
+// once, at its outermost step, so the diagnostic spans the whole expression.
 fn invariant_get(env: Env) {
     for _ in 0..10 {
         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
+    }
+}
+
+// Fires: a two-step chain is reported once as well, with the span of the
+// whole chain.
+fn invariant_two_step_chain(env: Env) {
+    for _ in 0..10 {
+        let _instance = env.storage().instance(); // Should Warn
+    }
+}
+
+// Fires: a three-step chain is still one diagnostic.
+fn invariant_three_step_chain(env: Env) {
+    for _ in 0..10 {
+        let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
     }
 }
 
@@ -71,28 +87,28 @@ fn varying_receiver(env: Env, stores: Vec<Instance>) {
 }
 
 // Partial: the *key* is a binding the loop body reassigns, so the `get` call
-// itself is loop-varying and is NOT reported. This is the mutation path of the
-// loop-dependence analysis, as opposed to the binding path covered by
-// `varying_receiver`.
+// itself is loop-varying and the chain is NOT reported. This is the mutation
+// path of the loop-dependence analysis, as opposed to the binding path
+// covered by `varying_receiver`.
 //
-// The two calls that build the receiver (`env.storage()` and
-// `env.storage().instance()`) do not read `key`, so they remain invariant and
-// ARE reported. Loop-invariance is decided per call, not per statement.
+// The chain is reported as a whole or not at all: the inner steps only build
+// the accessor handles, so there is nothing to hoist when the outermost step
+// depends on the loop.
 fn varying_key_from_mutated_binding(env: Env, keys: Vec<u32>) {
     let mut key = 0u32;
     for k in keys.iter() {
         key = *k;
-        let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+        let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn
     }
 }
 
 // Partial: same shape as above via a fresh per-iteration binding instead of a
 // reassigned outer one. `let key = *k` introduces a loop-scoped binding, so
-// `get(&key)` depends on loop state; the receiver chain is still invariant.
+// `get(&key)` depends on loop state and the chain is not reported.
 fn varying_key_from_iteration_local(env: Env, keys: Vec<u32>) {
     for k in keys.iter() {
         let key = *k;
-        let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn on the `get` call
+        let _: Option<i32> = env.storage().instance().get(&key); // Should NOT warn
     }
 }
 
@@ -143,13 +159,12 @@ fn invariant_in_closure(env: Env) {
 
 // Mixed: the outer loop's read is invariant, so the full chain is reported.
 // The inner loop's read takes its key from the inner loop variable `i`, so
-// only `get(&i)` is exempt — `env.storage()` and `env.storage().instance()`
-// are still invariant with respect to `i` and are reported.
+// the inner chain is not reported at all.
 fn invariant_in_nested_loop(env: Env) {
     for _ in 0..10 {
         let _: Option<i32> = env.storage().instance().get(&1); // Should Warn
         for i in 0..3 {
-            let _: Option<i32> = env.storage().instance().get(&i); // Should NOT warn on the `get` call
+            let _: Option<i32> = env.storage().instance().get(&i); // Should NOT warn
         }
     }
 }

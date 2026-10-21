@@ -1,5 +1,5 @@
 warning: collection len() called in a loop condition without mutation
-  --> $DIR/collection_len_in_loop_condition.rs:39:15
+  --> $DIR/collection_len_in_loop_condition.rs:40:15
    |
 LL |     while i < vec.len() {
    |               ^^^^^^^^^

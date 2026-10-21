@@ -14,6 +14,12 @@ All three loop forms are covered:
 * `while i < count` — a `while` condition comparing against a contract parameter (or a caller-supplied collection's length);
 * `loop` — a bare loop whose `break` is guarded by a parameter-derived comparison, e.g. `if i >= count { break; }`.
 
+The storage methods counted as writes are the ones the pinned soroban-sdk
+(checked against 26.1.1 and 28.0.0) actually exports on `Persistent`,
+`Temporary` and `Instance`: `set`, `update`, `try_update` and `remove`.
+Iterations counted as caller-driven are `iter()` plus the `Map` projections
+`keys()` and `values()`.
+
 Bounds that the contract validates itself — e.g. `let clamped = count.min(100);` and then looping on `clamped` — are intentionally not flagged: the loop is no longer caller-driven.
 
 ## Why is this bad?

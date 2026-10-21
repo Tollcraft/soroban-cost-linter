@@ -6,7 +6,7 @@
 
 ## What it does
 
-Flags a `Env::invoke_contract(...)` call whose non-unit return value is discarded:
+Flags an `Env::invoke_contract(...)` or `Env::try_invoke_contract(...)` call whose non-unit return value is discarded:
 
 - bound to the wildcard pattern — `let _ = env.invoke_contract::<T>(...);`
 - dropped as a bare statement — `env.invoke_contract::<T>(...);`
@@ -48,7 +48,7 @@ if balance < minimum {
 ```rust
 // ✅ Good (deliberate): the call is made for its side effect and the
 // result is intentionally not needed — bind to a named variable to silence
-let _result = env.invoke_contract::<()>(&addr, &symbol_short!("poke"), ());
+let _result = env.invoke_contract::<i128>(&addr, &symbol_short!("balance"), ());
 ```
 
 ## Suggested Fix
@@ -67,6 +67,8 @@ the wildcard to signal the discard is deliberate.
 
 - Calls whose result is bound to a named variable (including one with an `_`
   prefix, e.g. `let _result = ...`).
+- Infallible and fallible invocations alike: `try_invoke_contract` returns a
+  `Result`, which is a value worth inspecting rather than dropping.
 - Calls whose result is consumed as an argument or otherwise used.
 - Calls that return the unit type `()` (e.g. `invoke_contract::<()>(...)`).
 - Calls suppressed with `#[allow(cross_contract_result_discarded)]`.

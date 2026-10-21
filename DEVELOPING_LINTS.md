@@ -28,19 +28,57 @@ Use the pinned toolchain from the repository. Compiler internals are tightly cou
 
 All lint names and their registration live in **one file**: [`soroban_cost_lints/src/lib.rs`](soroban_cost_lints/src/lib.rs). There is **no** `soroban_cost_lints/src/lints/` directory, and UI fixtures do **not** live in `tests/ui/`.
 
-Each lint needs three things, all of which live in `lib.rs` (or, for the pass implementation, in a sibling module file that `lib.rs` declares):
+Each lint needs a declaration, a pass, and registration. All of them live in `lib.rs` (or, for the pass implementation, in a sibling module file that `lib.rs` declares):
 
 | Piece | Where | What happens if it is missing |
 | --- | --- | --- |
-| `declare_lint!` block | `lib.rs` | `rustc` does not know the lint name, so it cannot be registered, referenced in `#[allow]`, or configured in `budget.toml`. |
+| `declare_lint!` block | `lib.rs`, with the other `declare_lint!` blocks | `rustc` does not know the lint name, so it cannot be registered, referenced in `#[allow]`, or configured in `budget.toml`. |
+| `lint_store.register_lints(&[...])` entry | `lib.rs`, inside `register_lints` | The lint static is never handed to the lint store, so `rustc` has no level for it: `#[allow(name)]`, `#[deny(name)]` and `-D name` are rejected as unknown lints. |
+| `lint_store.register_late_pass(...)` call | `lib.rs`, inside `register_lints` | **The lint silently never fires.** The lint is known to `rustc` and to the CLI, but no pass runs, so no diagnostic is ever emitted. |
 | `LINT_METADATA` row | `lib.rs` (`LINT_METADATA` static, keyed by the snake_case lint name) | The `cargo-cost-lint` CLI does not list or document the lint. It still runs, but is invisible to users and `generate-lint-docs`. |
-| Pass implementation + a line in the `dylint_lint_impl!` list | implementation in a module file (or inlined), declaration in `lib.rs`'s `dylint_lint_impl!` list | **The lint silently never runs.** Dylint only loads passes listed below `SorobanCostLints` in the `dylint_lint_impl!` macro at the bottom of `lib.rs`. |
+| `mod <module_name>;` (module-file layout only) | the `mod` block at the top of `lib.rs` | The pass module is never compiled, so the pass type does not exist and the `register_late_pass` call does not compile. |
 
-Miss any one of the three and the lint does not work as intended — in particular, forgetting the `dylint_lint_impl!` entry produces no error at all, just a lint that never fires.
+Miss any one of these and the lint does not work as intended. The one that bites hardest is a missing `register_late_pass` call: it produces no error at all, just a lint that never fires.
+
+#### What `dylint_lint_impl!` does — and what it does not do
+
+`dylint_lint_impl!` is **not** how a pass is loaded. It is a crate-local macro (`soroban_cost_lints/src/lib.rs`) whose entire body is a wrapper around `rustc_session::impl_lint_pass!`:
+
+```rust
+macro_rules! dylint_lint_impl {
+    ($pass:ident, [$($lint:ident),* $(,)?]) => {
+        rustc_session::impl_lint_pass!($pass => [$($lint),*]);
+    };
+}
+```
+
+Upstream, `impl_lint_pass!` only implements the `LintPass` trait for the marker struct named in the first argument and gives it a `lint_vec()` helper:
+
+```rust
+impl LintPass for SorobanCostLints {
+    fn name(&self) -> &'static str { "SorobanCostLints" }
+    fn get_lints(&self) -> LintVec { vec![SOROBAN_STORAGE_IN_LOOP, /* ... */] }
+}
+```
+
+`SorobanCostLints` is never handed to the lint store — `register_lints` never calls `register_late_pass(|_| Box::new(SorobanCostLints))` — so the compiler never runs it. **Omitting a lint from the `dylint_lint_impl!` list does not stop that lint's pass from firing.** The list still has to be kept in step, but for a different reason: `cargo-cost-lint/build.rs` reads `lib.rs` textually and cross-checks it.
+
+#### The build-time cross-check
+
+`cargo-cost-lint/build.rs` parses `soroban_cost_lints/src/lib.rs` and refuses to build the CLI unless these views of the registry agree:
+
+- the `dylint_lint_impl!` list and the `lint_store.register_lints(&[..])` list must name the same lints **in the same order**;
+- every registered lint must have a `declare_lint!` block, and every `declare_lint!` block must be registered;
+- every registered lint must have a `LINT_METADATA` row, and every `LINT_METADATA` row must name a registered lint;
+- the `declare_lint!` description and the `LINT_METADATA` description must be identical.
+
+So a half-registered lint is explained rather than mysterious: the build stops with a message naming the lints that are missing from the other list. The one registration step the build **cannot** see is the `register_late_pass` call, because that is what decides whether a diagnostic is emitted at all.
+
+#### Two accepted layouts
 
 There are two accepted layouts, both present in the tree today:
 
-- **Inline in `lib.rs`.** The majority of lints are declared, implemented, and registered entirely inside `lib.rs` (see the `declare_lint!` blocks and the `dylint_lint_impl!` list, which reference two dozen lints with no separate file).
+- **Inline in `lib.rs`.** The majority of lints are declared, implemented, and registered entirely inside `lib.rs` (see the `declare_lint!` blocks and the `register_lints` list, which name several dozen lints with no separate file).
 - **Sibling module file.** Newer lints declare in `lib.rs` and implement the pass in a small module file. For example `ledger_context_read_in_loop` is declared in `lib.rs` and implemented in [`soroban_cost_lints/src/ledger_context_read_in_loop.rs`](soroban_cost_lints/src/ledger_context_read_in_loop.rs); its `mod ledger_context_read_in_loop;` declaration is at the top of `lib.rs`. Other examples: `redundant_require_auth.rs`, `discarded_storage_read.rs`, `option_wrapping_in_storage.rs`.
 
 For a new lint, a sibling module file keeps `lib.rs` readable once you have many passes. Start from the closest existing module and copy its structure.
@@ -54,7 +92,7 @@ To make this concrete, this section walks through `ledger_context_read_in_loop`,
 A lint reaches `rustc` through a `declare_lint!` block. `LEDGER_CONTEXT_READ_IN_LOOP` is declared with the other lints near the top of `lib.rs`:
 
 ```rust
-rustc_lint::declare_lint! {
+rustc_session::declare_lint! {
     pub LEDGER_CONTEXT_READ_IN_LOOP,
     Warn,
     "reads a ledger context value inside a loop when it cannot change during the invocation"
@@ -121,24 +159,47 @@ fn is_ledger_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 }
 ```
 
-Because `lib.rs` declares `LEDGER_CONTEXT_READ_IN_LOOP` and this module references it via `use crate::LEDGER_CONTEXT_READ_IN_LOOP`, the lint-pass macro (`declare_lint_pass!`) knows which lint this pass drives.
+Because `lib.rs` declares `LEDGER_CONTEXT_READ_IN_LOOP` and this module references it via `use crate::LEDGER_CONTEXT_READ_IN_LOOP`, the lint-pass macro (`declare_lint_pass!`) knows which lint this pass drives. `declare_lint_pass!` only implements the `LintPass` trait for the pass struct — it does not load the pass, so the pass still has to be registered in step 2c.
 
-### 2c. Register all three coordinated edits in `lib.rs`
+### 2c. Register the lint in `lib.rs`
 
-The first edit is the `declare_lint!` block (2a). The remaining two are:
+The `declare_lint!` block (2a) and the pass implementation (2b) are the first two steps. `lib.rs` then needs four more coordinated edits, plus a fifth when the pass lives in a sibling module file.
 
-**Edit 2 — a `LINT_METADATA` row.** The CLI and `generate-lint-docs` read this static. The name must exactly match the snake_case lint name. The `ledger_context_read_in_loop` row is:
+**Edit 1 — a `lint_store.register_lints(&[..])` entry.** This hands the lint static to the compiler's lint store, which is what gives the lint a level. Without it, `rustc` rejects `#[allow(ledger_context_read_in_loop)]` and `-D ledger_context_read_in_loop` as unknown lints. The entry is one of the names in the list inside `register_lints`:
+
+```rust
+lint_store.register_lints(&[
+    // ... existing lint names ...
+    LEDGER_CONTEXT_READ_IN_LOOP,
+    // ... more lint names ...
+]);
+```
+
+**Edit 2 — a `lint_store.register_late_pass(...)` call.** **This is the edit that makes the pass run.** The lint store holds a list of passes; each one is handed every expression in the crate and decides whether to report. A pass is only ever run if it is registered here, so a lint that is declared, listed and documented but never registered here emits nothing at all — no error, no warning, just silence. For a pass that lives in a sibling module file the call names the module path:
+
+```rust
+lint_store
+    .register_late_pass(|_| Box::new(ledger_context_read_in_loop::LedgerContextReadInLoop));
+```
+
+For an inline pass in `lib.rs` it names the struct directly:
+
+```rust
+lint_store.register_late_pass(|_| Box::new(LedgerContextReadInLoop));
+```
+
+**Edit 3 — a `LINT_METADATA` row.** The CLI and `generate-lint-docs` read this static. The name must exactly match the snake_case lint name, and the description must be identical to the one in the `declare_lint!` block — `cargo-cost-lint/build.rs` fails the build when the two disagree. The `ledger_context_read_in_loop` row is:
 
 ```rust
 LintMeta {
     name: "ledger_context_read_in_loop",
     category: LintCategory::Compute,
-    description: "Reads a ledger context value (sequence, timestamp, network_id) inside a loop",
+    description: "reads a ledger context value inside a loop when it cannot change during the invocation",
     rationale: "Ledger context values are invariant during a single invocation; reading them in a loop performs repeated host calls for the same value.",
 },
 ```
 
-**Edit 3 — a line in the `dylint_lint_impl!` list.** The pass is loaded by Dylint only if its lint name appears in the list under `SorobanCostLints` at the bottom of `lib.rs`:
+**Edit 4 — a line in the `dylint_lint_impl!` list.** This list is not what loads the pass (see *What `dylint_lint_impl!` does — and what it does not do* above), but `cargo-cost-lint/build.rs` parses it and requires it to match the `register_lints(&[..])` list exactly, name for name and in the same order. A lint therefore has to appear in both lists:
 
 ```rust
 dylint_lint_impl! {
@@ -151,14 +212,28 @@ dylint_lint_impl! {
 }
 ```
 
-If you use a sibling module file, also add its `mod <module_name>;` declaration at the top of `lib.rs`. Then build the dynamic library from the crate directory so the local Dylint configuration is applied:
+**Edit 5 — the `mod` declaration (module-file layout only).** If you use a sibling module file, add its `mod <module_name>;` declaration to the `mod` block at the top of `lib.rs`:
+
+```rust
+mod ledger_context_read_in_loop;
+```
+
+Then build the dynamic library from the crate directory so the local Dylint configuration is applied:
 
 ```bash
 cd soroban_cost_lints
 cargo build
 ```
 
-If the lint is not discovered, check the module declaration, the `dylint_lint_impl!` entry, and the `LINT_METADATA` row before investigating the implementation — a missing `dylint_lint_impl!` line is the classic cause of a lint that "should work but never fires".
+#### When the lint does not show up
+
+Work through the list in this order — the checks are cheap and each one rules out a different failure:
+
+- **The lint never fires, and nothing complains.** The `register_late_pass` call is missing (Edit 2). The lint is registered with `rustc` and listed by the CLI, but no pass runs, so no diagnostic is emitted. The build cannot catch this: `cargo-cost-lint/build.rs` only cross-checks the two registration lists against `LINT_METADATA`, and it has no way to tell that a pass was never registered.
+- **`rustc` rejects the lint name** (`unknown lint` on an `#[allow]`, `#[warn]` or `#[deny]` attribute, or on a `-A`/`-W`/`-D` flag). The `declare_lint!` block (2a) or the `register_lints(&[..])` entry (Edit 1) is missing.
+- **The CLI does not list the lint, or the docs do not mention it.** The `LINT_METADATA` row (Edit 3) is missing. The build fails on this one rather than shipping an incomplete inventory.
+- **The build fails with "lists disagree" or "different orders".** The `dylint_lint_impl!` list (Edit 4) and the `register_lints(&[..])` list (Edit 1) have drifted apart. Keep them identical.
+- **The build fails to compile the pass.** The `mod <module_name>;` declaration (Edit 5) is missing, so the module is never compiled.
 
 ## 3. Write a UI fixture
 
@@ -261,13 +336,19 @@ A user-facing lint needs a page under [`docs/lints`](docs/lints/README.md). Incl
 - intentional cases that may need `#[allow(lint_name)]`;
 - the default severity and cost category.
 
-`docs/lints/README.md` and `docs/lints/lint-registry.json` are generated by `tools/generate-lint-docs` from `lib.rs`'s `LINT_METADATA` — do not edit them by hand. After updating the `LINT_METADATA` row, regenerate them:
+`docs/lints/README.md` and `docs/lint_catalog.md` are generated by `tools/generate-lint-docs` from `lib.rs`'s `LINT_METADATA` — do not edit them by hand. After updating the `LINT_METADATA` row, regenerate them:
 
 ```bash
 cargo run -p generate-lint-docs
 ```
 
-`cargo-cost-lint` also bundles a snapshot of `lib.rs`, the lint pages, and `rust-toolchain` in `cargo-cost-lint/lint-data/`, so the crate still builds once packaged. Refresh it after changing any of those files; `cargo test --workspace` fails while it is out of date:
+The same generator's `--check` mode also guards `docs/SUMMARY.md`: every shipped lint has to appear in the "Lints" chapter of the table of contents, exactly once, with a link to a page that exists. Add the new lint there too:
+
+```bash
+cargo run -p generate-lint-docs -- --check
+```
+
+`cargo-cost-lint` also bundles a snapshot of `lib.rs`, the lint pages, and `rust-toolchain` in `cargo-cost-lint/lint-data/`, so the crate still builds once packaged. Refresh it after changing any of those files with `make sync-lint-data`; `cargo test --workspace` fails while it is out of date:
 
 ```bash
 make sync-lint-data

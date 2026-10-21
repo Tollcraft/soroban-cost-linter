@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -50,19 +50,24 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
         i += 1;
     }
 
-    if let Some(start) = content.find("pub const LINT_METADATA: &[LintMetadata] = &[") {
-        let after = &content[start + "pub const LINT_METADATA: &[LintMetadata] = &[".len()..];
+    if let Some(start) = content.find("pub const LINT_METADATA: &[") {
+        let after = &content[start + "pub const LINT_METADATA: &[".len()..];
         if let Some(end) = after.find("];") {
             let meta_block = &after[..end];
-            let meta_entries: Vec<&str> = meta_block.split("LintMetadata {").skip(1).collect();
-            for entry_str in meta_entries {
+            for entry_str in split_metadata_entries(meta_block) {
                 let mut lint_var = String::new();
                 let mut category = String::new();
                 for line in entry_str.lines() {
                     let t = line.trim().trim_end_matches(',');
-                    if let Some(val) = t.strip_prefix("lint:") {
+                    // `name: "..."` is the current `LintMeta` shape;
+                    // `lint: IDENT` is the legacy `LintMetadata` shape.
+                    if let Some(val) = t.strip_prefix("name:") {
+                        lint_var = val.trim().trim_matches('"').to_string();
+                    } else if let Some(val) = t.strip_prefix("lint:") {
                         lint_var = val.trim().to_string();
                     } else if let Some(val) = t.strip_prefix("category:") {
+                        // Normalise `LintCategory::Storage` down to `Storage` so
+                        // the value can be compared against `CATEGORY_ORDER`.
                         let raw = val.trim();
                         category = raw
                             .strip_prefix("LintCategory::")
@@ -71,11 +76,13 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
                     }
                 }
                 if !lint_var.is_empty() && !category.is_empty() {
-                    for entry in &mut entries {
-                        if entry.name_snake == lint_var {
-                            entry.category = Some(category.clone());
-                            break;
-                        }
+                    // The metadata row names the lint in snake case (its doc
+                    // name) while `declare_lint!` declares it in SCREAMING_CASE.
+                    if let Some(entry) = entries
+                        .iter_mut()
+                        .find(|e| e.name_snake == lint_var || e.name_doc == lint_var)
+                    {
+                        entry.category = Some(category.clone());
                     }
                 }
             }
@@ -83,6 +90,36 @@ fn parse_lib_rs(content: &str) -> Vec<LintEntry> {
     }
 
     entries
+}
+
+/// Splits the body of a `LINT_METADATA` array literal into one slice per
+/// struct entry.
+///
+/// Accepts both the current `LintMeta { .. }` shape and the legacy
+/// `LintMetadata { .. }` shape, so fixtures written against either spelling
+/// keep parsing.
+fn split_metadata_entries(block: &str) -> Vec<&str> {
+    const MARKERS: [&str; 2] = ["LintMetadata {", "LintMeta {"];
+    let mut cuts: Vec<(usize, usize)> = Vec::new();
+    for marker in MARKERS {
+        let mut from = 0;
+        while let Some(pos) = block[from..].find(marker) {
+            let at = from + pos;
+            cuts.push((at, at + marker.len()));
+            from = at + marker.len();
+        }
+    }
+    cuts.sort_by_key(|(at, _)| *at);
+    cuts.iter()
+        .enumerate()
+        .map(|(i, (_, entry_start))| {
+            let entry_end = cuts
+                .get(i + 1)
+                .map(|(next, _)| *next)
+                .unwrap_or(block.len());
+            &block[*entry_start..entry_end]
+        })
+        .collect()
 }
 
 /// Index of the line holding the `}` that balances the `{` opening the
@@ -290,27 +327,38 @@ fn skip_raw_string(content: &str, start: usize) -> Option<usize> {
         .map(|rel| i + rel + terminator.len())
 }
 
+/// The five `LintCategory` variants that `LINT_METADATA` actually uses, in
+/// the order their sections are rendered in the generated reference.
+///
+/// Every variant of `LintCategory` (`soroban_cost_lints/src/lib.rs`) must be
+/// listed here: a lint whose parsed category is missing from this list falls
+/// into the `Other` bucket, and the
+/// `known_category_lints_never_land_in_other` test fails locally until the
+/// variant is registered.
+const CATEGORY_ORDER: [&str; 5] = ["Storage", "Compute", "Memory", "Host", "Security"];
+
+/// Section heading for each entry of [`CATEGORY_ORDER`]. Kept as a map so a
+/// display name can diverge from the enum variant without touching the order.
+const CATEGORY_LABELS: [(&str, &str); 5] = [
+    ("Storage", "Storage"),
+    ("Compute", "Compute"),
+    ("Memory", "Memory"),
+    ("Host", "Host"),
+    ("Security", "Security"),
+];
+
 fn generate_readme(entries: &[LintEntry]) -> String {
-    let category_order = [
-        "StorageOperations",
-        "Compute",
-        "Memory",
-        "EntryLifecycle",
-        "SymbolOperations",
-    ];
-    let category_labels: BTreeMap<&str, &str> = [
-        ("StorageOperations", "Storage Operations"),
-        ("Compute", "CPU/Compute"),
-        ("Memory", "Memory"),
-        ("EntryLifecycle", "Entry Lifecycle"),
-        ("SymbolOperations", "Symbol Operations"),
-    ]
-    .into_iter()
-    .collect();
+    let category_labels: BTreeMap<&str, &str> = CATEGORY_LABELS.into_iter().collect();
 
     let mut categorized: BTreeMap<&str, Vec<&LintEntry>> = BTreeMap::new();
     for entry in entries {
-        let cat = entry.category.as_deref().unwrap_or("Other");
+        // A lint without parsed metadata — or with a category this generator
+        // does not know — lands in `Other` instead of being dropped silently.
+        let cat = entry
+            .category
+            .as_deref()
+            .filter(|c| CATEGORY_ORDER.contains(c))
+            .unwrap_or("Other");
         categorized.entry(cat).or_default().push(entry);
     }
 
@@ -325,7 +373,7 @@ fn generate_readme(entries: &[LintEntry]) -> String {
     md.push_str("See the [Cost Rationale](../cost_rationale.md) page for a full explanation of Soroban's metered resources and why each resource matters.\n");
     md.push_str("{% endhint %}\n\n");
 
-    for cat in &category_order {
+    for cat in &CATEGORY_ORDER {
         if let Some(entries) = categorized.get(*cat) {
             let label = category_labels.get(cat).unwrap_or(cat);
             md.push_str(&format!("## {}\n\n", label));
@@ -410,12 +458,101 @@ fn resolve_path(path: &str) -> PathBuf {
     }
 }
 
+// ---------------------------------------------------------------------------
+// `docs/SUMMARY.md` coverage
+// ---------------------------------------------------------------------------
+
+/// A lint link found in the `docs/SUMMARY.md` table of contents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SummaryLink {
+    /// The file stem of the target, e.g. `host_in_loop` for
+    /// `lints/host_in_loop.md`.
+    stem: String,
+    /// The target as written in the summary, e.g. `lints/host_in_loop.md`.
+    target: String,
+}
+
+/// Parse the lint links out of a `docs/SUMMARY.md` table of contents.
+///
+/// Only links that point into `lints/` are collected: the summary also links
+/// to hand-written pages (`lint_catalog.md`, `integration.md`, ...) that are
+/// not lint pages. `lints/README.md` is the generated lint *reference* index,
+/// not a lint page, so it is skipped as well.
+fn parse_summary_links(summary: &str) -> Vec<SummaryLink> {
+    let mut links = Vec::new();
+    for line in summary.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("* [") else {
+            continue;
+        };
+        let Some((_, rest)) = rest.split_once("](") else {
+            continue;
+        };
+        let Some((target, _)) = rest.split_once(')') else {
+            continue;
+        };
+        let target = target.trim();
+        let Some(stem) = target
+            .strip_prefix("lints/")
+            .and_then(|rest| rest.strip_suffix(".md"))
+        else {
+            continue;
+        };
+        if stem == "README" {
+            continue;
+        }
+        links.push(SummaryLink {
+            stem: stem.to_string(),
+            target: target.to_string(),
+        });
+    }
+    links
+}
+
+/// Registered lints that `docs/SUMMARY.md` does not link to.
+///
+/// A shipped lint whose page is unreachable from the docs sidebar is a page
+/// no reader ever finds, so the summary has to carry one entry per registered
+/// lint.
+fn summary_missing_lints(entries: &[LintEntry], summary: &str) -> Vec<String> {
+    let links = parse_summary_links(summary);
+    let linked: HashSet<&str> = links.iter().map(|link| link.stem.as_str()).collect();
+    entries
+        .iter()
+        .map(|entry| entry.name_doc.clone())
+        .filter(|name| !linked.contains(name.as_str()))
+        .collect()
+}
+
+/// Lints that `docs/SUMMARY.md` links to more than once.
+fn summary_duplicate_lints(summary: &str) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut duplicates: Vec<String> = Vec::new();
+    for link in parse_summary_links(summary) {
+        if !seen.insert(link.stem.clone()) && !duplicates.contains(&link.stem) {
+            duplicates.push(link.stem);
+        }
+    }
+    duplicates
+}
+
+/// Summary links whose target page does not exist on disk.
+fn summary_broken_links(summary: &str, docs_dir: &Path) -> Vec<String> {
+    parse_summary_links(summary)
+        .iter()
+        .filter(|link| !docs_dir.join(&link.target).exists())
+        .map(|link| link.target.clone())
+        .collect()
+}
+
 fn main() {
     let check_mode = std::env::args().any(|a| a == "--check");
 
     let lib_path = resolve_path("soroban_cost_lints/src/lib.rs");
     let readme_path = resolve_path("docs/lints/README.md");
     let catalog_path = resolve_path("docs/lint_catalog.md");
+    let summary_path = resolve_path("docs/SUMMARY.md");
+    let docs_dir = resolve_path("docs");
 
     if !lib_path.exists() {
         eprintln!(
@@ -449,6 +586,40 @@ fn main() {
             eprintln!("❌ docs/lint_catalog.md is out of date. Run `cargo run -p generate-lint-docs` from workspace root to regenerate.");
             exit_code = 1;
         }
+
+        // The GitBook table of contents is hand-written, so nothing else keeps
+        // it in step with the shipped lint set. Check it here, next to the
+        // generated files it has to agree with.
+        let summary = fs::read_to_string(&summary_path).unwrap_or_default();
+        let missing = summary_missing_lints(&entries, &summary);
+        if !missing.is_empty() {
+            eprintln!(
+                "❌ docs/SUMMARY.md does not link every registered lint: {}. Add a \
+                 `  * [lint_name](lints/lint_name.md)` entry under the \"Lints\" chapter, in the \
+                 same order as docs/lint_catalog.md.",
+                missing.join(", ")
+            );
+            exit_code = 1;
+        }
+        let duplicates = summary_duplicate_lints(&summary);
+        if !duplicates.is_empty() {
+            eprintln!(
+                "❌ docs/SUMMARY.md links the same lint more than once: {}. Keep exactly one \
+                 entry per lint.",
+                duplicates.join(", ")
+            );
+            exit_code = 1;
+        }
+        let broken = summary_broken_links(&summary, &docs_dir);
+        if !broken.is_empty() {
+            eprintln!(
+                "❌ docs/SUMMARY.md links to pages that do not exist: {}. Either add the page \
+                 or drop the entry.",
+                broken.join(", ")
+            );
+            exit_code = 1;
+        }
+
         if exit_code != 0 {
             process::exit(exit_code);
         }
@@ -770,17 +941,17 @@ multiline description"
             "{}\n\n{}",
             SINGLE_LINT,
             r#"
-                pub const LINT_METADATA: &[LintMetadata] = &[
-                    LintMetadata {
-                        lint: SOROBAN_STORAGE_IN_LOOP,
-                        category: LintCategory::StorageOperations,
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
                     },
                 ];
             "#
         );
         let entries = parse_lib_rs(&input);
         let md = generate_readme(&entries);
-        assert!(md.contains("## Storage Operations"));
+        assert!(md.contains("## Storage"));
         assert!(!md.contains("## Other"));
     }
 
@@ -790,13 +961,13 @@ multiline description"
             "{}\n\n{}",
             TWO_LINTS,
             r#"
-                pub const LINT_METADATA: &[LintMetadata] = &[
-                    LintMetadata {
-                        lint: SOROBAN_STORAGE_IN_LOOP,
-                        category: LintCategory::StorageOperations,
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
                     },
-                    LintMetadata {
-                        lint: REDUNDANT_ENV_CLONE,
+                    LintMeta {
+                        name: "redundant_env_clone",
                         category: LintCategory::Memory,
                     },
                 ];
@@ -804,10 +975,68 @@ multiline description"
         );
         let entries = parse_lib_rs(&input);
         let md = generate_readme(&entries);
-        // StorageOperations should appear before Memory
-        let storage_pos = md.find("## Storage Operations").unwrap();
+        // Storage should appear before Memory
+        let storage_pos = md.find("## Storage").unwrap();
         let memory_pos = md.find("## Memory").unwrap();
         assert!(storage_pos < memory_pos);
+    }
+
+    /// The real `LINT_METADATA` shape: a `LintMeta` struct literal keyed by
+    /// the snake-case `name` string. Parsing this without a `LintCategory::`
+    /// prefix is what keeps every shipped lint out of the `Other` bucket.
+    #[test]
+    fn parse_current_lint_meta_shape_with_string_name() {
+        let input = format!(
+            "{}\n\n{}",
+            SINGLE_LINT,
+            r#"
+                pub const LINT_METADATA: &[LintMeta] = &[
+                    LintMeta {
+                        name: "soroban_storage_in_loop",
+                        category: LintCategory::Storage,
+                        description: "storage operations inside a loop",
+                        rationale: "storage is expensive",
+                    },
+                ];
+            "#
+        );
+        let entries = parse_lib_rs(&input);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].category.as_deref(), Some("Storage"));
+    }
+
+    /// Pins the category mapping end-to-end against the real `lib.rs`: every
+    /// registered lint must carry a category that `CATEGORY_ORDER` renders, so
+    /// no lint with a known `LINT_METADATA` category can drift into `Other`
+    /// (and a renamed or newly added `LintCategory` variant fails here until
+    /// it is registered in `CATEGORY_ORDER`/`CATEGORY_LABELS`).
+    #[test]
+    fn known_category_lints_never_land_in_other() {
+        let ws = workspace_root();
+        let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+            .expect("Failed to read lib.rs — run from workspace root");
+        let entries = parse_lib_rs(&content);
+        assert!(!entries.is_empty(), "no lints parsed from lib.rs");
+        for entry in &entries {
+            let category = entry.category.as_deref().unwrap_or_else(|| {
+                panic!(
+                    "lint '{}' has no parsed category — LINT_METADATA row missing or unmatched",
+                    entry.name_snake
+                )
+            });
+            assert!(
+                CATEGORY_ORDER.contains(&category),
+                "lint '{}' parsed category '{}' is not registered in CATEGORY_ORDER",
+                entry.name_snake,
+                category
+            );
+        }
+        let md = generate_readme(&entries);
+        assert!(
+            !md.contains("## Other"),
+            "a registered lint fell into the Other bucket:\n{}",
+            md
+        );
     }
 
     // ------------------------------------------------------------------
@@ -971,6 +1200,9 @@ multiline description"
         let catalog_path = root.join("docs/lint_catalog.md");
         fs::write(&catalog_path, generate_catalog(&entries)).unwrap();
 
+        write_lint_page(root, "soroban_storage_in_loop");
+        write_summary(root, &["soroban_storage_in_loop"]);
+
         let status = Command::new(&bin)
             .args(["--check", "--workspace-root", root.to_str().unwrap()])
             .status()
@@ -978,6 +1210,211 @@ multiline description"
         assert!(
             status.success(),
             "--check should pass when all generated files match"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // docs/SUMMARY.md coverage
+    // ------------------------------------------------------------------
+
+    /// Write a placeholder page for `lint_name` under `docs/lints/`.
+    fn write_lint_page(root: &Path, lint_name: &str) {
+        let path = root.join(format!("docs/lints/{lint_name}.md"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, format!("# {lint_name}\n")).unwrap();
+    }
+
+    /// Write a `docs/SUMMARY.md` whose "Lints" chapter links `lint_names`.
+    fn write_summary(root: &Path, lint_names: &[&str]) {
+        let mut md = String::from("# Table of contents\n\n## Lints\n\n");
+        md.push_str("* [Lint Catalog](lint_catalog.md)\n");
+        md.push_str("* [Lint Reference](lints/README.md)\n");
+        for name in lint_names {
+            md.push_str(&format!("  * [{name}](lints/{name}.md)\n"));
+        }
+        fs::create_dir_all(root.join("docs")).unwrap();
+        fs::write(root.join("docs/SUMMARY.md"), md).unwrap();
+    }
+
+    /// A fake workspace whose generated files, summary and pages all agree.
+    fn consistent_workspace(root: &Path) {
+        let fake_lib = root.join("soroban_cost_lints/src/lib.rs");
+        fs::create_dir_all(fake_lib.parent().unwrap()).unwrap();
+        fs::write(&fake_lib, SINGLE_LINT).unwrap();
+
+        let entries = parse_lib_rs(SINGLE_LINT);
+        let readme_path = root.join("docs/lints/README.md");
+        fs::create_dir_all(readme_path.parent().unwrap()).unwrap();
+        fs::write(&readme_path, generate_readme(&entries)).unwrap();
+        fs::write(
+            root.join("docs/lint_catalog.md"),
+            generate_catalog(&entries),
+        )
+        .unwrap();
+
+        write_lint_page(root, "soroban_storage_in_loop");
+        write_summary(root, &["soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn check_mode_fails_when_summary_omits_a_registered_lint() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        consistent_workspace(root);
+        // The page exists, but the table of contents no longer reaches it.
+        write_summary(root, &[]);
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when a registered lint is missing from docs/SUMMARY.md"
+        );
+    }
+
+    #[test]
+    fn check_mode_fails_when_summary_links_a_page_that_does_not_exist() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        consistent_workspace(root);
+        write_summary(root, &["soroban_storage_in_loop", "never_shipped"]);
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when docs/SUMMARY.md links a page that does not exist"
+        );
+    }
+
+    #[test]
+    fn check_mode_fails_when_summary_links_a_lint_twice() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        consistent_workspace(root);
+        write_summary(
+            root,
+            &["soroban_storage_in_loop", "soroban_storage_in_loop"],
+        );
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when docs/SUMMARY.md links the same lint twice"
+        );
+    }
+
+    #[test]
+    fn parse_summary_links_collects_only_lint_pages() {
+        let summary = "\
+# Table of contents
+
+## Lints
+
+* [Lint Catalog](lint_catalog.md)
+* [Lint Reference](lints/README.md)
+  * [host\\_in\\_loop](lints/host_in_loop.md)
+  * [large\\_constant\\_array](lints/large_constant_array.md)
+";
+        let links = parse_summary_links(summary);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].stem, "host_in_loop");
+        assert_eq!(links[0].target, "lints/host_in_loop.md");
+        assert_eq!(links[1].stem, "large_constant_array");
+    }
+
+    #[test]
+    fn summary_missing_lints_reports_unlinked_lints() {
+        let entries = parse_lib_rs(TWO_LINTS);
+        let summary = "  * [soroban\\_storage\\_in\\_loop](lints/soroban_storage_in_loop.md)\n";
+        let missing = summary_missing_lints(&entries, summary);
+        assert_eq!(missing, vec!["redundant_env_clone".to_string()]);
+    }
+
+    #[test]
+    fn summary_missing_lints_is_empty_when_every_lint_is_linked() {
+        let entries = parse_lib_rs(TWO_LINTS);
+        let summary = "\
+  * [soroban\\_storage\\_in\\_loop](lints/soroban_storage_in_loop.md)
+  * [redundant\\_env\\_clone](lints/redundant_env_clone.md)
+";
+        assert!(summary_missing_lints(&entries, summary).is_empty());
+    }
+
+    #[test]
+    fn summary_duplicate_lints_reports_repeated_entries() {
+        let summary = "\
+  * [soroban\\_storage\\_in\\_loop](lints/soroban_storage_in_loop.md)
+  * [soroban\\_storage\\_in\\_loop](lints/soroban_storage_in_loop.md)
+  * [redundant\\_env\\_clone](lints/redundant_env_clone.md)
+";
+        assert_eq!(
+            summary_duplicate_lints(summary),
+            vec!["soroban_storage_in_loop".to_string()]
+        );
+    }
+
+    #[test]
+    fn summary_broken_links_reports_missing_pages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_lint_page(root, "soroban_storage_in_loop");
+
+        let summary = "\
+  * [soroban\\_storage\\_in\\_loop](lints/soroban_storage_in_loop.md)
+  * [never\\_shipped](lints/never_shipped.md)
+";
+        assert_eq!(
+            summary_broken_links(summary, &root.join("docs")),
+            vec!["lints/never_shipped.md".to_string()]
+        );
+    }
+
+    /// Pins the hand-written table of contents against the real `lib.rs`:
+    /// every shipped lint has to be reachable from the docs sidebar, exactly
+    /// once, and every entry has to point at a page that exists.
+    #[test]
+    fn golden_summary_links_every_registered_lint() {
+        let ws = workspace_root();
+        let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+            .expect("Failed to read lib.rs — run from workspace root");
+        let entries = parse_lib_rs(&content);
+        assert!(!entries.is_empty(), "no lints parsed from lib.rs");
+
+        let summary =
+            fs::read_to_string(ws.join("docs/SUMMARY.md")).expect("Failed to read docs/SUMMARY.md");
+        let missing = summary_missing_lints(&entries, &summary);
+        assert!(
+            missing.is_empty(),
+            "docs/SUMMARY.md does not link these registered lints: {:?}",
+            missing
+        );
+
+        let duplicates = summary_duplicate_lints(&summary);
+        assert!(
+            duplicates.is_empty(),
+            "docs/SUMMARY.md links these lints more than once: {:?}",
+            duplicates
+        );
+
+        let broken = summary_broken_links(&summary, &ws.join("docs"));
+        assert!(
+            broken.is_empty(),
+            "docs/SUMMARY.md links to pages that do not exist: {:?}",
+            broken
         );
     }
 

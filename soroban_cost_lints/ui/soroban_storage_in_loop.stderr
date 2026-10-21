@@ -16,23 +16,6 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[deny(soroban_storage_in_loop)]` on by default
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:51:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-   = note: `#[warn(loop_invariant_storage_access)]` on by default
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:51:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
 warning: persistent storage read without TTL extension — archival cost cliff
   --> $DIR/soroban_storage_in_loop.rs:58:30
    |
@@ -59,22 +42,6 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: delete the storage read or use its returned value
    = note: `#[warn(discarded_storage_read)]` on by default
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:58:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:58:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
 error: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:65:12
    |
@@ -90,22 +57,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:65:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:65:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
 
 error: storage operation inside a loop
   --> $DIR/soroban_storage_in_loop.rs:74:13
@@ -130,22 +82,6 @@ LL |             env.storage().instance().has(&i); // Should Warn
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: delete the storage read or use its returned value
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:74:13
-   |
-LL |             env.storage().instance().has(&i); // Should Warn
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
-
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:74:13
-   |
-LL |             env.storage().instance().has(&i); // Should Warn
-   |             ^^^^^^^^^^^^^
-   |
-   = help: hoist this storage operation out of the loop
 
 warning: storage write without a corresponding read
   --> $DIR/soroban_storage_in_loop.rs:80:30
@@ -251,21 +187,53 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:120:9
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:132:9
    |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         env.storage().persistent().update(&i, |v: i32| v + 1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: hoist this storage operation out of the loop
+   = help: move storage operations out of the loop or accumulate mutations in memory first
 
-warning: loop-invariant storage operation inside a loop
-  --> $DIR/soroban_storage_in_loop.rs:120:9
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:138:9
    |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^
+LL |         env.storage().instance().update(&i, |v: i32| v + 1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: hoist this storage operation out of the loop
+   = help: move storage operations out of the loop or accumulate mutations in memory first
 
-error: aborting due to 7 previous errors; 26 warnings emitted
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:144:17
+   |
+LL |         let _ = env.storage().persistent().try_update(&i, |v: i32| v); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:150:17
+   |
+LL |         let _ = env.storage().instance().try_update(&i, |v: i32| v); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:156:30
+   |
+LL |         let _: Option<i32> = env.storage().persistent().remove(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+error: storage operation inside a loop
+  --> $DIR/soroban_storage_in_loop.rs:162:30
+   |
+LL |         let _: Option<i32> = env.storage().instance().remove(&i); // Should Warn
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+error: aborting due to 13 previous errors; 16 warnings emitted
 

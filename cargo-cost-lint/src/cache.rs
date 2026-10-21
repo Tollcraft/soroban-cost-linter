@@ -41,13 +41,45 @@ pub struct CacheKey {
     pub package_args: Vec<String>,
     pub output_format: String,
     pub source_hash: String,
+    /// Scope of the run: "all" for a full run, "diff-only" for a
+    /// `--diff-only` filtered one. A cached full run must never be replayed
+    /// for a filtered run or the other way round (#793).
+    pub diff_scope: String,
+    /// Content hash of the resolved `.lintignore`, or `absent` when none was
+    /// found. The file's absence is a distinct input, so adding one later
+    /// invalidates entries written before it existed (#793).
+    pub lintignore_hash: String,
+}
+
+/// `lintignore_hash` for the no-`.lintignore` case.
+pub const ABSENT_LINTIGNORE_HASH: &str = "absent";
+
+/// Bumped when the inputs hashed into [`CacheKey::compute_hash`] change, so
+/// entries written before the change can never match a new key's filename.
+pub const CACHE_KEY_FORMAT: &str = "cache_key_format:v2";
+
+/// Content hash of one file, or `absent` when the file does not exist.
+pub fn compute_file_hash(path: &Path) -> String {
+    match fs::read(path) {
+        Ok(content) => {
+            let mut hasher = DeterministicHasher::new();
+            hasher.write_str(path.to_string_lossy().as_ref());
+            hasher.write_bytes(&content);
+            hasher.finish_hex()
+        }
+        Err(_) => ABSENT_LINTIGNORE_HASH.to_string(),
+    }
 }
 
 impl CacheKey {
     /// Computes a deterministic hexadecimal hash for this cache key.
     pub fn compute_hash(&self) -> String {
         let mut hasher = DeterministicHasher::new();
-        hasher.write_str("linter_version:");
+        // The format string is part of the hashed input: renaming or adding
+        // hashed fields (v2 added diff_scope and lintignore_hash, #793)
+        // invalidates every entry written under the previous format.
+        hasher.write_str(CACHE_KEY_FORMAT);
+        hasher.write_str(";linter_version:");
         hasher.write_str(&self.linter_version);
         hasher.write_str(";toolchain:");
         hasher.write_str(&self.toolchain);
@@ -65,6 +97,10 @@ impl CacheKey {
         hasher.write_str(&self.output_format);
         hasher.write_str(";source_hash:");
         hasher.write_str(&self.source_hash);
+        hasher.write_str(";diff_scope:");
+        hasher.write_str(&self.diff_scope);
+        hasher.write_str(";lintignore_hash:");
+        hasher.write_str(&self.lintignore_hash);
         hasher.finish_hex()
     }
 }
@@ -205,6 +241,8 @@ mod tests {
             package_args: vec!["--package".to_string(), "my-contract".to_string()],
             output_format: "text".to_string(),
             source_hash: "a1b2c3d4e5f6".to_string(),
+            diff_scope: "all".to_string(),
+            lintignore_hash: ABSENT_LINTIGNORE_HASH.to_string(),
         }
     }
 
@@ -469,6 +507,8 @@ mod tests {
             package_args: vec!["--workspace".to_string()],
             output_format: "text".to_string(),
             source_hash: "abc".to_string(),
+            diff_scope: "all".to_string(),
+            lintignore_hash: ABSENT_LINTIGNORE_HASH.to_string(),
         };
         let key2 = CacheKey {
             linter_version: "1.0.1".to_string(),
@@ -578,6 +618,8 @@ mod tests {
             package_args: vec![],
             output_format: String::new(),
             source_hash: String::new(),
+            diff_scope: "all".to_string(),
+            lintignore_hash: ABSENT_LINTIGNORE_HASH.to_string(),
         };
         let hash = key.compute_hash();
         assert_eq!(hash.len(), 16);
@@ -592,6 +634,8 @@ mod tests {
             package_args: vec![],
             output_format: "text".to_string(),
             source_hash: "abc".to_string(),
+            diff_scope: "all".to_string(),
+            lintignore_hash: ABSENT_LINTIGNORE_HASH.to_string(),
         };
         let hash1 = key.compute_hash();
 

@@ -14,6 +14,19 @@
 //! subset: it only fires when it can prove the operands are invariant, so
 //! the loop genuinely can be hoisted without a behavioural change.
 //!
+//! # How a storage chain is reported
+//!
+//! A storage access is a chain of method calls: `env.storage().instance().get(&1)`
+//! is the `storage()` call, the `instance()` call and the `get()` call, nested
+//! inside one another. `check_expr` visits every node of that nest, so the
+//! lint reports the chain once, at the outermost step, and skips the inner
+//! ones (see [`is_inner_chain_step`]). One expression therefore yields one
+//! diagnostic, and the diagnostic spans the whole chain.
+//!
+//! The outermost step is the one that carries the cost: the inner steps only
+//! build the accessor handles, and a chain whose outermost step depends on
+//! the loop is not reported at all.
+//!
 //! # How loop-invariance is decided
 //!
 //! [`depends_on_loop_state`] walks the loop body and the call's own
@@ -27,6 +40,7 @@
 //! [`depends_on_loop_state`] for the known gaps.
 
 use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::get_parent_expr;
 use rustc_hir::{Expr, ExprKind};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty::Ty;
@@ -60,16 +74,23 @@ impl<'tcx> LateLintPass<'tcx> for LoopInvariantStorageAccess {
     /// Loop-invariance is checked by [`depends_on_loop_state`]; calls that
     /// read or write loop-varying state are not reported.
     ///
-    /// Note that every step in the chain is reported separately, because
-    /// `check_expr` fires for each nested `MethodCall`: for
-    /// `env.storage().instance().get(&1)` that is the `storage()` call, the
-    /// `instance()` call and the `get()` call.
+    /// A storage chain such as `env.storage().instance().get(&1)` is a nest
+    /// of `MethodCall`s and `check_expr` visits every one of them. Only the
+    /// outermost step is reported (see [`is_inner_chain_step`]), so one
+    /// expression yields one diagnostic and that diagnostic spans the whole
+    /// chain.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
         let Some(loop_expr) = enclosing_loop(cx, expr) else {
             return;
         };
 
         if !is_storage_access_call(cx, expr) {
+            return;
+        }
+
+        // The inner steps of a chain are covered by the outermost one, which
+        // is the only step that reaches the host.
+        if is_inner_chain_step(cx, expr) {
             return;
         }
 
@@ -116,6 +137,27 @@ fn is_storage_access_call<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) 
     matches_any_path(cx, did, SOROBAN_STORAGE_TYPES)
         || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
             && method_name == ENV_STORAGE_METHOD)
+}
+
+/// Whether `expr` is an inner step of a storage chain.
+///
+/// `env.storage().instance().get(&1)` is three nested `MethodCall`s: the
+/// `storage()` call, the `instance()` call and the `get()` call. `check_expr`
+/// visits every one of them, so all but the outermost would report the same
+/// expression twice over. The outermost step is the one whose span covers the
+/// whole chain, and it is the only one that reaches the host — the inner
+/// steps merely build the accessor handles.
+///
+/// A step counts as inner when the expression that contains it is another
+/// storage access whose receiver is that step.
+fn is_inner_chain_step<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
+    let Some(parent) = get_parent_expr(cx, expr) else {
+        return false;
+    };
+    let ExprKind::MethodCall(_, receiver, _, _) = parent.kind else {
+        return false;
+    };
+    receiver.hir_id == expr.hir_id && is_storage_access_call(cx, parent)
 }
 
 #[cfg(test)]

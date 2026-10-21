@@ -16,13 +16,22 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Dependabot scans .github/workflows/*.yml only (see .github/dependabot.yml),
+      # so this shipped boilerplate gets no automated bumps: each action ref below
+      # names the in-repo workflow it mirrors, which makes the manual sync a copy
+      # of that line rather than a judgement call.
+      # mirrors .github/workflows/lint.yml
+      - uses: actions/checkout@v7
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        # mirrors .github/workflows/lint.yml and action.yml
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
           # Keep this toolchain pin in sync with the soroban-cost-linter release you install
+          # (rewritten by .github/scripts/bump-nightly.sh; do not hand-edit the date)
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview
+      # mirrors .github/workflows/lint.yml and action.yml; must stay compatible
+      # with the dylint_linting version the lint library is built against
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
       - name: Install soroban-cost-linter

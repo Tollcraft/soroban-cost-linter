@@ -6,5 +6,7 @@
   "map_insert_in_loop",
   "unnecessary_host_function_call",
   "unwrap_on_storage_get",
-  "persistent_read_without_ttl_extension"
+  "persistent_read_without_ttl_extension",
+  "collection_len_in_loop_condition",
+  "cross_contract_result_discarded"
 ]

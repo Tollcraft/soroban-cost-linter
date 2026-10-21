@@ -370,8 +370,21 @@ fn bad_clone_env_ufcs_clone(env: Env) {
     let _cloned = Clone::clone(&env); // Should Warn
 }
 
+struct EnvHolder {
+    env: Env,
+}
+
+fn bad_clone_env_field(holder: EnvHolder) {
+    let _cloned = holder.env.clone(); // Should Warn — Env reached through a field
+}
+
 fn good_env_ref_clone(env: &Env) {
     let _cloned = env.clone(); // Good — &Env, clone produces owned Env
+}
+
+fn good_bound_ref_clone(env: Env) {
+    let r = &env;
+    let _cloned = r.clone(); // Good — bound &Env receiver, produces an owned Env
 }
 
 fn good_env_used_after_clone(env: Env) {
