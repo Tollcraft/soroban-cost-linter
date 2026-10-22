@@ -853,10 +853,12 @@ fn main() {
     let changed_files: Option<Vec<String>> = if cli.diff_only {
         match diff_files::get_changed_files() {
             Ok(files) => {
-                if files.is_empty() {
-                    eprintln!("--diff-only: no changed files found; nothing to lint.");
-                } else {
-                    eprintln!("--diff-only: linting {} changed file(s)", files.len());
+                if !quiet {
+                    if files.is_empty() {
+                        eprintln!("--diff-only: no changed files found; nothing to lint.");
+                    } else {
+                        eprintln!("--diff-only: linting {} changed file(s)", files.len());
+                    }
                 }
                 Some(files)
             }
@@ -881,12 +883,30 @@ fn main() {
         let mut recorded_stdout = String::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
-            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str)
-                && msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message")
-                && let Some(message) = msg.get("message")
-                && let Some(code) = message.get("code")
-                && let Some(lint_name) = code.get("code").and_then(|c| c.as_str())
-                && LINT_NAMES_SET.contains(lint_name)
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) else {
+                continue;
+            };
+            if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") {
+                continue;
+            }
+            let Some(message) = msg.get("message") else {
+                continue;
+            };
+            let lint_name = message
+                .get("code")
+                .and_then(|code| code.get("code"))
+                .and_then(|code| code.as_str())
+                .filter(|name| LINT_NAMES_SET.contains(name));
+            let Some(lint_name) = lint_name else {
+                if cli.format == OutputFormat::Text
+                    && let Some(rendered) = message.get("rendered").and_then(|r| r.as_str())
+                {
+                    eprint!("{}", rendered);
+                    recorded_stdout.push_str(rendered);
+                }
+                continue;
+            };
+
             {
                 let mut file = String::new();
                 let mut span_obj = Span {
