@@ -38,7 +38,7 @@ use rustc_session::declare_lint_pass;
 use rustc_span::def_id::LocalDefId;
 use std::collections::HashMap;
 
-use crate::REDUNDANT_REQUIRE_AUTH;
+use crate::{REDUNDANT_REQUIRE_AUTH, match_soroban_def_path, ty_adt_def};
 
 declare_lint_pass!(RedundantRequireAuth => [REDUNDANT_REQUIRE_AUTH]);
 
@@ -157,22 +157,19 @@ impl<'v, 'tcx> Visitor<'tcx> for AuthVisitor<'v, 'tcx> {
 
 /// Returns `true` if `receiver` has type `soroban_sdk::Env`.
 ///
-/// The type is matched via its `Debug` rendering rather than the shared
-/// `match_soroban_def_path` helper because the fixture SDKs in `ui/` do not
-/// carry the same definition paths as the real SDK; the substring check keeps
-/// the lint working in both. References are peeled first so `&Env` matches too.
+/// Its ADT definition path must match `soroban_sdk::Env`. References are peeled
+/// first so `&Env` matches too.
 fn is_env_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'tcx>) -> bool {
-    let peeled = cx.typeck_results().expr_ty(receiver).peel_refs();
-    let ty_str = format!("{:?}", peeled);
-    ty_str.contains("soroban_sdk::Env") || ty_str.contains("Env")
+    ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+        .is_some_and(|adt_def| match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"]))
 }
 
 /// Returns `true` if `receiver` has type `soroban_sdk::Address`.
 ///
-/// Like [`is_env_receiver`], this uses the `Debug` rendering so it matches both
-/// the real SDK and the UI fixtures. References are peeled first.
+/// Its ADT definition path must match `soroban_sdk::Address`. References are
+/// peeled first so `&Address` matches too.
 fn is_address_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'tcx>) -> bool {
-    let peeled = cx.typeck_results().expr_ty(receiver).peel_refs();
-    let ty_str = format!("{:?}", peeled);
-    ty_str.contains("soroban_sdk::Address") || ty_str.contains("Address")
+    ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs()).is_some_and(|adt_def| {
+        match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
+    })
 }

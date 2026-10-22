@@ -5,7 +5,7 @@ use rustc_hir::{Expr, ExprKind, HirId, Node, PatKind, QPath, Stmt, StmtKind};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::DISCARDED_STORAGE_READ;
+use crate::{DISCARDED_STORAGE_READ, SOROBAN_STORAGE_TYPES, matches_any_path, ty_adt_def};
 
 declare_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
 
@@ -29,27 +29,14 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
         let name = path.ident.as_str();
         if name == "get" || name == "has" {
             let ty = cx.typeck_results().expr_ty(receiver);
-            let ty_str = format!("{:?}", ty);
-            if ty_str.contains("storage")
-                || ty_str.contains("Instance")
-                || ty_str.contains("Persistent")
-                || ty_str.contains("Temporary")
-                || is_storage_receiver(cx, receiver)
+            if ty_adt_def(ty.peel_refs())
+                .is_some_and(|adt_def| matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES))
             {
                 return true;
             }
         }
     }
     false
-}
-
-fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    let ty = cx.typeck_results().expr_ty(expr);
-    let s = format!("{:?}", ty);
-    s.contains("Storage")
-        || s.contains("Instance")
-        || s.contains("Persistent")
-        || s.contains("Temporary")
 }
 
 fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {

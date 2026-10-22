@@ -7,5 +7,12 @@ LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn
    = help: b$DIRld the byte buffer inside the loop and construct the String once afterwards
    = note: `#[warn(string_concat_in_loop)]` on by default
 
-warning: 1 warning emitted
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop.rs:61:17
+   |
+LL |         let _ = String::from_bytes(&env, bytes.as_slice()); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: b$DIRld the byte buffer inside the loop and construct the String once afterwards
 
+warning: 2 warnings emitted

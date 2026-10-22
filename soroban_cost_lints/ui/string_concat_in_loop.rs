@@ -39,4 +39,27 @@ fn good_string_from_bytes_after_loop(env: Env) {
     let _ = String::from_bytes(&env, &bytes); // Good
 }
 
+fn good_independent_chunks(env: Env, chunks: &[&[u8]]) {
+    for chunk in chunks {
+        let _ = String::from_bytes(&env, chunk); // Should not warn
+    }
+}
+
+fn good_reset_buffer_each_iteration(env: Env, chunks: &[u8]) {
+    let mut bytes = std::vec::Vec::new();
+    for chunk in chunks {
+        bytes.clear();
+        bytes.push(*chunk);
+        let _ = String::from_bytes(&env, &bytes); // Should not warn
+    }
+}
+
+fn bad_extend_from_slice(env: Env, chunks: &[&[u8]]) {
+    let mut bytes = std::vec::Vec::new();
+    for chunk in chunks {
+        bytes.extend_from_slice(chunk);
+        let _ = String::from_bytes(&env, bytes.as_slice()); // Should Warn
+    }
+}
+
 fn main() {}

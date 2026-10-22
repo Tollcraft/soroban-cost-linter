@@ -76,4 +76,19 @@ fn good_has_branch(env: Env) {
     }
 }
 
+mod storage {
+    pub struct PersistentCounters;
+
+    impl PersistentCounters {
+        pub fn get(&self, _key: u32) -> u32 { 0 }
+        pub fn has(&self, _key: u32) -> bool { false }
+    }
+}
+
+fn good_user_storage_types() {
+    let counters = storage::PersistentCounters;
+    let _ = counters.get(1);
+    let _ = counters.has(1);
+}
+
 fn main() {}

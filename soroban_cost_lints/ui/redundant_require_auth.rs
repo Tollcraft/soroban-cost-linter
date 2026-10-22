@@ -143,4 +143,30 @@ fn good_no_require_auth() {
     let _env = Env;
 }
 
+struct AddressBook;
+
+impl AddressBook {
+    fn require_auth(&self) {}
+}
+
+fn good_user_address_book() {
+    let book = AddressBook;
+    book.require_auth();
+    book.require_auth();
+}
+
+struct MockEnv;
+
+impl MockEnv {
+    fn invoke_contract(&self) {}
+}
+
+fn bad_user_mock_env_does_not_reset_tracking() {
+    let env = MockEnv;
+    let addr = Address;
+    addr.require_auth();
+    env.invoke_contract();
+    addr.require_auth(); //~ WARNING require_auth already called on this address
+}
+
 fn main() {}

@@ -6,7 +6,7 @@
 
 ## What it does
 
-Detects calls to `soroban_sdk::String::from_bytes` inside loop bodies (`for`, `while`, or `loop`). Soroban SDK 28 does not expose `String::append` or implement `Add`; repeatedly reconstructing a string from a growing byte slice is a supported conversion shape that can recopy the accumulated buffer.
+Detects calls to `soroban_sdk::String::from_bytes` inside loop bodies (`for`, `while`, or `loop`) when the converted byte buffer is a local declared outside the loop and grows within the loop. Soroban SDK 28 does not expose `String::append` or implement `Add`; repeatedly reconstructing a string from a growing byte slice is a supported conversion shape that can recopy the accumulated buffer. Independent per-iteration slices and buffers cleared or reassigned before being refilled are not reported.
 
 ## Why is this bad?
 
