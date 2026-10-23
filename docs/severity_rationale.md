@@ -31,7 +31,7 @@ This means a `deny` in `budget.toml` overrides the default, and an `#[allow]` at
 
 ## Why `soroban_storage_in_loop` Defaults to `deny`
 
-This linter ships **43 lints**: **41** default to `warn`, and exactly two — `soroban_storage_in_loop` and `nested_loop_storage_access` — default to `deny`.
+This linter ships **46 lints**: **44** default to `warn`, and exactly two — `soroban_storage_in_loop` and `nested_loop_storage_access` — default to `deny`.
 
 That is a deliberate decision, not an oversight. The reasoning comes directly from the [Cost Rationale](cost_rationale.md):
 

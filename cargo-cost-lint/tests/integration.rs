@@ -640,3 +640,285 @@ fn documented_formats_are_accepted() {
         "Expected '--format xml' to be rejected by clap, but it was not:\n{stderr}"
     );
 }
+/// End-to-end coverage for the flags no test launched the binary for before:
+/// `--no-cache`, `--clear-cache`, `.lintignore`, `--diff-only` and `--quiet`.
+///
+/// Every case lints a copy of `tests/flag_fixture_workspace` in a temporary
+/// directory, so the repository's own cache path and sources are untouched and
+/// the run needs no network access. Assertions are on stdout, stderr and exit
+/// codes — never on log wording.
+mod flag_e2e {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Output};
+    use std::sync::OnceLock;
+
+    /// Absolute path of the fixture workspace shipped next to this test file.
+    fn fixture_source() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("flag_fixture_workspace")
+    }
+
+    /// A fresh copy of the fixture in a temporary directory.
+    fn fixture_copy() -> tempfile::TempDir {
+        let source = fixture_source();
+        let dir = tempfile::tempdir().expect("failed to create fixture temp dir");
+        fs::create_dir_all(dir.path().join("src")).expect("failed to create fixture src dir");
+        fs::copy(source.join("Cargo.toml"), dir.path().join("Cargo.toml"))
+            .expect("failed to copy fixture Cargo.toml");
+        for file in ["lib.rs", "other.rs"] {
+            fs::copy(
+                source.join("src").join(file),
+                dir.path().join("src").join(file),
+            )
+            .expect("failed to copy fixture source");
+        }
+        dir
+    }
+
+    /// Directory holding the built `soroban_cost_lints` library, building it
+    /// once per test binary.
+    fn lint_library_dir() -> &'static Path {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            lint_dir.pop();
+            lint_dir.push("soroban_cost_lints");
+            let status = Command::new(env!("CARGO"))
+                .arg("build")
+                .current_dir(&lint_dir)
+                .status()
+                .expect("failed to build soroban_cost_lints");
+            assert!(status.success(), "failed to build soroban_cost_lints");
+            match std::env::var("CARGO_TARGET_DIR") {
+                Ok(dir) => PathBuf::from(dir).join("debug"),
+                Err(_) => {
+                    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                    dir.pop();
+                    dir.join("target").join("debug")
+                }
+            }
+        })
+    }
+
+    /// Runs the real binary in `cwd` with the lint library on its search path.
+    fn run_lint(cwd: &Path, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_cargo-cost-lint"))
+            .args(args)
+            .current_dir(cwd)
+            .env("DYLINT_LIBRARY_PATH", lint_library_dir())
+            .env_remove("DYLINT_RUSTFLAGS")
+            .output()
+            .expect("failed to execute cargo-cost-lint")
+    }
+
+    /// Files named by the JSON findings on `stdout`.
+    fn finding_files(stdout: &[u8]) -> Vec<String> {
+        String::from_utf8_lossy(stdout)
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let finding: serde_json::Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("stdout line is not a JSON finding: {e}: {line}"));
+                finding["file"]
+                    .as_str()
+                    .expect("finding must name a file")
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// Number of cached lint results written under the run directory.
+    fn cache_entries(cwd: &Path) -> usize {
+        let cache = cwd.join("target").join("cost-lint-cache");
+        match fs::read_dir(cache) {
+            Ok(entries) => entries
+                .flatten()
+                .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+                .count(),
+            Err(_) => 0,
+        }
+    }
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .status()
+            .expect("failed to run git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    /// `--no-cache` must not write a result that a later run could replay, and
+    /// the next run must reflect an edit to the source.
+    #[test]
+    fn no_cache_re_lints_instead_of_replaying() {
+        let fixture = fixture_copy();
+
+        let first = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(first.status.success(), "first --no-cache run failed");
+        let files = finding_files(&first.stdout);
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            "expected a finding in src/lib.rs, got {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/other.rs")),
+            "expected a finding in src/other.rs, got {files:?}"
+        );
+        assert_eq!(
+            cache_entries(fixture.path()),
+            0,
+            "--no-cache must not write a cache entry"
+        );
+
+        // Remove one finding; a replayed result would still report it.
+        fs::write(
+            fixture.path().join("src/other.rs"),
+            "//! No finding left in this file.\n",
+        )
+        .unwrap();
+
+        let second = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(second.status.success(), "second --no-cache run failed");
+        let files = finding_files(&second.stdout);
+        assert!(
+            !files.iter().any(|f| f.ends_with("src/other.rs")),
+            "--no-cache replayed a stale finding: {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            "the untouched file must still be reported: {files:?}"
+        );
+        assert_eq!(cache_entries(fixture.path()), 0);
+    }
+
+    /// A normal run populates the cache; `--clear-cache` empties it.
+    #[test]
+    fn clear_cache_empties_the_cache_directory() {
+        let fixture = fixture_copy();
+
+        let first = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(first.status.success(), "cached run failed");
+        assert!(
+            cache_entries(fixture.path()) > 0,
+            "a normal run should leave at least one cache entry"
+        );
+
+        let cleared = run_lint(fixture.path(), &["--clear-cache"]);
+        assert!(cleared.status.success(), "--clear-cache failed");
+        assert_eq!(
+            cache_entries(fixture.path()),
+            0,
+            "--clear-cache must remove every cached result"
+        );
+    }
+
+    /// A `.lintignore` entry removes exactly the finding in the matching file.
+    #[test]
+    fn lintignore_removes_the_matching_finding() {
+        let fixture = fixture_copy();
+
+        let before = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(before.status.success());
+        let files = finding_files(&before.stdout);
+        assert!(files.iter().any(|f| f.ends_with("src/other.rs")));
+
+        fs::write(fixture.path().join(".lintignore"), "src/other.rs\n").unwrap();
+
+        let after = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(after.status.success());
+        let files = finding_files(&after.stdout);
+        assert!(
+            !files.iter().any(|f| f.ends_with("src/other.rs")),
+            ".lintignore did not suppress src/other.rs: {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            ".lintignore suppressed a file it does not match: {files:?}"
+        );
+    }
+
+    /// `--diff-only` restricts findings to files changed since the merge base
+    /// with the default branch.
+    #[test]
+    fn diff_only_restricts_findings_to_changed_files() {
+        let fixture = fixture_copy();
+        let dir = fixture.path();
+
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "flag-tests@example.invalid"]);
+        git(dir, &["config", "user.name", "flag tests"]);
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "baseline"]);
+        git(dir, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+        // Change only `src/other.rs`, so only its finding may survive.
+        let other = dir.join("src").join("other.rs");
+        let original = fs::read_to_string(&other).unwrap();
+        fs::write(&other, format!("// changed\n{original}")).unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "touch other.rs"]);
+
+        let output = run_lint(dir, &["--format", "json", "--diff-only"]);
+        assert!(output.status.success(), "--diff-only run failed");
+        let files = finding_files(&output.stdout);
+        assert!(
+            !files.is_empty(),
+            "expected the changed file's finding, got none"
+        );
+        assert!(
+            files.iter().all(|f| f.ends_with("src/other.rs")),
+            "--diff-only leaked an unchanged file's finding: {files:?}"
+        );
+    }
+
+    /// `--quiet` leaves findings (and only findings) on stdout, with nothing on
+    /// stderr — including the missing-`budget.toml` notice the default run
+    /// prints.
+    ///
+    /// The measured run is a cache hit: the informational notices are emitted
+    /// before the cache lookup, so `--quiet` is still exercised, while the
+    /// `cargo dylint` child (whose inherited cargo progress lines this flag
+    /// does not own) is not spawned. The cold-run stream contract, including
+    /// the `--diff-only` notices, is issue #802's.
+    #[test]
+    fn quiet_prints_findings_only() {
+        let fixture = fixture_copy();
+
+        // Cargo writes `Cargo.lock` on the first build, and the lockfile is
+        // part of the cache key: prime it so the warm run records an entry the
+        // measured run can actually hit.
+        let primer = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(primer.status.success(), "primer run failed");
+
+        // Populate the result cache for the measured run.
+        let warm = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(warm.status.success(), "warm-up run failed");
+        assert!(
+            cache_entries(fixture.path()) > 0,
+            "warm-up run left no cache entry for the measured run"
+        );
+
+        let quiet = run_lint(fixture.path(), &["--format", "json", "--quiet"]);
+        assert!(quiet.status.success(), "--quiet run failed");
+        assert!(
+            quiet.stderr.is_empty(),
+            "--quiet wrote to stderr: {}",
+            String::from_utf8_lossy(&quiet.stderr)
+        );
+
+        let stdout = String::from_utf8(quiet.stdout).expect("stdout is not UTF-8");
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert!(!lines.is_empty(), "--quiet printed no findings");
+        for line in lines {
+            let finding: serde_json::Value = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("--quiet printed a non-finding line: {e}: {line}"));
+            assert!(
+                finding.get("name").is_some(),
+                "--quiet printed a line that is not a finding: {line}"
+            );
+        }
+    }
+}

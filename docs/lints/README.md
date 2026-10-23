@@ -21,6 +21,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
+| [`blind_storage_write`](blind_storage_write.md) | `warn` | blind storage write overwrites a previously written key without reading it back |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
@@ -56,6 +57,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`string_concat_in_loop`](string_concat_in_loop.md) | `warn` | repeatedly concatenating a soroban String inside a loop |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md) | `warn` | repeatedly growing SDK containers inside loops |
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
+| [`bytes_slice_copy_in_loop`](bytes_slice_copy_in_loop.md) | `warn` | repeatedly copying a sub-slice of `Bytes` inside a loop |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md) | `warn` | excessive pre-allocation capacity in Soroban Vec |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |

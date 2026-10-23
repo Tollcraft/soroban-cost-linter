@@ -63,6 +63,9 @@
   * [nested\_loop\_storage\_access](lints/nested_loop_storage_access.md)
   * [persistent\_storage\_for\_ephemeral\_data](lints/persistent_storage_for_ephemeral_data.md)
   * [redundant\_address\_clone](lints/redundant_address_clone.md)
+  * [blind\_storage\_write](lints/blind_storage_write.md)
+  * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
+  * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
 
 ## Branding
 
