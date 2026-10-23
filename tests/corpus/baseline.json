@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1792575592 with 135 findings (21 TP, 114 FP, 84.44% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1792755063 with 154 findings (21 TP, 133 FP, 86.36% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 135,
+    "total_findings": 154,
     "total_true_positives": 21,
-    "total_false_positives": 114,
-    "false_positive_rate_percent": 84.44
+    "total_false_positives": 133,
+    "false_positive_rate_percent": 86.36
   },
   "contracts": {
     "auth_batch_per_item": {
-      "total": 10,
+      "total": 12,
       "true_positives": [],
       "false_positives": [
         {
@@ -49,6 +49,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 101,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "require_auth_in_loop",
           "file": "src/lib.rs",
           "line": 110,
@@ -71,11 +77,17 @@
           "file": "src/lib.rs",
           "line": 120,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 120,
+          "message": "instance storage written inside a loop"
         }
       ]
     },
     "auth_layered_admin": {
-      "total": 15,
+      "total": 18,
       "true_positives": [
         {
           "lint_name": "unwrap_on_storage_get",
@@ -116,6 +128,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 83,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 135,
@@ -146,6 +164,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 133,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 183,
@@ -168,11 +192,17 @@
           "file": "src/lib.rs",
           "line": 181,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 181,
+          "message": "instance storage written inside a loop"
         }
       ]
     },
     "auth_multi_party": {
-      "total": 11,
+      "total": 13,
       "true_positives": [],
       "false_positives": [
         {
@@ -204,6 +234,12 @@
           "file": "src/lib.rs",
           "line": 89,
           "message": "loop-invariant storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 89,
+          "message": "instance storage written inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
@@ -240,6 +276,12 @@
           "file": "src/lib.rs",
           "line": 146,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 146,
+          "message": "instance storage written inside a loop"
         }
       ]
     },
@@ -269,7 +311,7 @@
       ]
     },
     "bounded_input_loop_fixture": {
-      "total": 7,
+      "total": 10,
       "true_positives": [],
       "false_positives": [
         {
@@ -285,6 +327,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 30,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
           "line": 44,
@@ -295,6 +343,12 @@
           "file": "src/lib.rs",
           "line": 44,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 44,
+          "message": "instance storage written inside a loop"
         },
         {
           "lint_name": "soroban_storage_in_loop",
@@ -313,6 +367,12 @@
           "file": "src/lib.rs",
           "line": 58,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 58,
+          "message": "instance storage written inside a loop"
         }
       ]
     },
@@ -620,7 +680,7 @@
       "false_positives": []
     },
     "storage_iter_closure": {
-      "total": 7,
+      "total": 8,
       "true_positives": [],
       "false_positives": [
         {
@@ -634,6 +694,12 @@
           "file": "src/lib.rs",
           "line": 15,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 15,
+          "message": "instance storage written inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
@@ -781,7 +847,7 @@
       "false_positives": []
     },
     "symbol_key_enum_storage": {
-      "total": 5,
+      "total": 6,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -814,6 +880,12 @@
           "file": "src/lib.rs",
           "line": 52,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 52,
+          "message": "instance storage written inside a loop"
         }
       ]
     },
@@ -836,7 +908,7 @@
       "false_positives": []
     },
     "timelock": {
-      "total": 12,
+      "total": 16,
       "true_positives": [
         {
           "lint_name": "unnecessary_host_function_call",
@@ -853,10 +925,22 @@
       ],
       "false_positives": [
         {
+          "lint_name": "redundant_address_clone",
+          "file": "src/lib.rs",
+          "line": 51,
+          "message": "redundant clone on Address object"
+        },
+        {
           "lint_name": "instance_storage_for_unbounded_data",
           "file": "src/lib.rs",
           "line": 55,
           "message": "unbounded collection written to instance storage"
+        },
+        {
+          "lint_name": "redundant_address_clone",
+          "file": "src/lib.rs",
+          "line": 69,
+          "message": "redundant clone on Address object"
         },
         {
           "lint_name": "instance_storage_for_unbounded_data",
@@ -889,10 +973,22 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 95,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "instance_storage_for_unbounded_data",
           "file": "src/lib.rs",
           "line": 98,
           "message": "unbounded collection written to instance storage"
+        },
+        {
+          "lint_name": "redundant_address_clone",
+          "file": "src/lib.rs",
+          "line": 107,
+          "message": "redundant clone on Address object"
         },
         {
           "lint_name": "ledger_context_read_in_loop",
@@ -915,7 +1011,7 @@
       ]
     },
     "token": {
-      "total": 16,
+      "total": 18,
       "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
@@ -980,6 +1076,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 51,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
           "line": 57,
@@ -1004,6 +1106,12 @@
           "message": "storage operation inside a loop"
         },
         {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 65,
+          "message": "instance storage written inside a loop"
+        },
+        {
           "lint_name": "duplicate_storage_key_construction",
           "file": "src/lib.rs",
           "line": 16,
@@ -1018,7 +1126,7 @@
       ]
     },
     "unbounded_input_loop_fixture": {
-      "total": 6,
+      "total": 7,
       "true_positives": [],
       "false_positives": [
         {
@@ -1044,6 +1152,12 @@
           "file": "src/lib.rs",
           "line": 19,
           "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 19,
+          "message": "instance storage written inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
