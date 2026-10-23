@@ -1,34 +1,35 @@
 warning: redundant clone on Address object
-  --> $DIR/redundant_address_clone.rs:16:19
+  --> $DIR/redundant_address_clone.rs:27:19
    |
 LL |     let _cloned = addr.clone(); //~ WARNING redundant clone on Address object
-   |                   ^^^^^^^^^^^
+   |                   ^^^^^^^^^^^^
    |
-   = help: pass Address by reference or move instead of cloning
+   = help: move the Address instead of cloning it
    = note: `#[warn(redundant_address_clone)]` on by default
 
 warning: redundant clone on Address object
-  --> $DIR/redundant_address_clone.rs:22:15
+  --> $DIR/redundant_address_clone.rs:32:16
    |
 LL |     takes_addr(addr.clone()); //~ WARNING redundant clone on Address object
-   |               ^^^^^^^^^^^
+   |                ^^^^^^^^^^^^
    |
-   = help: pass Address by reference or move instead of cloning
+   = help: move the Address instead of cloning it
 
 warning: redundant clone on Address object
-  --> $DIR/redundant_address_clone.rs:28:9
+  --> $DIR/redundant_address_clone.rs:38:9
    |
 LL |         addr.clone() //~ WARNING redundant clone on Address object
-   |         ^^^^^^^^^^^
+   |         ^^^^^^^^^^^^
    |
-   = help: pass Address by reference or move instead of cloning
+   = help: move the Address instead of cloning it
 
 warning: redundant clone on Address object
-  --> $DIR/redundant_address_clone.rs:34:15
+  --> $DIR/redundant_address_clone.rs:44:16
    |
 LL |     let addr = addr.clone(); //~ WARNING redundant clone on Address object
-   |               ^^^^^^^^^^^
+   |                ^^^^^^^^^^^^
    |
-   = help: pass Address by reference or move instead of cloning
+   = help: move the Address instead of cloning it
 
 warning: 4 warnings emitted
+

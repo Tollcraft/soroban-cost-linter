@@ -38,10 +38,14 @@ mod collection_len_in_loop_condition;
 mod cross_contract_result_discarded;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
+mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
+mod nested_loop_storage_access;
 mod option_wrapping_in_storage;
+mod persistent_storage_for_ephemeral_data;
+mod redundant_address_clone;
 mod redundant_require_auth;
 mod redundant_val_conversion;
 mod require_auth_in_loop;
@@ -112,6 +116,10 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
         REDUNDANT_VAL_CONVERSION,
+        INSTANCE_STORAGE_WRITE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
+        PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        REDUNDANT_ADDRESS_CLONE,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -185,6 +193,15 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         Box::new(cross_contract_result_discarded::CrossContractResultDiscarded)
     });
     lint_store.register_late_pass(|_| Box::new(redundant_val_conversion::RedundantValConversion));
+    lint_store.register_late_pass(|_| {
+        Box::new(instance_storage_write_in_loop::InstanceStorageWriteInLoop)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(nested_loop_storage_access::NestedLoopStorageAccess));
+    lint_store.register_late_pass(|_| {
+        Box::new(persistent_storage_for_ephemeral_data::PersistentStorageForEphemeralData)
+    });
+    lint_store.register_late_pass(|_| Box::new(redundant_address_clone::RedundantAddressClone));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -431,6 +448,33 @@ rustc_session::declare_lint! {
     pub REDUNDANT_VAL_CONVERSION,
     Warn,
     "a value converted into the type it already has, or bounced through `Val` and back in one expression"
+}
+
+rustc_session::declare_lint! {
+    pub INSTANCE_STORAGE_WRITE_IN_LOOP,
+    Warn,
+    "instance storage written inside a loop"
+}
+
+// A storage access two loops deep costs O(n*m) host calls. That is a different
+// order of magnitude from the single-loop case `soroban_storage_in_loop`
+// reports, so this lint is an error rather than a warning.
+rustc_session::declare_lint! {
+    pub NESTED_LOOP_STORAGE_ACCESS,
+    Deny,
+    "storage operation inside a nested loop — cost is O(n·m)"
+}
+
+rustc_session::declare_lint! {
+    pub PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+    Warn,
+    "persistent storage write is removed on every path through the function"
+}
+
+rustc_session::declare_lint! {
+    pub REDUNDANT_ADDRESS_CLONE,
+    Warn,
+    "redundant clone on Address object"
 }
 
 pub struct SorobanCostLints;
@@ -698,6 +742,30 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "a value converted into the type it already has, or bounced through `Val` and back in one expression",
         rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a conversion to the same type, or a `T -> Val -> T` round trip in one expression, pays those crossings to hand back the value it started with.",
     },
+    LintMeta {
+        name: "instance_storage_write_in_loop",
+        category: LintCategory::Storage,
+        description: "instance storage written inside a loop",
+        rationale: "Instance storage travels with the contract instance and every write is paid for again by the next reader; writing it once per iteration multiplies the ledger write cost by the trip count for a value only its last write makes visible.",
+    },
+    LintMeta {
+        name: "nested_loop_storage_access",
+        category: LintCategory::Storage,
+        description: "storage operation inside a nested loop — cost is O(n·m)",
+        rationale: "A storage access two loops deep costs the product of both trip counts in metered host calls, so its cost is multiplicative rather than linear and almost never intentional.",
+    },
+    LintMeta {
+        name: "persistent_storage_for_ephemeral_data",
+        category: LintCategory::Storage,
+        description: "persistent storage write is removed on every path through the function",
+        rationale: "A persistent entry that is written and removed again before the call returns never outlives the invocation; temporary storage serves the same call without paying the archival write and the rent that keeps the entry alive.",
+    },
+    LintMeta {
+        name: "redundant_address_clone",
+        category: LintCategory::Host,
+        description: "redundant clone on Address object",
+        rationale: "Address is a host-object handle, and cloning it crosses the host boundary; when the original is never read again the copy buys nothing.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -742,6 +810,10 @@ dylint_lint_impl! {
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
         REDUNDANT_VAL_CONVERSION,
+        INSTANCE_STORAGE_WRITE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
+        PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        REDUNDANT_ADDRESS_CLONE,
     ]
 }
 
@@ -1358,7 +1430,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
 ///   borrowed argument, with the borrow peeled off.
 ///
 /// Returns `None` for every other expression.
-fn env_clone_subject<'tcx>(
+pub(crate) fn env_clone_subject<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> Option<&'tcx hir::Expr<'tcx>> {
@@ -1398,7 +1470,7 @@ fn env_clone_subject<'tcx>(
 ///
 /// The rule lives in one place so that the other "redundant clone" lints can
 /// share the same last-use analysis instead of writing a second copy of it.
-fn clone_subject_is_live_after<'tcx>(
+pub(crate) fn clone_subject_is_live_after<'tcx>(
     cx: &LateContext<'tcx>,
     subject: &'tcx hir::Expr<'tcx>,
     clone_expr: &'tcx hir::Expr<'tcx>,

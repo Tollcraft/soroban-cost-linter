@@ -25,6 +25,9 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
 | [`option_wrapping_in_storage`](option_wrapping_in_storage.md) | `warn` | stores an Option<T> in storage where the key already models absence |
+| [`instance_storage_write_in_loop`](instance_storage_write_in_loop.md) | `warn` | instance storage written inside a loop |
+| [`nested_loop_storage_access`](nested_loop_storage_access.md) | `deny` | storage operation inside a nested loop — cost is O(n·m) |
+| [`persistent_storage_for_ephemeral_data`](persistent_storage_for_ephemeral_data.md) | `warn` | persistent storage write is removed on every path through the function |
 
 ## Compute
 
@@ -64,6 +67,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
+| [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
 
 ## Security
 

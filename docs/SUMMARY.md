@@ -59,6 +59,10 @@
   * [collection\_len\_in\_loop\_condition](lints/collection_len_in_loop_condition.md)
   * [cross\_contract\_result\_discarded](lints/cross_contract_result_discarded.md)
   * [redundant\_val\_conversion](lints/redundant_val_conversion.md)
+  * [instance\_storage\_write\_in\_loop](lints/instance_storage_write_in_loop.md)
+  * [nested\_loop\_storage\_access](lints/nested_loop_storage_access.md)
+  * [persistent\_storage\_for\_ephemeral\_data](lints/persistent_storage_for_ephemeral_data.md)
+  * [redundant\_address\_clone](lints/redundant_address_clone.md)
 
 ## Branding
 

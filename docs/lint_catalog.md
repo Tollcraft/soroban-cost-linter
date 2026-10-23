@@ -47,5 +47,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `collection_len_in_loop_condition` | warn | collection len() called in a loop condition without mutation | [Link](lints/collection_len_in_loop_condition.md) |
 | `cross_contract_result_discarded` | warn | cross-contract call result discarded | [Link](lints/cross_contract_result_discarded.md) |
 | `redundant_val_conversion` | warn | a value converted into the type it already has, or bounced through `Val` and back in one expression | [Link](lints/redundant_val_conversion.md) |
+| `instance_storage_write_in_loop` | warn | instance storage written inside a loop | [Link](lints/instance_storage_write_in_loop.md) |
+| `nested_loop_storage_access` | deny | storage operation inside a nested loop — cost is O(n·m) | [Link](lints/nested_loop_storage_access.md) |
+| `persistent_storage_for_ephemeral_data` | warn | persistent storage write is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
+| `redundant_address_clone` | warn | redundant clone on Address object | [Link](lints/redundant_address_clone.md) |
 
 *Severities can be overridden via `budget.toml`.*

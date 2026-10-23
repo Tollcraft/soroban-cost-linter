@@ -61,13 +61,13 @@ fn severity_rationale_lint_totals_match_registry() {
         .count();
 
     assert_eq!(
-        deny, 1,
-        "docs/severity_rationale.md explains a single deny-by-default lint; \
+        deny, 2,
+        "docs/severity_rationale.md explains two deny-by-default lints; \
          the registry now has {deny}"
     );
 
     let expected = format!(
-        "This linter ships **{total} lints**: **{warn}** default to `warn`, and exactly one"
+        "This linter ships **{total} lints**: **{warn}** default to `warn`, and exactly two"
     );
     assert!(
         doc.contains(&expected),

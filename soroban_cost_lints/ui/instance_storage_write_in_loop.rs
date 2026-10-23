@@ -1,3 +1,16 @@
+// The lints that overlap with this one are allowed so each `Should Warn`
+// line is attributable to `instance_storage_write_in_loop` alone:
+// `soroban_storage_in_loop` denies any storage operation in a loop, and
+// `nested_loop_storage_access` denies the two-loops-deep case.
+#![allow(
+    soroban_storage_in_loop,
+    loop_invariant_storage_access,
+    nested_loop_storage_access,
+    storage_write_without_read,
+    discarded_storage_read,
+    persistent_read_without_ttl_extension
+)]
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -117,9 +130,9 @@ fn good_instance_write_outside_loop(env: Env) {
 }
 
 fn good_instance_write_multiple_outside(env: Env) {
-    let _ = env.storage().instance().get(&1);
+    let _: Option<i32> = env.storage().instance().get(&1);
     env.storage().instance().set(&1, &1); // Good
-    let _ = env.storage().instance().get(&2);
+    let _: Option<i32> = env.storage().instance().get(&2);
     env.storage().instance().set(&2, &2); // Good
 }
 

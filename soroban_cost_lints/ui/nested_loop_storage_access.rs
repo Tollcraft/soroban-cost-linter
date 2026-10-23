@@ -5,6 +5,8 @@
     persistent_read_without_ttl_extension,
     instance_storage_for_unbounded_data,
     unbounded_input_loop,
+    instance_storage_write_in_loop,
+    discarded_storage_read,
 )]
 
 pub mod soroban_sdk {

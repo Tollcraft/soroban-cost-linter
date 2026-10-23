@@ -1,3 +1,5 @@
+// The overlapping instance-tier write lint is exercised by its own fixture.
+#![allow(instance_storage_write_in_loop, nested_loop_storage_access)]
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -8,7 +10,6 @@ pub mod soroban_sdk {
             storage::Storage
         }
     }
-
     pub mod storage {
         pub struct Storage;
         impl Storage {
@@ -39,7 +40,6 @@ pub mod soroban_sdk {
         }
     }
 }
-
 use soroban_sdk::Env;
 
 // =======================================================================

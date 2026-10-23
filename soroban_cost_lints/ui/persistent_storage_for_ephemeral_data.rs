@@ -7,7 +7,8 @@
     loop_invariant_storage_access,
     soroban_storage_in_loop,
     unbounded_input_loop,
-    unwrap_on_storage_get
+    unwrap_on_storage_get,
+    discarded_storage_read
 )]
 
 pub mod soroban_sdk {

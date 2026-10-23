@@ -1,5 +1,5 @@
 warning: persistent storage write is removed on every path through the function
-  --> $DIR/persistent_storage_for_ephemeral_data.rs:69:5
+  --> $DIR/persistent_storage_for_ephemeral_data.rs:70:5
    |
 LL |     env.storage().persistent().set(&key, &42); //~ WARNING persistent storage write is removed on every path
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |     env.storage().persistent().set(&key, &42); //~ WARNING persistent stora
    = note: `#[warn(persistent_storage_for_ephemeral_data)]` on by default
 
 warning: persistent storage write is removed on every path through the function
-  --> $DIR/persistent_storage_for_ephemeral_data.rs:77:5
+  --> $DIR/persistent_storage_for_ephemeral_data.rs:78:5
    |
 LL |     env.storage().persistent().set(&key, &42); //~ WARNING persistent storage write is removed on every path
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

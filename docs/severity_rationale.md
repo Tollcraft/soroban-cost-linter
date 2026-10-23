@@ -1,6 +1,6 @@
 # Severity Levels and the `soroban_storage_in_loop` Default
 
-> This page explains what the three severity levels mean, why exactly one lint defaults to `deny` while every other shipped lint defaults to `warn`, and how to choose severities for your own project.
+> This page explains what the three severity levels mean, why exactly two lints default to `deny` while every other shipped lint defaults to `warn`, and how to choose severities for your own project.
 
 ---
 
@@ -31,7 +31,7 @@ This means a `deny` in `budget.toml` overrides the default, and an `#[allow]` at
 
 ## Why `soroban_storage_in_loop` Defaults to `deny`
 
-This linter ships **39 lints**: **38** default to `warn`, and exactly one — `soroban_storage_in_loop` — defaults to `deny`.
+This linter ships **43 lints**: **41** default to `warn`, and exactly two — `soroban_storage_in_loop` and `nested_loop_storage_access` — default to `deny`.
 
 That is a deliberate decision, not an oversight. The reasoning comes directly from the [Cost Rationale](cost_rationale.md):
 
@@ -58,6 +58,8 @@ Every other lint in this repository catches patterns that are *expensive* — bu
 - `bytes_append_in_loop` causes allocations, but memory is the least expensive resource.
 
 A storage write in a loop, by contrast, is the most expensive structural pattern the tool can identify. Making it `deny` reflects that this pattern is almost never intentional and almost always indicates a bug or a design mistake that will blow through the transaction budget.
+
+`nested_loop_storage_access` is `deny` for the same reason at a larger scale: a storage access two loops deep costs the *product* of both trip counts, so the same reasoning that justifies denying the single-loop case applies with more force to the nested one.
 
 ### Why not `deny` everything else?
 

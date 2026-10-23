@@ -4,7 +4,7 @@
     storage_write_without_read,
     persistent_read_without_ttl_extension,
     instance_storage_for_unbounded_data,
-    unbounded_input_loop
+    unbounded_input_loop, instance_storage_write_in_loop, nested_loop_storage_access
 )]
 
 pub mod soroban_sdk {

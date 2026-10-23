@@ -14,6 +14,7 @@
 // so we can land the fixtures today; once each lint lands, the corresponding
 // `#[allow(<name>)]` becomes a real suppression with no edit needed.
 #![allow(unknown_lints)]
+#![allow(instance_storage_write_in_loop)]
 
 //! Shared mock SDK and fixture functions used by the lint UI tests.
 //!
@@ -24,7 +25,6 @@
 
 pub mod soroban_sdk {
     //! Minimal SDK-shaped types used by the lint fixtures.
-
     pub struct Env;
     impl Clone for Env {
         fn clone(&self) -> Self { Env }

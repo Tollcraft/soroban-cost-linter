@@ -1,7 +1,7 @@
 #![allow(
     soroban_storage_in_loop,
     loop_invariant_storage_access,
-    storage_write_without_read
+    storage_write_without_read, instance_storage_write_in_loop
 )]
 
 pub mod soroban_sdk {

@@ -37,9 +37,6 @@ adapting to the pinned `nightly-2026-04-16` rustc API (the usual drift:
 The remaining five never had an implementation in this repository at all — the
 fixture is the whole specification, and the pass has to be written:
 
-- `instance_storage_write_in_loop`
-- `persistent_storage_for_ephemeral_data`
-- `redundant_address_clone`
 - `storage_read_never_written`
 - `vec_index_in_loop`
 

@@ -120,10 +120,10 @@ fn test_severity_rationale_lint_count() {
         total
     );
 
-    // Check deny count: "Exactly one ... defaults to deny"
+    // Check deny count: "exactly two ... default to deny"
     assert_eq!(
-        deny_count, 1,
-        "severity_rationale says 'Exactly one defaults to deny' but registry has {} Deny lints",
+        deny_count, 2,
+        "severity_rationale says 'exactly two default to deny' but registry has {} Deny lints",
         deny_count
     );
 
