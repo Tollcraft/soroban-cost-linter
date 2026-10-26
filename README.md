@@ -354,7 +354,7 @@ Release history is documented in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
-Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
+Join the discussion on our [Discord](https://discord.gg/5aprtMSyR), or follow the org on [X](https://x.com/tollcraft_dev).
 
 ## Maintainers
 
