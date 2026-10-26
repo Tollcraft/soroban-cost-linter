@@ -13,7 +13,7 @@ jobs:
       id-token: write   # needed for OIDC token if using gh auth
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       # `actions/setup-rust` does not exist, so this job failed here on every
       # run. Use the same action and pin as the Lint workflow. The toolchain
