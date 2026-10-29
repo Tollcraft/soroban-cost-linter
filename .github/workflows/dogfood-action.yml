@@ -21,7 +21,7 @@ jobs:
     name: Dogfood action (zero-findings fixture)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Run composite action against test fixtures
         uses: ./
         with:
@@ -39,7 +39,7 @@ jobs:
     outputs:
       contracts: ${{ steps.list.outputs.contracts }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - id: list
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
       matrix:
         contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       # The corpus contracts are deliberately bad code, and the default config
       # sets `soroban_storage_in_loop` to `deny`. Linting them therefore makes
       # the action's underlying `cargo check` exit non-zero on findings that are
