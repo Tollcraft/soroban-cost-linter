@@ -602,7 +602,7 @@ fn parse_toolchain_channel(toolchain_path: &Path) -> Result<String> {
 
 /// The cargo-dylint version constraint this tool expects.
 /// Updated manually when the minimum supported version changes.
-const DYLINT_VERSION_CONSTRAINT: &str = "^6.0.1";
+const DYLINT_VERSION_CONSTRAINT: &str = "=6.3.0";
 
 /// Workspace-relative files that repeat the `cargo-dylint` install pin as a
 /// `--version "<constraint>"` argument to `cargo install`.
@@ -1829,14 +1829,14 @@ mod tests {
     #[test]
     fn extract_version_constraints_finds_every_pin() {
         let content = "\
-run: cargo install cargo-dylint dylint-link --version \"^6.0.1\" --locked
+run: cargo install cargo-dylint dylint-link --version \"=6.3.0\" --locked
 two on one line: --version \"a\" and --version \"b\"
 unterminated --version \"oops
 no flag here\n";
         assert_eq!(
             extract_version_constraints(content),
             vec![
-                (1, "^6.0.1".to_string()),
+                (1, "=6.3.0".to_string()),
                 (2, "a".to_string()),
                 (2, "b".to_string()),
             ]
@@ -1852,7 +1852,7 @@ no flag here\n";
         write(
             root,
             DYLINT_PIN_SITES[0],
-            "        run: cargo install cargo-dylint dylint-link --version \"^6.0.1\" --locked\n",
+            "        run: cargo install cargo-dylint dylint-link --version \"=6.3.0\" --locked\n",
         );
         assert!(check_dylint_version_pins(&pkg).is_ok());
 

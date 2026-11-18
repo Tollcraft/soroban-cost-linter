@@ -25,8 +25,8 @@ if (!target || !/^\d{4}-\d{2}-\d{2}$/.test(target)) {
 
 const token = process.env.GITHUB_TOKEN || process.env.GITHUB_TOKEN_FOR_PR || "";
 
-// Prefer the historical branch, fall back to master.
-const branches = ["rustup", "master"];
+// The repo renamed `master` to `main`; `rustup` and `master` now 404.
+const branches = ["main"];
 
 function get(url) {
   return new Promise((resolve, reject) => {

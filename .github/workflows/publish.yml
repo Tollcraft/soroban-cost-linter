@@ -39,7 +39,8 @@ jobs:
       # (`action.yml:61,87`, `lint.yml`, `nightly-bump.yml`): without it a
       # release asset is not reproducible from `Cargo.lock`.
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+        # Exact pin: 6.4.0 requires rustc 1.98, newer than the pinned nightly.
+        run: cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
 
       - name: Build binary
         run: cargo build --release --locked --package cargo-cost-lint
@@ -99,7 +100,7 @@ jobs:
 
             1. Install the pinned nightly with the `rustc-dev` and
                `llvm-tools-preview` components, then Dylint:
-               `cargo install cargo-dylint dylint-link --version "^6.0.1" --locked`
+               `cargo install cargo-dylint dylint-link --version "=6.3.0" --locked`
             2. Download `cargo-cost-lint` and
                `libsoroban_cost_lints@nightly-2026-04-16-x86_64-unknown-linux-gnu.so`
                into one directory and keep the library's released file name — it

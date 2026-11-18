@@ -47,7 +47,7 @@ If you prefer to set up the toolchain on your machine directly:
 1. Install Dylint:
 
    ```bash
-   cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+   cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
    ```
 
 2. Clone the repository and build:
@@ -78,7 +78,7 @@ If you prefer to set up the toolchain on your machine directly:
 2. **Install Dylint** (the lint driver this project depends on):
 
    ```powershell
-   cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+   cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
    ```
 
 3. **Clone the repository and build:**
