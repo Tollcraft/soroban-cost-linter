@@ -12,6 +12,12 @@ on:
     - cron: '17 4 * * *'
   workflow_dispatch:
 
+env:
+  # Must match the `cargo install cargo-dylint dylint-link` pin in action.yml.
+  # It is part of the driver cache key because dylint rebuilds a cached driver
+  # whose version does not match the installed one.
+  DYLINT_VERSION: '6.3.0'
+
 jobs:
   # Lightweight, zero-findings path. This genuinely different test proves the
   # action starts, runs, and exits cleanly against code that produces no
@@ -22,11 +28,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      # Restores the dylint driver that `prepare-driver` builds on the nightly.
+      # A push to `main` can run before that cache exists, so a miss is not an
+      # error here -- the action builds the driver itself, as it always did.
+      - name: Restore dylint driver
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
       - name: Run composite action against test fixtures
         uses: ./
         with:
           working-directory: soroban_cost_lints/test_fixtures/real_sdk
           config: budget.toml
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+  # Building the dylint driver once, up front, is what keeps the corpus job
+  # from failing. `dylint_driver`'s build script fetches the `clippy_utils`
+  # source from github.com, and with ~40 matrix jobs starting together every
+  # night that clone was attempted 40 times at once; the jobs that lost the
+  # race died with "Failed to connect to github.com port 443 after 136168 ms"
+  # even though the linter itself was fine. This job pays that network cost
+  # once, saves the built driver to the Actions cache, and the matrix jobs
+  # restore it instead of rebuilding.
+  prepare-driver:
+    name: Prepare dylint driver
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
+      # The composite action is the supported way to build the driver: the
+      # driver build is a side effect of `cargo dylint --lib` in its
+      # "Register lint library with dylint" step. Skipped when the cache
+      # already holds a driver for this toolchain and dylint version.
+      - name: Build driver via the composite action
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./
+        with:
+          working-directory: soroban_cost_lints/test_fixtures/real_sdk
+          config: budget.toml
+          toolchain: ${{ steps.toolchain.outputs.channel }}
 
   # Discover the corpus contracts dynamically so the job stays correct as new
   # contracts land (they are excluded from the workspace, so they are not
@@ -64,13 +118,30 @@ jobs:
     name: Dogfood action (corpus contract ${{ matrix.contract }})
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: discover-corpus
+    needs: [discover-corpus, prepare-driver]
     strategy:
       fail-fast: false
+      # The driver comes from the cache now, but each job still resolves the
+      # `clippy_utils` Git dependency and installs dylint, so a smaller cap
+      # keeps the jobs from competing for the same egress.
+      max-parallel: 4
       matrix:
         contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
     steps:
       - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      # `prepare-driver` ran first, so this must hit. Failing on a miss keeps a
+      # broken cache from silently turning this back into 40 concurrent driver
+      # builds.
+      - name: Restore dylint driver
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
+          fail-on-cache-miss: true
       # The corpus contracts are deliberately bad code, and the default config
       # sets `soroban_storage_in_loop` to `deny`. Linting them therefore makes
       # the action's underlying `cargo check` exit non-zero on findings that are
@@ -87,6 +158,7 @@ jobs:
         continue-on-error: true
         with:
           working-directory: tests/corpus/contracts/${{ matrix.contract }}
+          toolchain: ${{ steps.toolchain.outputs.channel }}
 
       - name: Assert findings against baseline
         shell: bash
