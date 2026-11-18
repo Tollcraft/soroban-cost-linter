@@ -73,21 +73,22 @@ openssl = { version = "0.10", features = ["vendored"] }
 
 Replace `YOUR_NEW_REV_HERE` with the SHA you copied from step 2.
 
-### Step 5: Update Workflow Files
+### Step 5: Update the Remaining Pinned Copies
 
-Update the nightly pin in two CI workflow files. Both should match the channel you set in `rust-toolchain`.
+The two workflows under `.github/workflows/` need no edit: `lint.yml` and
+`publish.yml` read the channel from `rust-toolchain` at run time. That is
+deliberate — `GITHUB_TOKEN`, which the Nightly Bump workflow pushes with,
+cannot create or update files under `.github/workflows/`, so a hardcoded pin
+there would make every bump push fail. `validate-toolchain-pins.sh` enforces
+this by failing if either workflow hardcodes a nightly.
 
-**File 1: `.github/workflows/lint.yml`**
+The remaining copies still carry the date. Update them to the channel you set
+in `rust-toolchain`:
 
-```yaml
-- name: Install Rust
-  uses: dtolnay/rust-toolchain@master
-  with:
-    toolchain: nightly-2026-05-15  # <- Update this
-    components: rustc-dev, llvm-tools-preview, rustfmt, clippy
-```
+**`action.yml`** (the `toolchain` input default, and the guarded copies listed
+at the end of this runbook): `nightly-2026-04-16` → your new nightly.
 
-**File 2: `templates/github-action.yml`**
+**`templates/github-action.yml`**
 
 ```yaml
 - name: Install Rust
@@ -96,6 +97,9 @@ Update the nightly pin in two CI workflow files. Both should match the channel y
     toolchain: nightly-2026-05-15  # <- Update this
     components: rustc-dev, llvm-tools-preview
 ```
+
+`bash .github/scripts/bump-nightly.sh` performs all of these edits, and only
+these, automatically.
 
 ### Step 6: Update Documentation
 
@@ -253,7 +257,7 @@ After completing all steps:
 
 - [ ] `rust-toolchain` channel updated
 - [ ] `soroban_cost_lints/Cargo.toml` clippy_utils rev updated
-- [ ] `.github/workflows/lint.yml` toolchain pin updated
+- [ ] `action.yml` toolchain default updated
 - [ ] `templates/github-action.yml` toolchain pin updated
 - [ ] `docs/integration.md` documentation updated
 - [ ] `validate-toolchain-pins.sh` passes without errors
@@ -318,7 +322,7 @@ That report *is* the work this runbook exists to scope. Pick up where it leaves 
 
 ## Future Simplification
 
-Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep every file named in `NIGHTLY_FILES` (`.github/scripts/bump-nightly.sh`) in sync: `rust-toolchain` (the source of truth), the `clippy_utils` rev in `soroban_cost_lints/Cargo.toml`, and the guarded copies (`.github/workflows/lint.yml`, `.github/workflows/publish.yml`, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) — exactly the set that `.github/scripts/validate-toolchain-pins.sh` checks.
+Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep every file named in `NIGHTLY_FILES` (`.github/scripts/bump-nightly.sh`) in sync: `rust-toolchain` (the source of truth), the `clippy_utils` rev in `soroban_cost_lints/Cargo.toml`, and the guarded copies (`action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) — exactly the set that `.github/scripts/validate-toolchain-pins.sh` checks. The two workflows under `.github/workflows/` are intentionally not in that set: they read the channel from `rust-toolchain` at run time, because `GITHUB_TOKEN` cannot push changes to workflow files.
 
 ---
 

@@ -24,10 +24,19 @@ jobs:
       - uses: actions/checkout@v7
       - name: Validate toolchain pins
         run: bash .github/scripts/validate-toolchain-pins.sh
+      # The nightly is read from `rust-toolchain` instead of being written here.
+      # The Nightly Bump workflow pushes its branch with GITHUB_TOKEN, which
+      # cannot create or update anything under `.github/workflows/`, so a
+      # hardcoded pin made every bump push fail. Deriving it at run time keeps
+      # `rust-toolchain` the single source of truth and keeps the bot's diff
+      # out of workflow files entirely.
+      - name: Read pinned toolchain
+        id: toolchain
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
       - name: Install Rust
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: nightly-2026-04-16
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
