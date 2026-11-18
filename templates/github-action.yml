@@ -28,7 +28,7 @@ jobs:
         with:
           # Keep this toolchain pin in sync with the soroban-cost-linter release you install
           # (rewritten by .github/scripts/bump-nightly.sh; do not hand-edit the date)
-          toolchain: nightly-2026-04-16
+          toolchain: nightly-2026-11-11
           components: rustc-dev, llvm-tools-preview
       # mirrors .github/workflows/lint.yml and action.yml; must stay compatible
       # with the dylint_linting version the lint library is built against

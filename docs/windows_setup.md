@@ -112,7 +112,7 @@ cannot find it unless you tell Dylint where to look. Verify the artifact exists:
 
 ```bash
 ls target/debug/libsoroban_cost_lints@*
-# Expected: target/debug/libsoroban_cost_lints@nightly-2026-04-16.so
+# Expected: target/debug/libsoroban_cost_lints@nightly-2026-11-11.so
 ```
 
 Then either set `DYLINT_LIBRARY_PATH` (one-time per shell):
@@ -159,10 +159,10 @@ constraints; nothing else in this repo needs changing.
 Install via [`rustup`](https://rustup.rs):
 
 1. Download [`rustup-init.exe`](https://win.rustup.rs/x86_64).
-2. Run it and install the repository-pinned nightly toolchain (`nightly-2026-04-16`) with required components:
+2. Run it and install the repository-pinned nightly toolchain (`nightly-2026-11-11`) with required components:
    ```powershell
-   rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
-   rustup default nightly-2026-04-16
+   rustup toolchain install nightly-2026-11-11 --component rustc-dev llvm-tools-preview rustfmt clippy
+   rustup default nightly-2026-11-11
    ```
 3. Confirm rustup added `%USERPROFILE%\.cargo\bin` to your user `Path` environment
    variable (it normally does this automatically).
@@ -288,7 +288,7 @@ cannot find it unless you tell Dylint where to look. Verify the artifact exists:
 
 ```powershell
 Get-ChildItem target\debug\soroban_cost_lints@*
-# Expected: target\debug\soroban_cost_lints@nightly-2026-04-16.dll
+# Expected: target\debug\soroban_cost_lints@nightly-2026-11-11.dll
 ```
 
 Then either set `DYLINT_LIBRARY_PATH` (one-time per shell):

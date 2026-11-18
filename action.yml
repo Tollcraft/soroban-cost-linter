@@ -12,7 +12,7 @@ inputs:
   toolchain:
     description: 'Rust nightly toolchain version'
     required: false
-    default: 'nightly-2026-04-16'
+    default: 'nightly-2026-11-11'
   args:
     description: 'Additional arguments to pass to cargo cost-lint'
     required: false

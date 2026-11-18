@@ -52,7 +52,7 @@ than one contract workspace in a monorepo, point the action at the right one
 with `working-directory: <path>`, and pass any extra CLI flags through `args:`.
 
 The `toolchain` input defaults to the nightly that matches the release
-(`nightly-2026-04-16`). Leave it unset unless you specifically need a different
+(`nightly-2026-11-11`). Leave it unset unless you specifically need a different
 nightly — a mismatched toolchain is what makes the lint library fail to link.
 
 ### Input reference
@@ -62,7 +62,7 @@ The action accepts four inputs:
 | Input | Description | Default |
 |---|---|---|
 | `config` | Path to `budget.toml`, relative to `working-directory` | *(none — every lint runs at its default level)* |
-| `toolchain` | Rust nightly toolchain version | `nightly-2026-04-16` |
+| `toolchain` | Rust nightly toolchain version | `nightly-2026-11-11` |
 | `args` | Additional arguments to pass to `cargo cost-lint` | *(none)* |
 | `working-directory` | Directory containing the contract workspace to lint | `.` |
 

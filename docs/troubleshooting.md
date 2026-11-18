@@ -109,7 +109,7 @@ lint library is built, or `cargo cost-lint` silently finds no lints (see above).
 
 **Cause:** Dylint locates a library by a filename that embeds the toolchain:
 `lib<name>@<toolchain>.so` (for example
-`libsoroban_cost_lints@nightly-2026-04-16-x86_64-unknown-linux-gnu.so`). A plain
+`libsoroban_cost_lints@nightly-2026-11-11-x86_64-unknown-linux-gnu.so`). A plain
 `cargo build` produces `libsoroban_cost_lints.so` — **no `@` suffix** — which
 Dylint does not match. The `@` suffix is only added when the cdylib is linked
 through `dylint-link` (the repo does this via
@@ -147,7 +147,7 @@ up green in CI.
 **Symptom:** a confusing compile error while building the lints, or the lint
 library not being found even though `dylint-link` was used.
 
-**Cause:** The project pins one nightly (`nightly-2026-04-16`) in
+**Cause:** The project pins one nightly (`nightly-2026-11-11`) in
 `rust-toolchain`, and Dylint + the lints are tightly coupled to that exact
 compiler. On a different toolchain the build fails or the library gets stamped
 with a different `@<toolchain>` suffix and is then not found.
@@ -161,7 +161,7 @@ Drifting any one of them out of sync is enough to break the build.
 
 ```bash
 rustup toolchain list
-cat rust-toolchain            # channel = "nightly-2026-04-16"
+cat rust-toolchain            # channel = "nightly-2026-11-11"
 ```
 
 Build errors that point at the compiler or the `clippy_utils` revision look like:
@@ -178,7 +178,7 @@ pair is the most common cause of these.)
 **Fix:** use the pinned nightly and keep every pin in sync:
 
 ```bash
-rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
+rustup toolchain install nightly-2026-11-11 --component rustc-dev llvm-tools-preview rustfmt clippy
 # In this repo, enforce that every pin agrees:
 bash .github/scripts/validate-toolchain-pins.sh
 ```
@@ -209,14 +209,14 @@ are on the wrong toolchain entirely, not just missing a component; see
 **Confirm:**
 
 ```bash
-rustup component list --toolchain nightly-2026-04-16 --installed
+rustup component list --toolchain nightly-2026-11-11 --installed
 # must include rustc-dev-x86_64-unknown-linux-gnu and llvm-tools-x86_64-unknown-linux-gnu
 ```
 
 **Fix:**
 
 ```bash
-rustup component add rustc-dev llvm-tools-preview --toolchain nightly-2026-04-16
+rustup component add rustc-dev llvm-tools-preview --toolchain nightly-2026-11-11
 ```
 
 ---
