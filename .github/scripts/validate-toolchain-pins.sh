@@ -44,8 +44,25 @@ check_nightly_in_file() {
   fi
 }
 
-check_nightly_in_file ".github/workflows/lint.yml"
-check_nightly_in_file ".github/workflows/publish.yml"
+# The CI workflows must *not* hardcode the nightly: they read it from
+# rust-toolchain. Keeping the date out of `.github/workflows/` is what lets the
+# Nightly Bump job push its branch at all — GITHUB_TOKEN cannot create or
+# update workflow files. Enforcing the absence of a literal here keeps this
+# from regressing back into a duplicate pin.
+check_no_nightly_in_file() {
+  local file="$1"
+  local matches
+  matches=$(grep -oE 'nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}' "$file" | sort -u || true)
+  if [ -n "$matches" ]; then
+    echo "::error file=$file::${file} hardcodes ${matches}; it must read the nightly from rust-toolchain instead."
+    FAILED=1
+  else
+    echo "OK: ${file} inherits the nightly from rust-toolchain"
+  fi
+}
+
+check_no_nightly_in_file ".github/workflows/lint.yml"
+check_no_nightly_in_file ".github/workflows/publish.yml"
 check_nightly_in_file "action.yml"
 check_nightly_in_file "docs/integration.md"
 check_nightly_in_file "templates/github-action.yml"

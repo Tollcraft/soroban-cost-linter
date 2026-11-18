@@ -30,11 +30,11 @@ This is where most mismatches happen. The `clippy_utils` crate lives in the `rus
 
 1. Open the [rust-clippy repository](https://github.com/rust-lang/rust-clippy) on GitHub.
 
-2. The historical `rustup` branch (which used to carry one commit per nightly) has been retired. Use the `master` branch instead.
+2. The historical `rustup` branch (which used to carry one commit per nightly) has been retired, and the repository has since renamed its default branch to `main`. Use whatever GitHub reports as the default branch.
 
-3. On `master`, view the commit history of the repository root:
+3. On that branch, view the commit history of the repository root:
 
-   - Example URL: `https://github.com/rust-lang/rust-clippy/commits/master/`
+   - Example URL: `https://github.com/rust-lang/rust-clippy/commits/main/`
 
 4. Find the most recent commit dated **on or before** your target nightly. For `nightly-2026-05-15`, look for a commit dated **May 15, 2026** (or the closest date prior). A clippy commit from that day is the closest available proxy for the clippy bundled into that nightly.
 
@@ -44,11 +44,11 @@ This is where most mismatches happen. The `clippy_utils` crate lives in the `rus
    f6d310692116e9a527ce6d0b3526c965d9c5d7b9   <- This is the rev
    ```
 
-**Why `master` (and not a dedicated sync branch)?**
+**Why the default branch (and not a dedicated sync branch)?**
 
-The `rustup` branch used to hold commits synchronized with `rustc` releases; it no longer exists. `master` moves faster and independently, so a commit picked by date is only an approximation. If the resolved rev fails to compile against the target nightly (see [Common Breakages](#common-breakages)), nudge it by a day or two and retry.
+The `rustup` branch used to hold commits synchronized with `rustc` releases; it no longer exists. The default branch moves faster and independently, so a commit picked by date is only an approximation. If the resolved rev fails to compile against the target nightly (see [Common Breakages](#common-breakages)), nudge it by a day or two and retry.
 
-> **Automation note:** The scheduled workflow (see [Automated Nightly Bump](#automated-nightly-bump)) resolves this rev for you via the GitHub API: it requests the latest `master` commit dated on or before the target nightly. You only do this by hand when reviewing/override.
+> **Automation note:** The scheduled workflow (see [Automated Nightly Bump](#automated-nightly-bump)) resolves this rev for you via the GitHub API: it asks for the repository's current default branch and requests the latest commit there dated on or before the target nightly. You only do this by hand when reviewing/override.
 
 ### Step 3: Update `rust-toolchain`
 
@@ -73,21 +73,13 @@ openssl = { version = "0.10", features = ["vendored"] }
 
 Replace `YOUR_NEW_REV_HERE` with the SHA you copied from step 2.
 
-### Step 5: Update Workflow Files
+### Step 5: Update the Composite Action Template
 
-Update the nightly pin in two CI workflow files. Both should match the channel you set in `rust-toolchain`.
+The CI workflows (`.github/workflows/lint.yml`, `.github/workflows/publish.yml`) do **not** carry the date: they read `channel` from `rust-toolchain`, which is why a bump only has to edit that file. `validate-toolchain-pins.sh` fails if a nightly literal reappears in either workflow.
 
-**File 1: `.github/workflows/lint.yml`**
+`templates/github-action.yml` is a copy-paste snippet for consumers and does carry the date, so update it:
 
-```yaml
-- name: Install Rust
-  uses: dtolnay/rust-toolchain@master
-  with:
-    toolchain: nightly-2026-05-15  # <- Update this
-    components: rustc-dev, llvm-tools-preview, rustfmt, clippy
-```
-
-**File 2: `templates/github-action.yml`**
+**File: `templates/github-action.yml`**
 
 ```yaml
 - name: Install Rust
@@ -253,7 +245,7 @@ After completing all steps:
 
 - [ ] `rust-toolchain` channel updated
 - [ ] `soroban_cost_lints/Cargo.toml` clippy_utils rev updated
-- [ ] `.github/workflows/lint.yml` toolchain pin updated
+- [ ] `.github/workflows/lint.yml` still carries no nightly literal (it reads `rust-toolchain`)
 - [ ] `templates/github-action.yml` toolchain pin updated
 - [ ] `docs/integration.md` documentation updated
 - [ ] `validate-toolchain-pins.sh` passes without errors
@@ -272,7 +264,7 @@ This repository ships a scheduled workflow, `.github/workflows/nightly-bump.yml`
 
 1. **Picks a target.** By default it targets a nightly from ~7 days ago (within the "last 1–2 weeks" window). You can override with the `target_nightly` input.
 2. **Resolves the `clippy_utils` rev** for that date via the GitHub API (see [Step 2](#step-2-find-the-matching-clippy_utils-revision)). Override with the `clippy_rev` input if the auto-resolved rev is wrong.
-3. **Applies the edit** across every file this runbook lists (`rust-toolchain`, `soroban_cost_lints/Cargo.toml`, the two workflows, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`) in one go — the same set enforced by `validate-toolchain-pins.sh`.
+3. **Applies the edit** across every file this runbook lists (`rust-toolchain`, `soroban_cost_lints/Cargo.toml`, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) in one go — the same set enforced by `validate-toolchain-pins.sh`. It never edits `.github/workflows/`: `GITHUB_TOKEN` is not allowed to push workflow files, so the pins there are read from `rust-toolchain` at run time.
 4. **Runs the full test suite** (`cargo test --workspace`) under the new nightly.
 5. **Opens or updates a single PR** on the `ci/nightly-bump` branch. It never merges.
 
@@ -318,7 +310,7 @@ That report *is* the work this runbook exists to scope. Pick up where it leaves 
 
 ## Future Simplification
 
-Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep every file named in `NIGHTLY_FILES` (`.github/scripts/bump-nightly.sh`) in sync: `rust-toolchain` (the source of truth), the `clippy_utils` rev in `soroban_cost_lints/Cargo.toml`, and the guarded copies (`.github/workflows/lint.yml`, `.github/workflows/publish.yml`, `action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) — exactly the set that `.github/scripts/validate-toolchain-pins.sh` checks.
+Issue #104 proposes deriving the `clippy_utils` revision automatically from the nightly date. Once that lands, the number of manual update points will shrink, and this runbook's mechanical steps will simplify. For now, keep every file named in `NIGHTLY_FILES` (`.github/scripts/bump-nightly.sh`) in sync: `rust-toolchain` (the source of truth), the `clippy_utils` rev in `soroban_cost_lints/Cargo.toml`, and the guarded copies (`action.yml`, `templates/github-action.yml`, `docs/integration.md`, `CONTRIBUTING.md`, `README.md`, `docs/windows_setup.md`, `docs/troubleshooting.md`) — exactly the set that `.github/scripts/validate-toolchain-pins.sh` checks. The two CI workflows are checked in the opposite direction: they must not hardcode a nightly at all.
 
 ---
 
