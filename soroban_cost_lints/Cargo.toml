@@ -5,19 +5,19 @@ authors = ["Tollcraft Team <https://tollcraft.gitbook.io/docs>"]
 description = "Dylint library providing Soroban cost-analysis lints for cargo-cost-lint"
 edition = "2024"
 license = "Apache-2.0"
-publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "f6d310692116e9a527ce6d0b3526c965d9c5d7b9" }
+# clippy_utils must track the same rustc that rust-toolchain pins. The rev below
+# is the rust-clippy snapshot (Clippy 0.1.97, "Rust 1.95" era) that matches
+# `nightly-2026-04-16` (the toolchain pinned in rust-toolchain). See
+# docs/NIGHTLY_UPGRADE_RUNBOOK.md for how to bump both together.
+clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "f9c23c1fcb96fb42e8706fa9c61043dc70423ba9" }
 dylint_linting = "6.0.1"
-openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
-dylint = "6.0.1"
-dylint_internal = "6.0.1"
 dylint_testing = "6.0.1"
 
 [package.metadata.rust-analyzer]

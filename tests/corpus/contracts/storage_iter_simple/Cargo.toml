@@ -1,0 +1,23 @@
+[package]
+name = "storage-iter-simple-fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+soroban-sdk = "26"
+
+# Enables `Env::register_contract` / `Env::as_contract` for the behavioral
+# storage tests. Resolver 2 (below) keeps these dev-only features out of the
+# library target the corpus linter analyzes, so lint findings on the
+# fixture's own code are unaffected.
+[dev-dependencies]
+soroban-sdk = { version = "26", features = ["testutils"] }
+
+# Resolver 2 does not unify dev-dependency features into normal builds. With
+# the default (v1) resolver, the `testutils` feature above leaks into the
+# library compilation and changes how the storage lints resolve types on
+# `bad_simple`, tripping the committed corpus baseline.
+[workspace]
+resolver = "2"

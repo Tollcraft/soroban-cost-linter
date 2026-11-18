@@ -1,0 +1,35 @@
+warning: signature verification inside a loop
+  --> $DIR/signature_verification_in_loop.rs:34:9
+   |
+LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+   = note: `#[warn(signature_verification_in_loop)]` on by default
+
+warning: signature verification inside a loop
+  --> $DIR/signature_verification_in_loop.rs:44:9
+   |
+LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: signature verification inside a loop
+  --> $DIR/signature_verification_in_loop.rs:55:9
+   |
+LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: signature verification inside a loop
+  --> $DIR/signature_verification_in_loop.rs:68:9
+   |
+LL |         env.crypto().secp256r1_verify(&key, &msg, &sig); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: each call re-runs an expensive elliptic-curve check; consider a signature scheme that supports batch or aggregate verification, or move per-item auth to the callee via a bulk entrypoint
+
+warning: 4 warnings emitted
+

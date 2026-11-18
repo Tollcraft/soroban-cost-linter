@@ -1,0 +1,17 @@
+{
+    "name": "soroban-cost-linter",
+    "image": "ghcr.io/tollcraft/soroban-cost-linter-dev:latest",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer"
+            ],
+            "settings": {
+                "rust-analyzer.rustc.source": "discover",
+                "rust-analyzer.cargo.buildScripts.enable": true
+            }
+        }
+    },
+    "postCreateCommand": "cargo build",
+    "remoteUser": "dev"
+}

@@ -1,28 +1,40 @@
+# This is the easiest way to add Soroban cost linting to your CI.
+# Add this file to .github/workflows/cost-lint.yml in your Soroban workspace.
+#
+# For advanced usage (custom config, extra args, monorepo subdirectory), see:
+# https://tollcraft.gitbook.io/docs
+
 name: Soroban Cost Lint
 
 on: [push, pull_request]
 
 jobs:
   cost-lint:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      # Dependabot scans .github/workflows/*.yml only (see .github/dependabot.yml),
+      # so this shipped boilerplate gets no automated bumps: each action ref below
+      # names the in-repo workflow it mirrors, which makes the manual sync a copy
+      # of that line rather than a judgement call.
+      # mirrors .github/workflows/lint.yml
+      - uses: actions/checkout@v7
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        # mirrors .github/workflows/lint.yml and action.yml
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
           # Keep this toolchain pin in sync with the soroban-cost-linter release you install
+          # (rewritten by .github/scripts/bump-nightly.sh; do not hand-edit the date)
           toolchain: nightly-2026-04-16
           components: rustc-dev, llvm-tools-preview
+      # mirrors .github/workflows/lint.yml and action.yml; must stay compatible
+      # with the dylint_linting version the lint library is built against
       - name: Install Dylint
-        run: cargo install cargo-dylint dylint-link --version "^6.0.1"
+        run: cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
       - name: Install soroban-cost-linter
-        run: cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+        run: cargo install --locked --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
       - name: Run Cost Linter
-        run: cargo cost-lint
-        
-      # Example: Run in JSON mode and create inline PR annotations
-      # - name: Run Cost Linter (JSON)
-      #   run: |
-      #     cargo cost-lint --format json | jq -r '
-      #       . | "::\(.level) file=\(.file),line=\(.span.line_start),col=\(.span.column_start)::\(.message) (Lint: \(.name))"
-      #     '
+        run: cargo cost-lint --format github

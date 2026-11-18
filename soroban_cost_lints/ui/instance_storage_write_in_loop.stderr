@@ -1,0 +1,59 @@
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:71:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+   = note: `#[warn(instance_storage_write_in_loop)]` on by default
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:79:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:87:9
+   |
+LL |         env.storage().instance().set(&1, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:96:13
+   |
+LL |             env.storage().instance().set(&i, &1); // Should Warn
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:104:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:112:9
+   |
+LL |         env.storage().instance().set(x, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: instance storage written inside a loop
+  --> $DIR/instance_storage_write_in_loop.rs:120:9
+   |
+LL |         env.storage().instance().set(x, &acc); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate the value in memory and write the instance entry once after the loop
+
+warning: 7 warnings emitted
+

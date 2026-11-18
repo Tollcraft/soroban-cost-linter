@@ -1,0 +1,109 @@
+name: 'Soroban Cost Lint'
+description: 'Static analysis for Soroban smart contracts – catch expensive patterns before they hit testnet'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  config:
+    description: 'Path to budget.toml configuration file (relative to working-directory)'
+    required: false
+    default: ''
+  toolchain:
+    description: 'Rust nightly toolchain version'
+    required: false
+    default: 'nightly-2026-04-16'
+  args:
+    description: 'Additional arguments to pass to cargo cost-lint'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Directory containing the Soroban contract workspace to lint'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: rustc-dev, llvm-tools-preview
+
+    # The composite action compiles the lint library and the CLI from source on
+    # every run. Cache the action's own Cargo registry, ~/.cargo/bin, and target
+    # directory so repeat runs reuse the previous run's artifacts instead of
+    # rebuilding from scratch (the action's repo, including its Cargo.lock,
+    # is checked out under ${{ github.action_path }}).
+    - name: Cache Rust build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: ${{ github.action_path }} -> target
+
+    - name: Install Dylint
+      # Exact pin: 6.4.0 requires rustc 1.98, which the pinned nightly is not.
+      shell: bash
+      env:
+        CARGO_NET_RETRY: '10'
+      run: cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
+
+    - name: Build lint library
+      shell: bash
+      # `dylint-link` wraps the real linker and renames the cdylib to the
+      # `lib<name>@<toolchain>.so` form that `cargo dylint --lib <name>`
+      # resolves. A plain `cargo build` emits `libsoroban_cost_lints.so` with
+      # no toolchain suffix, which is why this step previously produced a
+      # library that the "Run Cost Linter" step could not find.
+      env:
+        RUSTFLAGS: -C linker=dylint-link
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/soroban_cost_lints/Cargo.toml"
+
+    - name: Register lint library with dylint
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        CARGO_NET_RETRY: '10'
+        # `cargo dylint --lib <name>` resolves a library by name only through
+        # DYLINT_LIBRARY_PATH, `workspace.metadata.dylint.libraries`, or
+        # `--git`/`--path`. None of those is set unless we point at the built
+        # library explicitly; without it the registration always failed with
+        # "Could not find `--lib soroban_cost_lints`" and was silently ignored.
+        DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
+      run: |
+        cargo dylint --lib soroban_cost_lints -p cargo-cost-lint > "${RUNNER_TEMP:-/tmp}/dylint-register.log" 2>&1 || {
+          echo "::error::dylint registration failed:"
+          cat "${RUNNER_TEMP:-/tmp}/dylint-register.log"
+          exit 1
+        }
+        echo "dylint registration done ($(wc -l < "${RUNNER_TEMP:-/tmp}/dylint-register.log") lines logged)"
+
+    - name: Build CLI
+      shell: bash
+      env:
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+      run: cargo build --release --locked --manifest-path "$ACTION_PATH/cargo-cost-lint/Cargo.toml"
+
+    - name: Run Cost Linter
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        DYLINT_LIBRARY_PATH: ${{ github.action_path }}/target/release
+        CARGO_NET_RETRY: '10'
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        ARGS_ARRAY=()
+        if [ -n "$INPUT_CONFIG" ]; then
+          ARGS_ARRAY+=(--config "$INPUT_CONFIG")
+        fi
+        if [ -n "$INPUT_ARGS" ]; then
+          read -ra EXTRA_ARGS <<< "$INPUT_ARGS"
+          ARGS_ARRAY+=("${EXTRA_ARGS[@]}")
+        fi
+        "$ACTION_PATH/target/release/cargo-cost-lint" --format github "${ARGS_ARRAY[@]}"
+

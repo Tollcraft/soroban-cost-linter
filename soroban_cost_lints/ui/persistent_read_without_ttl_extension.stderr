@@ -1,0 +1,36 @@
+warning: persistent storage read without TTL extension — archival cost cliff
+  --> $DIR/persistent_read_without_ttl_extension.rs:57:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access
+   = note: `#[warn(persistent_read_without_ttl_extension)]` on by default
+
+warning: storage read result is discarded
+  --> $DIR/persistent_read_without_ttl_extension.rs:57:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
+warning: storage read result is discarded
+  --> $DIR/persistent_read_without_ttl_extension.rs:62:26
+   |
+LL |     let _: Option<i32> = env.storage().persistent().get(&1);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: storage read result is discarded
+  --> $DIR/persistent_read_without_ttl_extension.rs:68:26
+   |
+LL |     let _: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: 4 warnings emitted
+
