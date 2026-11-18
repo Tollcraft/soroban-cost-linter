@@ -17,7 +17,7 @@ This page complements [`CONTRIBUTING.md`](../CONTRIBUTING.md) with macOS-specifi
 
 ```bash
 # Install Dylint (matching version pin)
-cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
 
 # Install cargo-cost-lint wrapper
 cargo install --path cargo-cost-lint

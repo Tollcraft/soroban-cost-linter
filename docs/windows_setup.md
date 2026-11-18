@@ -59,7 +59,7 @@ cargo --version
 Follow the standard cross-platform commands — they work the same on Ubuntu:
 
 ```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1"
+cargo install cargo-dylint dylint-link --version "=6.3.0"
 
 cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 ```
@@ -235,7 +235,7 @@ Open a **PowerShell** prompt (no admin needed):
 
 ```powershell
 # Install Dylint (matching pin in CONTRIBUTING.md and README.md)
-cargo install cargo-dylint dylint-link --version "^6.0.1"
+cargo install cargo-dylint dylint-link --version "=6.3.0"
 
 # Install the linter wrapper
 cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint

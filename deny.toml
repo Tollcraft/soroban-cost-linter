@@ -30,10 +30,8 @@ no-default-features = false
 unmaintained = "workspace"
 # A yanked crate is a supply-chain risk.
 yanked = "deny"
-# Advisory IDs to ignore (none currently needed).
 ignore = [
-    # Add entries like "RUSTSEC-2024-XXXX" with a comment explaining why the
-    # advisory does not apply to this project.
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 is pinned by elliptic-curve 0.13 -> k256/p256/ecdsa inside soroban-env-host 29, which the test corpus fixtures depend on; the fixed 0.6 line is semver-incompatible with that tree (`crypto-bigint = '^0.5'`), so only an upstream soroban-sdk change can clear it. The advisory concerns secret-dependent timing, and the linter only compiles toy corpus contracts and lint definitions — it never performs secret integer arithmetic. Re-review when soroban-env-host moves to elliptic-curve 0.14 / crypto-bigint 0.6. Review by 2027-01-15." },
 ]
 
 # ------------------------------------ Licenses ------------------------------------

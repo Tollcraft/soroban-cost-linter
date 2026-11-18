@@ -19,7 +19,7 @@ AST is close to the source syntax and is useful for simple syntactic patterns. H
 Install the repository's Dylint tools before running the examples:
 
 ```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1"
+cargo install cargo-dylint dylint-link --version "=6.3.0"
 ```
 
 Use the pinned toolchain from the repository. Compiler internals are tightly coupled to the Rust version, so changing toolchains while developing a lint can produce confusing errors.

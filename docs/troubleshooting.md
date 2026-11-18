@@ -238,7 +238,7 @@ If `cargo-dylint` is missing, the friendly error the CLI is wired to show is:
 ```text
 error: `cargo-dylint` is not installed.
 To install it, run:
-    cargo install cargo-dylint dylint-link --version "^6.0.1"
+    cargo install cargo-dylint dylint-link --version "=6.3.0"
 ```
 
 But because `cargo-dylint` is a cargo *subcommand*, a missing binary can also just
@@ -252,13 +252,13 @@ wrongly.
 ```bash
 cargo-dylint --version
 dylint-link --version
-# Both must resolve to a 6.x that satisfies the project pin "^6.0.1"
+# Both must resolve to a 6.x that satisfies the project pin "=6.3.0"
 ```
 
 **Fix:** install the pinned version:
 
 ```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
 ```
 
 If you only have one binary, or the versions disagree, reinstall both together as

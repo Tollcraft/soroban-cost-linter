@@ -85,7 +85,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manua
 > covered in the same page; **Visual Studio Build Tools is required** because
 > the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
 
-Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
+Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library pins Dylint `=6.3.0`: 6.4.0 raised its MSRV to rustc 1.98 and cannot install on the pinned nightly.
 
 1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
 
@@ -93,10 +93,10 @@ Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint
    rustup toolchain install <channel-from-rust-toolchain>
    ```
 
-2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `^6.0.1` to run dynamic library lints:
+2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `=6.3.0` to run dynamic library lints:
 
    ```bash
-   cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+   cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
    ```
 
 > **Windows:** Install via PowerShell after setting up Rust through [rustup](https://rustup.rs/). The command is identical. Make sure the nightly toolchain with `rustc-dev` and `llvm-tools-preview` components is installed (`rustup toolchain install nightly --component rustc-dev llvm-tools-preview`).

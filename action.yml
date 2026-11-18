@@ -42,10 +42,11 @@ runs:
         workspaces: ${{ github.action_path }} -> target
 
     - name: Install Dylint
+      # Exact pin: 6.4.0 requires rustc 1.98, which the pinned nightly is not.
       shell: bash
       env:
         CARGO_NET_RETRY: '10'
-      run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+      run: cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
 
     - name: Build lint library
       shell: bash
