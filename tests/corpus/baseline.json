@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "description": "Baseline lint findings for real-world corpus. Generated on t=1792755063 with 154 findings (21 TP, 133 FP, 86.36% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Baseline lint findings for real-world corpus. Generated on t=1795014874 with 222 findings (22 TP, 200 FP, 90.09% FP rate) across 40 contracts.\nRegenerate by running: BLESS=1 cargo test --test real_world_corpus --workspace",
   "summary": {
-    "total_findings": 154,
-    "total_true_positives": 21,
-    "total_false_positives": 133,
-    "false_positive_rate_percent": 86.36
+    "total_findings": 222,
+    "total_true_positives": 22,
+    "total_false_positives": 200,
+    "false_positive_rate_percent": 90.09
   },
   "contracts": {
     "auth_batch_per_item": {
@@ -752,73 +752,482 @@
       ]
     },
     "storage_iter_mixed": {
-      "total": 2,
+      "total": 5,
       "true_positives": [],
       "false_positives": [
         {
-          "lint_name": "storage_write_without_read",
+          "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
+          "line": 9,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 9,
+          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 31,
+          "line": 16,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 16,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 26,
           "message": "storage write without a corresponding read"
         }
       ]
     },
     "storage_iter_nested": {
-      "total": 2,
-      "true_positives": [],
+      "total": 64,
+      "true_positives": [
+        {
+          "lint_name": "symbol_new_for_short_literal",
+          "file": "src/lib.rs",
+          "line": 132,
+          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
+        }
+      ],
       "false_positives": [
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 18,
+          "line": 44,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 44,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 44,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 44,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 56,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 56,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 56,
+          "message": "loop-invariant storage operation inside a loop"
+        },
+        {
+          "lint_name": "discarded_storage_read",
+          "file": "src/lib.rs",
+          "line": 56,
+          "message": "storage read result is discarded"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 67,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 67,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 67,
+          "message": "loop-invariant storage operation inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 81,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 81,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 81,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 81,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 94,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 94,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 94,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 94,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 105,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 105,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 105,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 105,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 117,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 117,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 117,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 133,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 133,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "storage_key_construction_in_loop",
+          "file": "src/lib.rs",
+          "line": 132,
+          "message": "storage key constructed inside a loop body"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 133,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 133,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 144,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 144,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 144,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 153,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 153,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 153,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 164,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 164,
+          "message": "loop-invariant storage operation inside a loop"
+        },
+        {
+          "lint_name": "extend_ttl_in_loop",
+          "file": "src/lib.rs",
+          "line": 164,
+          "message": "extend_ttl called inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 184,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_redundant_storage_read",
+          "file": "src/lib.rs",
+          "line": 205,
+          "message": "redundant storage read: this key was already read without modification"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 243,
           "message": "storage write without a corresponding read"
         },
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 31,
+          "line": 257,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 257,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 257,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 269,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "bytes_append_in_loop",
+          "file": "src/lib.rs",
+          "line": 266,
+          "message": "repeatedly growing SDK container inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_for_unbounded_data",
+          "file": "src/lib.rs",
+          "line": 269,
+          "message": "unbounded collection written to instance storage"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 283,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 292,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 292,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 292,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 305,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 314,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 314,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 314,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 323,
+          "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "nested_loop_storage_access",
+          "file": "src/lib.rs",
+          "line": 323,
+          "message": "storage operation inside a nested loop — cost is O(n·m)"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 323,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 323,
+          "message": "loop-invariant storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 323,
+          "message": "instance storage written inside a loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 335,
           "message": "storage write without a corresponding read"
         }
       ]
     },
     "storage_iter_simple": {
-      "total": 2,
+      "total": 4,
       "true_positives": [],
       "false_positives": [
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 18,
+          "line": 35,
           "message": "storage write without a corresponding read"
+        },
+        {
+          "lint_name": "soroban_storage_in_loop",
+          "file": "src/lib.rs",
+          "line": 35,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "instance_storage_write_in_loop",
+          "file": "src/lib.rs",
+          "line": 35,
+          "message": "instance storage written inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 31,
+          "line": 50,
           "message": "storage write without a corresponding read"
         }
       ]
     },
     "storage_iter_while": {
-      "total": 2,
+      "total": 3,
       "true_positives": [],
       "false_positives": [
         {
-          "lint_name": "storage_write_without_read",
+          "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
+          "line": 11,
+          "message": "storage operation inside a loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 11,
+          "message": "loop-invariant storage operation inside a loop"
         },
         {
           "lint_name": "storage_write_without_read",
           "file": "src/lib.rs",
-          "line": 31,
+          "line": 24,
           "message": "storage write without a corresponding read"
         }
       ]

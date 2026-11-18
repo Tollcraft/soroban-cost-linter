@@ -704,6 +704,46 @@ mod tests {
     }
 
     #[test]
+    fn corpus_contract_package_names_are_unique() {
+        // Every contract builds into `shared_target_dir()`, and Cargo names a
+        // path package's artifacts after its crate name and version, not after
+        // its path. Contracts that share a name therefore share one compiled
+        // artifact: whichever is checked first wins and the rest replay its
+        // diagnostics instead of being linted, which silently under-counts
+        // findings and lets the triage pass against a stale baseline.
+        let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for entry in std::fs::read_dir(contracts_dir()).expect("contracts dir must be readable") {
+            let entry = entry.expect("contract entry must be readable");
+            let manifest = entry.path().join("Cargo.toml");
+            if !manifest.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&manifest).expect("Cargo.toml must be readable");
+            let name = text
+                .lines()
+                .find_map(|line| line.strip_prefix("name = \""))
+                .and_then(|rest| rest.strip_suffix('"'))
+                .unwrap_or_else(|| panic!("{} has no package name", manifest.display()));
+            by_name
+                .entry(name.to_string())
+                .or_default()
+                .push(entry.file_name().to_string_lossy().into_owned());
+        }
+
+        let collisions: Vec<String> = by_name
+            .iter()
+            .filter(|(_, dirs)| dirs.len() > 1)
+            .map(|(name, dirs)| format!("{name}: {}", dirs.join(", ")))
+            .collect();
+
+        assert!(
+            collisions.is_empty(),
+            "corpus contracts must have unique package names, found: {collisions:?}"
+        );
+    }
+
+    #[test]
     fn now_stamp_is_parseable_unix_seconds() {
         let stamp = now_stamp();
         let raw = stamp
