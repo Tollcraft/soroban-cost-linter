@@ -24,10 +24,24 @@ jobs:
       - uses: actions/checkout@v7
       - name: Validate toolchain pins
         run: bash .github/scripts/validate-toolchain-pins.sh
+      # The nightly is read from `rust-toolchain`, the single source of truth.
+      # A literal date here would have to be rewritten on every bump, and
+      # GITHUB_TOKEN is not allowed to push `.github/workflows/` changes, so the
+      # Nightly Bump job could never open its PR.
+      - name: Read pinned toolchain
+        id: pin
+        run: |
+          set -euo pipefail
+          CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)"
+          if [ -z "$CHANNEL" ]; then
+            echo "::error file=rust-toolchain::could not parse [toolchain].channel"
+            exit 1
+          fi
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
       - name: Install Rust
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: nightly-2026-04-16
+          toolchain: ${{ steps.pin.outputs.channel }}
           components: rustc-dev, llvm-tools-preview, rustfmt, clippy
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
