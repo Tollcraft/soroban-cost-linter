@@ -31,6 +31,10 @@
 //! | `BLESS`                   | unset   | Alias for `BLESS_BENCH`.                                 |
 //! | `DYLINT_LIBRARY_PATH`     | auto    | Override the path where Dylint looks for lint libraries. |
 
+#[path = "bench_env.rs"]
+mod bench_env;
+use bench_env::{parse_iterations, parse_threshold};
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
@@ -236,29 +240,40 @@ fn ensure_lint_library(target_dir: &Path) {
 // Environment-variable configuration helpers
 // ---------------------------------------------------------------------------
 
+/// Exits with a clear error when the value is invalid.
+fn or_exit<T>(result: Result<T, String>) -> T {
+    result.unwrap_or_else(|message| {
+        eprintln!("Error: {message}");
+        exit(2);
+    })
+}
+
 /// Returns the number of timed iterations to run per contract.
 ///
-/// Reads `LINTER_BENCH_ITERATIONS`; falls back to [`DEFAULT_ITERATIONS`].
-/// Values that parse as zero are treated as absent (i.e. the default is used)
-/// because zero iterations would produce no samples to take the median of.
+/// Reads `LINTER_BENCH_ITERATIONS`; uses [`DEFAULT_ITERATIONS`] only when unset.
+/// A malformed or zero value is a hard error rather than a silent fallback.
 fn iteration_count() -> usize {
-    env::var("LINTER_BENCH_ITERATIONS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .filter(|iterations| *iterations > 0)
-        .unwrap_or(DEFAULT_ITERATIONS)
+    match env::var("LINTER_BENCH_ITERATIONS") {
+        Ok(value) => or_exit(parse_iterations(&value)),
+        Err(env::VarError::NotPresent) => DEFAULT_ITERATIONS,
+        Err(_) => or_exit(Err(
+            "LINTER_BENCH_ITERATIONS is not valid unicode".to_string()
+        )),
+    }
 }
 
 /// Returns the regression threshold as a percentage over the baseline.
 ///
-/// Reads `BENCHMARK_THRESHOLD`; falls back to [`DEFAULT_THRESHOLD_PERCENT`].
+/// Reads `BENCHMARK_THRESHOLD`; uses [`DEFAULT_THRESHOLD_PERCENT`] only when
+/// unset. NaN, infinite, negative or unparsable values are a hard error.
 /// Note: if a baseline file is loaded, its embedded threshold takes precedence
 /// over this default unless `BENCHMARK_THRESHOLD` is explicitly set.
 fn threshold_percent() -> f64 {
-    env::var("BENCHMARK_THRESHOLD")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(DEFAULT_THRESHOLD_PERCENT)
+    match env::var("BENCHMARK_THRESHOLD") {
+        Ok(value) => or_exit(parse_threshold(&value)),
+        Err(env::VarError::NotPresent) => DEFAULT_THRESHOLD_PERCENT,
+        Err(_) => or_exit(Err("BENCHMARK_THRESHOLD is not valid unicode".to_string())),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +375,7 @@ fn load_baseline() -> Option<BenchmarkBaseline> {
 // Benchmark measurement
 // ---------------------------------------------------------------------------
 
-/// Runs the linter `iterations` times against every contract in `contracts`,
+/// Runs one untimed warmup, then the linter `iterations` times against every contract in `contracts`,
 /// and returns a map of contract name → median duration in milliseconds plus
 /// the sum of all medians.
 fn measure_contracts(
@@ -373,6 +388,9 @@ fn measure_contracts(
     let mut total_median_ms = 0.0_f64;
 
     for contract in contracts {
+        // Untimed warmup run so cold caches / first-load costs do not skew
+        // the measured samples.
+        let _ = run_linter(linter, contract, target_dir);
         let mut samples: Vec<Duration> = (0..iterations)
             .map(|_| run_linter(linter, contract, target_dir))
             .collect();
