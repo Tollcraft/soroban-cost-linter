@@ -57,7 +57,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
       - name: Pull and smoke test published container image
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}-dev:latest"
+          # Docker rejects uppercase repository names, and GHCR stores the
+          # image under the lowercased path. `metadata-action` sanitises its
+          # `images:` input, but this step builds the reference itself, so
+          # lowercase it here (a no-op on already-lowercase owners).
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-dev:latest"
           echo "Pulling published image: $IMAGE"
           docker pull "$IMAGE"
           
