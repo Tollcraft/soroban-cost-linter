@@ -21,7 +21,7 @@ jobs:
   lint-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Validate toolchain pins
         run: bash .github/scripts/validate-toolchain-pins.sh
       - name: Read pinned toolchain
@@ -54,7 +54,7 @@ jobs:
     needs: lint-checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Validate toolchain pins
         run: bash .github/scripts/validate-toolchain-pins.sh
       # The nightly is read from `rust-toolchain` instead of being written here.
