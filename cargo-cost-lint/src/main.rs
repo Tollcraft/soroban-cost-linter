@@ -476,7 +476,12 @@ pub fn discover_config_file(cwd: &Path, workspace_root: &Path) -> Option<PathBuf
 pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, String> {
     if let Some(path_str) = config_arg {
         let path = PathBuf::from(path_str);
-        if path.exists() {
+        if path.is_dir() {
+            Err(format!(
+                "Error: Config path '{}' is a directory, not a file",
+                path_str
+            ))
+        } else if path.exists() {
             Ok(Some(path))
         } else {
             Err(format!("Error: Config file '{}' does not exist", path_str))
@@ -585,14 +590,17 @@ fn main() {
     };
 
     if cli.clear_cache {
+        let quiet = cli.quiet;
         let cache_dir = cache::get_cache_dir(None);
         match cache::clear_cache(&cache_dir) {
             Ok(count) => {
-                println!(
-                    "Cleared {} cached lint result(s) at {}",
-                    count,
-                    cache_dir.display()
-                );
+                if !quiet {
+                    println!(
+                        "Cleared {} cached lint result(s) at {}",
+                        count,
+                        cache_dir.display()
+                    );
+                }
                 return;
             }
             Err(e) => {
@@ -1984,6 +1992,21 @@ mod tests {
             Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
         assert!(cli.no_cache);
         assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn resolve_config_rejects_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = resolve_config(Some(tmp.path().to_str().unwrap()))
+            .expect_err("a directory must not be accepted as a config file");
+        assert!(err.contains("is a directory"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn cli_parses_clear_cache_with_quiet() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--clear-cache", "--quiet"])
+            .expect("parsing should succeed");
+        assert!(cli.clear_cache && cli.quiet);
     }
 
     #[test]
