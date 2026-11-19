@@ -5,6 +5,8 @@ mod error;
 mod lint_name_set;
 pub use lint_name_set::{LintNameSet, build_lint_name_set};
 mod output_formatters;
+pub mod package_args;
+pub use package_args::validate_and_build_package_args;
 
 use clap::{ArgGroup, Parser, ValueEnum};
 use output_formatters::{LintFinding, OutputFormat, Span};
@@ -216,43 +218,6 @@ fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
             "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
         ),
     }
-}
-
-pub fn validate_and_build_package_args(
-    packages: &[String],
-    workspace: bool,
-    available_packages: &[String],
-) -> Result<Vec<String>, String> {
-    if workspace && !packages.is_empty() {
-        return Err(
-            "Error: The argument '--workspace' cannot be used with '--package <SPEC>'".to_string(),
-        );
-    }
-
-    if workspace {
-        return Ok(vec!["--workspace".to_string()]);
-    }
-
-    if packages.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    for pkg in packages {
-        if !available_packages.iter().any(|p| p == pkg) {
-            let valid = available_packages.join(", ");
-            return Err(format!(
-                "Error: Package '{}' not found in workspace. Valid workspace members are: {}",
-                pkg, valid
-            ));
-        }
-    }
-
-    let mut args = Vec::new();
-    for pkg in packages {
-        args.push("--package".to_string());
-        args.push(pkg.clone());
-    }
-    Ok(args)
 }
 
 /// Parses the output of `cargo metadata` to extract workspace member package names.
