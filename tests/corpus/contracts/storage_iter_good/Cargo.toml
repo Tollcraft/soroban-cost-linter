@@ -1,5 +1,5 @@
 [package]
-name = "storage-iter-fixture"
+name = "storage-iter-good-fixture"
 version = "0.1.0"
 edition = "2021"
 publish = false

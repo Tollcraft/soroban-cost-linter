@@ -4,6 +4,9 @@
   <p>
     <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
+    <a href="https://scorecard.dev/viewer/?uri=github.com/Tollcraft/soroban-cost-linter">
+      <img src="https://api.scorecard.dev/projects/github.com/Tollcraft/soroban-cost-linter/badge" alt="OpenSSF Scorecard" />
+    </a>
   </p>
   <p>
     <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
@@ -25,7 +28,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Forty lints ship in `v0.1.1`:
+The linter runs as a Dylint library against the Rust compiler's HIR to catch specific Soroban anti-patterns (with a single early AST pass for the `format_args!` nodes the HIR no longer exposes). 46 lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -63,8 +66,8 @@ The fastest way to get a working environment is the pre-built container image, w
 the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
 
 ```bash
-docker pull ghcr.io/Tollcraft/soroban-cost-linter:latest
-docker run --rm -it -v "$(pwd)":/workspace ghcr.io/Tollcraft/soroban-cost-linter:latest bash
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/tollcraft/soroban-cost-linter-dev:latest bash
 # Inside the container:
 cargo test --workspace
 ```
@@ -82,7 +85,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manua
 > covered in the same page; **Visual Studio Build Tools is required** because
 > the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
+Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library pins Dylint `=6.3.0`: 6.4.0 raised its MSRV to rustc 1.98 and cannot install on the pinned nightly.
 
 1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
 
@@ -90,10 +93,10 @@ Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint
    rustup toolchain install <channel-from-rust-toolchain>
    ```
 
-2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `^6.0.1` to run dynamic library lints:
+2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `=6.3.0` to run dynamic library lints:
 
    ```bash
-   cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+   cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
    ```
 
 > **Windows:** Install via PowerShell after setting up Rust through [rustup](https://rustup.rs/). The command is identical. Make sure the nightly toolchain with `rustc-dev` and `llvm-tools-preview` components is installed (`rustup toolchain install nightly --component rustc-dev llvm-tools-preview`).
@@ -146,12 +149,16 @@ If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 | `--workspace` | Lint all packages in the workspace |
 | `--no-cache` | Bypass the lint result cache for this run |
 | `--clear-cache` | Clear all cached lint results and exit |
+| `--color <WHEN>` | Control coloured output: `auto` (default), `always`, or `never`. Honours the `NO_COLOR` convention when unset |
+| `--diff-only` | Lint only files changed relative to the merge base with the default branch |
 | `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
-| `--list-lints` | Print every registered lint with its default level and one-line description, then exit |
+| `--list-lints` | Print every registered lint with its default level, category and documentation URL, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
 | `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
 | `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
 | `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
 | `--version` | Print the crate version and exit |
+| `--color <auto\|always\|never>` | Control coloured output (default: `auto`); honours the `NO_COLOR` convention when the flag is omitted, and an explicit `--color` value overrides it |
+| `--diff-only` | Only report findings in files changed against the merge base with the default branch (whole files are linted, not just changed lines) |
 
 `--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
 
@@ -166,6 +173,8 @@ The cache key is computed deterministically from:
 - **Linter Version:** The version of `cargo-cost-lint`.
 - **Toolchain:** Active `rustc` compiler version and commit.
 - **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+- **Diff Scope:** Whether the run is a full run or `--diff-only`; a cached full-run result is never replayed for a filtered run or the reverse.
+- **`.lintignore`:** Content hash of the resolved `.lintignore`; its absence counts as a distinct input, so adding one invalidates earlier entries.
 
 Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
 
@@ -294,16 +303,25 @@ LL |     let _cloned = env.clone();
    = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 
-lint summary:
-  redundant_env_clone: 1
-  soroban_storage_in_loop: 3
-  unnecessary_host_function_call: 2
-total: 6
+Found 3 cost lint findings:
+  By lint name:
+    - redundant_env_clone: 1
+    - soroban_storage_in_loop: 1
+    - unnecessary_host_function_call: 1
+  By severity:
+    - warning: 3
 ```
+
+The text-mode run above closes with a per-lint findings summary. That roll-up
+is printed whenever a text run applies a filter — either `--diff-only` or a
+discovered `.lintignore`. A plain `cargo cost-lint` passes rustc's own
+diagnostics through verbatim and omits the summary, and `--quiet` suppresses it
+too; `--format json`, `sarif` and `github` never emit it, so their output stays
+machine-parseable.
 
 For detailed examples of each lint and instructions on suppressing false positives, see the [`docs/lints/`](docs/lints) directory.
 
-For instructions on CI/CD integration, configuring the `budget.toml` file, and setting a maximum warnings threshold, see the [Integration Guide](docs/integration.md).
+For instructions on CI/CD integration and configuring the `budget.toml` file, see the [Integration Guide](docs/integration.md).
 
 
 ## Contributing

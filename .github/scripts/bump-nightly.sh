@@ -79,15 +79,18 @@ sed -i -E "s/(rev = \"[a-f0-9]{40}\")/rev = \"${CLIPPY_REV}\"/" soroban_cost_lin
 
 # Every other file that hardcodes the nightly string (kept consistent by
 # validate-toolchain-pins.sh). Replace all dated occurrences in place.
+#
+# The two workflows under `.github/workflows/` are deliberately absent: they
+# read the channel from `rust-toolchain` at run time, because GITHUB_TOKEN (the
+# token this bot pushes with) cannot create or update workflow files.
 NIGHTLY_FILES=(
-  ".github/workflows/lint.yml"
-  ".github/workflows/publish.yml"
   "action.yml"
   "templates/github-action.yml"
   "docs/integration.md"
   "CONTRIBUTING.md"
   "README.md"
   "docs/windows_setup.md"
+  "docs/troubleshooting.md"
 )
 for f in "${NIGHTLY_FILES[@]}"; do
   if [ -f "$f" ]; then

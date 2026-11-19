@@ -464,6 +464,35 @@ fn real_world_corpus_triage() {
     print_corpus_summary(&all_findings);
 
     let baseline = load_baseline();
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+    let inventory_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints");
+    assert!(
+        inventory_output.status.success(),
+        "cargo-cost-lint --list-lints failed while validating the corpus guard"
+    );
+    let inventory: serde_json::Value = serde_json::from_slice(&inventory_output.stdout)
+        .expect("list-lints output is not valid JSON");
+    let registered_lints: std::collections::HashSet<String> = inventory["lints"]
+        .as_array()
+        .expect("inventory.lints should be an array")
+        .iter()
+        .map(|lint| lint["name"].as_str().unwrap().to_string())
+        .collect();
+    let missing_always_tp: Vec<&str> = ALWAYS_TP
+        .iter()
+        .filter(|lint| !registered_lints.contains(*lint))
+        .map(|lint| lint.as_str())
+        .collect();
+    assert!(
+        missing_always_tp.is_empty(),
+        "ALWAYS_TP contains unregistered lint(s): {:?}",
+        missing_always_tp
+    );
 
     if bless {
         let summary = compute_summary(&all_findings);
@@ -506,19 +535,33 @@ fn real_world_corpus_triage() {
 
         for (name, findings) in &all_findings {
             let baseline_entry = baseline.contracts.get(name);
-            let current_fps = triage_findings(findings).1.len();
+            let (current_tps, current_fps) = triage_findings(findings);
 
             let baseline_fps = baseline_entry.map(|e| e.false_positives.len()).unwrap_or(0);
+            let baseline_tps = baseline_entry.map(|e| e.true_positives.len()).unwrap_or(0);
 
-            if current_fps > baseline_fps {
-                let increase = current_fps - baseline_fps;
+            if current_tps.len() < baseline_tps {
+                any_failure = true;
+                eprintln!(
+                    "FAIL: {name} lost TP coverage: {} current TPs vs {} baseline TPs",
+                    current_tps.len(),
+                    baseline_tps
+                );
+            }
+
+            if current_fps.len() > baseline_fps {
+                let increase = current_fps.len() - baseline_fps;
                 total_fp_increase += increase;
                 any_failure = true;
                 eprintln!(
-                    "FAIL: {name} now has {current_fps} FPs (baseline: {baseline_fps}, +{increase})"
+                    "FAIL: {name} now has {} FPs (baseline: {baseline_fps}, +{increase})",
+                    current_fps.len()
                 );
             } else {
-                eprintln!("OK:   {name} has {current_fps} FPs (baseline: {baseline_fps})");
+                eprintln!(
+                    "OK:   {name} has {} FPs (baseline: {baseline_fps})",
+                    current_fps.len()
+                );
             }
         }
 
@@ -553,6 +596,38 @@ mod tests {
             let (tps, fps) = triage_findings(&findings);
             assert_eq!(tps.len(), 1, "{lint} should triage as a true positive");
             assert!(fps.is_empty());
+        }
+    }
+
+    #[test]
+    fn always_tp_names_are_registered_in_the_cli_inventory() {
+        let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+        let output = Command::new(bin_path)
+            .arg("--list-lints")
+            .arg("--format")
+            .arg("json")
+            .output()
+            .expect("Failed to execute cargo-cost-lint --list-lints");
+        assert!(
+            output.status.success(),
+            "cargo-cost-lint --list-lints failed while validating ALWAYS_TP"
+        );
+
+        let inventory: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("list-lints output is not valid JSON");
+        let names: Vec<String> = inventory["lints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|lint| lint["name"].as_str().unwrap().to_string())
+            .collect();
+
+        for lint in ALWAYS_TP.iter() {
+            assert!(
+                names.iter().any(|name| name == lint),
+                "ALWAYS_TP lint '{}' is missing from the registered lint inventory",
+                lint
+            );
         }
     }
 
@@ -626,6 +701,46 @@ mod tests {
         assert_eq!(contracts_dir(), corpus_dir().join("contracts"));
         assert_eq!(baseline_path(), corpus_dir().join("baseline.json"));
         assert_eq!(shared_target_dir(), corpus_dir().join(".shared-target"));
+    }
+
+    #[test]
+    fn corpus_contract_package_names_are_unique() {
+        // Every contract builds into `shared_target_dir()`, and Cargo names a
+        // path package's artifacts after its crate name and version, not after
+        // its path. Contracts that share a name therefore share one compiled
+        // artifact: whichever is checked first wins and the rest replay its
+        // diagnostics instead of being linted, which silently under-counts
+        // findings and lets the triage pass against a stale baseline.
+        let mut by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for entry in std::fs::read_dir(contracts_dir()).expect("contracts dir must be readable") {
+            let entry = entry.expect("contract entry must be readable");
+            let manifest = entry.path().join("Cargo.toml");
+            if !manifest.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&manifest).expect("Cargo.toml must be readable");
+            let name = text
+                .lines()
+                .find_map(|line| line.strip_prefix("name = \""))
+                .and_then(|rest| rest.strip_suffix('"'))
+                .unwrap_or_else(|| panic!("{} has no package name", manifest.display()));
+            by_name
+                .entry(name.to_string())
+                .or_default()
+                .push(entry.file_name().to_string_lossy().into_owned());
+        }
+
+        let collisions: Vec<String> = by_name
+            .iter()
+            .filter(|(_, dirs)| dirs.len() > 1)
+            .map(|(name, dirs)| format!("{name}: {}", dirs.join(", ")))
+            .collect();
+
+        assert!(
+            collisions.is_empty(),
+            "corpus contracts must have unique package names, found: {collisions:?}"
+        );
     }
 
     #[test]

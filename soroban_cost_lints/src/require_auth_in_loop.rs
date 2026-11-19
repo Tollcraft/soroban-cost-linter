@@ -12,6 +12,14 @@
 //! iteration is a known false positive. That case is pinned in
 //! `soroban_cost_lints/ui/require_auth_in_loop.rs` so a future change to the
 //! analysis has to make a deliberate decision about it.
+//!
+//! Call syntax
+//! -----------
+//!
+//! Both the method-call spelling (`addr.require_auth()`) and the UFCS spelling
+//! (`Address::require_auth(addr)`) are recognized. The method-call form is the
+//! common one, but the UFCS form is valid Soroban, so a loop over
+//! `Address::require_auth(some_addr)` must still be flagged.
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use rustc_hir as hir;
@@ -53,30 +61,80 @@ fn is_address_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'
     )
 }
 
+/// The method name a callee path segment carries, if it carries one.
+///
+/// Covers both path shapes a call to an associated function can take:
+/// `QPath::Resolved` for a fully-resolvable `Address::require_auth`, and
+/// `QPath::TypeRelative` for the desugaring of the same spelling.
+fn qpath_method_name<'a>(qpath: &'a hir::QPath<'a>) -> Option<&'a str> {
+    match qpath {
+        hir::QPath::Resolved(_, path) => path.segments.last().map(|seg| seg.ident.name.as_str()),
+        hir::QPath::TypeRelative(_, seg) => Some(seg.ident.name.as_str()),
+    }
+}
+
+/// Whether `callee`/`args` form a UFCS authorization call on an address.
+///
+/// `Address::require_auth(addr)` desugars to `ExprKind::Call(path, [addr, ..])`:
+/// the method name lives in the callee path, and the address being authorized
+/// is the first argument.
+fn is_ufcs_require_auth_call<'tcx>(
+    cx: &LateContext<'tcx>,
+    callee: &'tcx hir::Expr<'tcx>,
+    args: &'tcx [hir::Expr<'tcx>],
+) -> bool {
+    let hir::ExprKind::Path(ref qpath) = callee.kind else {
+        return false;
+    };
+    let Some(method) = qpath_method_name(qpath) else {
+        return false;
+    };
+    if !is_require_auth_method(method) {
+        return false;
+    }
+    // UFCS requires the address as the first argument.
+    let Some(receiver) = args.first() else {
+        return false;
+    };
+    is_address_receiver(cx, receiver)
+}
+
 /// Late pass backing [`REQUIRE_AUTH_IN_LOOP`].
 impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
     /// Flags a `require_auth` / `require_auth_for_args` call on a
     /// `soroban_sdk::Address` when the call sits inside a loop.
     ///
-    /// The three conditions are checked in cost order, cheapest first: the
-    /// method name is read straight off the segment, the receiver type needs a
+    /// Both spellings are recognized:
+    /// - method-call: `addr.require_auth()` / `addr.require_auth_for_args(..)`
+    /// - UFCS: `Address::require_auth(addr)` / `Address::require_auth_for_args(addr, ..)`
+    ///
+    /// The conditions are checked in cost order, cheapest first: the method name
+    /// is read straight off the segment (or path), the receiver type needs a
     /// typeck lookup, and [`enclosing_loop`] walks the HIR to the surrounding
     /// loop expression only for the calls that already look like candidates.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && is_require_auth_method(path_segment.ident.name.as_str())
-            && is_address_receiver(cx, receiver)
-            && enclosing_loop(cx, expr).is_some()
-        {
-            span_lint_and_help(
-                cx,
-                REQUIRE_AUTH_IN_LOOP,
-                expr.span,
-                REQUIRE_AUTH_IN_LOOP_MSG,
-                None,
-                REQUIRE_AUTH_IN_LOOP_HELP,
-            );
+        let is_auth_call = match expr.kind {
+            hir::ExprKind::MethodCall(path_segment, receiver, _, _) => {
+                is_require_auth_method(path_segment.ident.name.as_str())
+                    && is_address_receiver(cx, receiver)
+            }
+            hir::ExprKind::Call(callee, args) => is_ufcs_require_auth_call(cx, callee, args),
+            _ => false,
+        };
+        if !is_auth_call {
+            return;
         }
+        if enclosing_loop(cx, expr).is_none() {
+            return;
+        }
+        span_lint_and_help(
+            cx,
+            REQUIRE_AUTH_IN_LOOP,
+            expr.span,
+            REQUIRE_AUTH_IN_LOOP_MSG,
+            None,
+            REQUIRE_AUTH_IN_LOOP_HELP,
+        );
     }
 }
 

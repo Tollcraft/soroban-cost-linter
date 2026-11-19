@@ -31,13 +31,18 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
+    #[arg(
+        long,
+        help = "Emit the lint inventory and exit",
+        conflicts_with_all = ["explain", "clear_cache"]
+    )]
     list_lints: bool,
 
     #[arg(
         long,
         value_name = "LINT",
-        help = "Print the full documentation page for a lint and exit"
+        help = "Print the full documentation page for a lint and exit",
+        conflicts_with_all = ["list_lints", "clear_cache"]
     )]
     explain: Option<String>,
 
@@ -95,7 +100,11 @@ struct Cli {
     #[arg(long = "no-cache", help = "Bypass the lint result cache for this run")]
     no_cache: bool,
 
-    #[arg(long = "clear-cache", help = "Clear the lint result cache and exit")]
+    #[arg(
+        long = "clear-cache",
+        help = "Clear the lint result cache and exit",
+        conflicts_with_all = ["list_lints", "explain"]
+    )]
     clear_cache: bool,
 
     /// Control coloured output: auto, always, never.
@@ -197,6 +206,18 @@ fn long_version() -> &'static str {
 
 /// Validates package selection options against available workspace members
 /// and constructs the command-line arguments to forward to cargo.
+/// `--list-lints` has a text table and a JSON inventory; SARIF and GitHub
+/// annotations describe findings, not the inventory, so they are rejected
+/// instead of silently printing the text table.
+fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
+    match format {
+        OutputFormat::Text | OutputFormat::Json => None,
+        OutputFormat::Sarif | OutputFormat::Github => Some(
+            "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
+        ),
+    }
+}
+
 pub fn validate_and_build_package_args(
     packages: &[String],
     workspace: bool,
@@ -320,7 +341,7 @@ pub fn build_effective_lint_flags(
 
     for (lints, level_name, flag) in cli_groups {
         for lint in lints {
-            let lint = lint.replace('-', "_");
+            let lint = config::normalize_lint_name(lint);
             if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
@@ -347,7 +368,7 @@ pub fn build_effective_lint_flags(
 
     if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
         for (lint, level) in lints {
-            let lint = lint.replace('-', "_");
+            let lint = config::normalize_lint_name(lint);
             if !LINT_NAMES_SET.contains(lint.as_str()) {
                 let valid = LINT_NAMES.join(", ");
                 return Err(format!(
@@ -376,11 +397,6 @@ pub fn build_effective_lint_flags(
     }
 
     Ok(effective_flags.into_values().collect())
-}
-
-#[allow(dead_code)]
-fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
-    build_effective_lint_flags(Some(config), &[], &[], &[])
 }
 
 /// Container for `.lintignore` suppression patterns.
@@ -634,6 +650,10 @@ fn main() {
     }
 
     if cli.list_lints {
+        if let Some(message) = list_lints_format_error(&cli.format) {
+            eprintln!("{}", message);
+            exit(2);
+        }
         if cli.format == OutputFormat::Json {
             println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
         } else {
@@ -672,9 +692,9 @@ fn main() {
 
     if let Some(ref path) = resolved_config {
         resolved_config_path = Some(path.clone());
-        if verbose {
-            eprintln!("Using config file: {}", path.display());
-        } else if !quiet {
+        // `--verbose` reports the path once, in the `[verbose] config:` block
+        // printed just before `cargo dylint` is spawned.
+        if !verbose && !quiet {
             eprintln!("Using config: {}", path.display());
         }
         match config::BudgetConfig::from_file_validated(path, LINT_NAMES) {
@@ -684,12 +704,18 @@ fn main() {
                 exit(1);
             }
         }
-    } else {
-        if verbose {
-            eprintln!("No budget.toml found, using default lint levels.");
-        } else if !quiet && cli.allow.is_empty() && cli.warn.is_empty() && cli.deny.is_empty() {
-            eprintln!("Warning: budget.toml not found, using default lint levels.");
-        }
+    } else if !verbose
+        && !quiet
+        && cli.allow.is_empty()
+        && cli.warn.is_empty()
+        && cli.deny.is_empty()
+    {
+        // Missing-config warning, default verbosity only. `--verbose`
+        // reports the missing config once, as `[verbose] config: (none —
+        // ...)`, and `--quiet` reports nothing. Any `-A`/`-W`/`-D` override
+        // also suppresses this warning: the user chose lint levels for this
+        // run explicitly, so "using default lint levels" would be wrong.
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
     let lint_flags =
@@ -730,6 +756,13 @@ fn main() {
         let source_hash = cache::compute_source_hash(Path::new("."))
             .unwrap_or_else(|_| "unknown-source".to_string());
         let toolchain = cache::get_toolchain_version();
+        // The diff scope and the resolved .lintignore change what a run
+        // reports, so they join the cache key (#793).
+        let diff_scope = if cli.diff_only { "diff-only" } else { "all" };
+        let lintignore_hash = match lintignore_opt.as_ref() {
+            Some(li) => cache::compute_file_hash(&li.path),
+            None => cache::ABSENT_LINTIGNORE_HASH.to_string(),
+        };
         let key = cache::CacheKey {
             linter_version: env!("CARGO_PKG_VERSION").to_string(),
             toolchain,
@@ -737,6 +770,8 @@ fn main() {
             package_args: package_args.clone(),
             output_format: format!("{:?}", cli.format),
             source_hash,
+            diff_scope: diff_scope.to_string(),
+            lintignore_hash,
         };
         Some(key.compute_hash())
     } else {
@@ -774,9 +809,11 @@ fn main() {
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
 
-    let mut rustflags_value = String::new();
+    // Seeded from the inherited value so the `[verbose] DYLINT_RUSTFLAGS:`
+    // line reports what the child actually sees, even when no lint flags are
+    // appended (the child then inherits `DYLINT_RUSTFLAGS` untouched).
+    let mut rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
     if !lint_flags.is_empty() {
-        rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
         for flag in lint_flags {
             if !rustflags_value.is_empty() {
                 rustflags_value.push(' ');
@@ -790,7 +827,12 @@ fn main() {
     cargo_args.extend(package_args);
 
     let has_lintignore = lintignore_opt.is_some();
-    if cli.format != OutputFormat::Text || has_lintignore {
+    // One predicate decides both whether cargo emits JSON messages and
+    // whether they are streamed through the per-finding filters below.
+    // `--diff-only` and `.lintignore` filter per finding, so they need the
+    // stream even in text mode; the raw-echo branch cannot filter.
+    let use_message_stream = cli.format != OutputFormat::Text || has_lintignore || cli.diff_only;
+    if use_message_stream {
         cargo_args.push("--message-format=json".to_string());
     }
 
@@ -823,10 +865,12 @@ fn main() {
     let changed_files: Option<Vec<String>> = if cli.diff_only {
         match diff_files::get_changed_files() {
             Ok(files) => {
-                if files.is_empty() {
-                    eprintln!("--diff-only: no changed files found; nothing to lint.");
-                } else {
-                    eprintln!("--diff-only: linting {} changed file(s)", files.len());
+                if !quiet {
+                    if files.is_empty() {
+                        eprintln!("--diff-only: no changed files found; nothing to lint.");
+                    } else {
+                        eprintln!("--diff-only: linting {} changed file(s)", files.len());
+                    }
                 }
                 Some(files)
             }
@@ -839,7 +883,7 @@ fn main() {
         None
     };
 
-    if cli.format != OutputFormat::Text || has_lintignore {
+    if use_message_stream {
         cmd.stdout(Stdio::piped());
         let mut child = cmd.spawn().unwrap_or_else(|e| dylint_launch_failure(e));
 
@@ -847,15 +891,34 @@ fn main() {
         let reader = BufReader::new(stdout);
         let mut highest_exit_code = 0;
         let mut sarif_findings = Vec::new();
+        let mut text_findings = Vec::new();
         let mut recorded_stdout = String::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
-            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str)
-                && msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message")
-                && let Some(message) = msg.get("message")
-                && let Some(code) = message.get("code")
-                && let Some(lint_name) = code.get("code").and_then(|c| c.as_str())
-                && LINT_NAMES_SET.contains(lint_name)
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) else {
+                continue;
+            };
+            if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") {
+                continue;
+            }
+            let Some(message) = msg.get("message") else {
+                continue;
+            };
+            let lint_name = message
+                .get("code")
+                .and_then(|code| code.get("code"))
+                .and_then(|code| code.as_str())
+                .filter(|name| LINT_NAMES_SET.contains(name));
+            let Some(lint_name) = lint_name else {
+                if cli.format == OutputFormat::Text
+                    && let Some(rendered) = message.get("rendered").and_then(|r| r.as_str())
+                {
+                    eprint!("{}", rendered);
+                    recorded_stdout.push_str(rendered);
+                }
+                continue;
+            };
+
             {
                 let mut file = String::new();
                 let mut span_obj = Span {
@@ -952,6 +1015,9 @@ fn main() {
                             eprint!("{}", rendered);
                             recorded_stdout.push_str(rendered);
                         }
+                        // Keep the finding so the run can close with the
+                        // per-lint summary the README documents.
+                        text_findings.push(finding);
                     }
                     OutputFormat::Json => {
                         if let Ok(json_str) = serde_json::to_string(&finding) {
@@ -981,6 +1047,26 @@ fn main() {
             let sarif_str = output_formatters::generate_sarif_report(&sarif_findings);
             print!("{}", sarif_str);
             recorded_stdout.push_str(&sarif_str);
+        }
+
+        // Close a *filtered* text run (`--diff-only` or a `.lintignore`) with
+        // the per-lint summary the README documents. A plain text run takes the
+        // raw-echo branch and deliberately stays byte-for-byte equal to cargo's
+        // own output (an invariant asserted by `cli_diff_only_text`), so it is
+        // not annotated here; this stream path — which already reconstructs the
+        // diagnostics — is where the summary belongs. `print_findings_summary`
+        // no-ops for the machine formats, and `--quiet` suppresses it entirely.
+        if cli.format == OutputFormat::Text && !quiet {
+            let mut buf = Vec::new();
+            output_formatters::print_findings_summary(
+                &OutputFormat::Text,
+                &text_findings,
+                &mut buf,
+            )
+            .ok();
+            let summary = String::from_utf8_lossy(&buf);
+            eprint!("{}", summary);
+            recorded_stdout.push_str(&summary);
         }
 
         let status = child.wait().expect("Failed to wait on cargo dylint");
@@ -1054,7 +1140,7 @@ fn main() {
 /// always reported on stderr as plain text, mirroring the other format-aware
 /// outputs.
 fn print_explanation(lint_name: &str, format: &OutputFormat) {
-    let normalized = lint_name.to_lowercase();
+    let normalized = config::normalize_lint_name(lint_name);
 
     let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
 
@@ -1147,7 +1233,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_ok());
         let flags = result.unwrap();
         assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
@@ -1158,7 +1244,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loops".to_string(), "deny".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown lint name"));
     }
@@ -1168,7 +1254,7 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
         let config = BudgetConfig { lints: Some(lints) };
-        let result = validate_and_build_flags(&config);
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown lint level"));
     }
@@ -1544,6 +1630,14 @@ mod tests {
     }
 
     #[test]
+    fn list_lints_rejects_sarif_and_github_formats() {
+        assert!(list_lints_format_error(&OutputFormat::Text).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Json).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Sarif).is_some());
+        assert!(list_lints_format_error(&OutputFormat::Github).is_some());
+    }
+
+    #[test]
     fn cli_parses_multiple_flags() {
         let cli = Cli::try_parse_from([
             "cargo-cost-lint",
@@ -1588,6 +1682,66 @@ mod tests {
             result.is_err(),
             "--quiet and --verbose should not be allowed together"
         );
+    }
+
+    // The three exit-early flags short-circuit `main()` independently, so
+    // combining them used to silently run only the first one. They are now
+    // declared mutually exclusive at parse time (issue #899).
+    fn assert_clap_conflict_error(args: &[&str]) {
+        let err = Cli::try_parse_from(args.iter().copied())
+            .expect_err("the combination should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "expected an argument-conflict error, got: {err}"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("cannot be used with"),
+            "conflict message should explain the conflict: {message}"
+        );
+        assert!(
+            message.contains("--list-lints")
+                || message.contains("--explain")
+                || message.contains("--clear-cache"),
+            "conflict message should name a conflicting flag: {message}"
+        );
+    }
+
+    #[test]
+    fn cli_list_lints_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "soroban_storage_in_loop",
+        ]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_list_lints_are_mutually_exclusive() {
+        assert_clap_conflict_error(&["cargo-cost-lint", "--clear-cache", "--list-lints"]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--clear-cache",
+            "--explain",
+            "redundant_env_clone",
+        ]);
+    }
+
+    #[test]
+    fn cli_all_three_exit_early_flags_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "redundant_env_clone",
+            "--clear-cache",
+        ]);
     }
 
     #[test]
@@ -2475,24 +2629,29 @@ mod tests {
     }
 
     #[test]
-    fn resolve_color_explicit_always_without_no_color() {
+    fn resolve_color_explicit_always_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Always);
     }
 
     #[test]
-    fn resolve_color_explicit_never_without_no_color() {
+    fn resolve_color_explicit_never_beats_no_color() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("NO_COLOR") };
-        if std::env::var("NO_COLOR").is_ok() {
-            return;
-        }
+        unsafe { std::env::set_var("NO_COLOR", "1") };
         let resolved = resolve_color_choice(&ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_auto_with_no_color_resolves_to_never() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
         assert_eq!(resolved, ColorChoice::Never);
     }
 

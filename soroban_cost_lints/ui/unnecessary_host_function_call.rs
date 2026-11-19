@@ -7,12 +7,25 @@ pub mod soroban_sdk {
         pub fn ledger(&self) -> ledger::Ledger {
             ledger::Ledger
         }
+        pub fn logs(&self) -> logs::Logs {
+            logs::Logs
+        }
     }
 
     pub mod ledger {
         pub struct Ledger;
         impl Ledger {
             pub fn sequence(&self) -> u32 { 0 }
+        }
+    }
+
+    pub mod logs {
+        // soroban_sdk::logs::Logs — pub struct with pub fn add in both
+        // pinned SDKs (26.1.1/28.0.0 logs.rs:92/:124); the log! macro
+        // expands to env.logs().add(...).
+        pub struct Logs;
+        impl Logs {
+            pub fn add(&self, _fmt: &str, _args: &[i32]) {}
         }
     }
 }
@@ -64,6 +77,19 @@ fn bad_host_call_multiple_times_in_loop(env: Env) {
         let _seq1 = env.ledger().sequence(); // Should Warn
         let _seq2 = env.ledger().sequence(); // Should Warn
     }
+}
+
+fn bad_logs_add_in_for_loop(env: Env) {
+    for _ in 0..10 {
+        // The explicit spelling of `soroban_sdk::log!(env, "progress")`,
+        // which expands to $env.logs().add($fmt, &[..]). A metered
+        // diagnostic host call on every iteration.
+        env.logs().add("progress", &[1, 2]); // Should Warn
+    }
+}
+
+fn good_logs_add_outside_loop(env: Env) {
+    env.logs().add("progress", &[1, 2]); // Good — called once before the loop
 }
 
 #[allow(unnecessary_host_function_call)]

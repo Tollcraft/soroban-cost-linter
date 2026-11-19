@@ -15,6 +15,10 @@ pub mod soroban_sdk {
             pub fn sequence(&self) -> u32 { 0 }
             pub fn timestamp(&self) -> u64 { 0 }
             pub fn network_id(&self) -> [u8; 32] { [0u8; 32] }
+            // soroban-sdk 26.1.1 ledger.rs:73 and 28.0.0 ledger.rs:73 expose
+            // this fifth invariant accessor; contract code uses it to clamp
+            // TTL extensions.
+            pub fn max_live_until_ledger(&self) -> u32 { 0 }
         }
     }
 }
@@ -54,11 +58,72 @@ fn bad_network_id_in_closure(env: Env) {
     });
 }
 
+fn bad_max_live_until_ledger_in_for_loop(env: Env, entries: [u32; 3]) {
+    for _e in entries.iter() {
+        let _m = env.ledger().max_live_until_ledger(); // Should Warn
+    }
+}
+
+fn bad_bound_ledger_max_live_until_ledger_in_loop(env: Env) {
+    let ledger = env.ledger();
+    for _ in 0..10 {
+        let _m = ledger.max_live_until_ledger(); // Should Warn - bound receiver in loop
+    }
+}
+
 fn bad_all_accessors_in_loop(env: Env) {
     for _ in 0..3 {
         let _seq = env.ledger().sequence(); // Should Warn
         let _ts = env.ledger().timestamp(); // Should Warn
         let _nid = env.ledger().network_id(); // Should Warn
+    }
+}
+
+// --- Triggering case: the receiver is a BOUND ledger context (#795) ---
+//
+// `is_ledger_receiver` used to require the receiver expression to be the
+// literal env.ledger() call, so a `let ledger = env.ledger();` binding fed
+// every accessor read in the loop without ever tripping the lint. The
+// binding hop is now resolved.
+
+fn bad_bound_ledger_timestamp_in_loop(env: Env) {
+    let ledger = env.ledger(); // binding, not a per-iteration call
+    for _ in 0..10 {
+        let _ts = ledger.timestamp(); // Should Warn - bound receiver in loop
+    }
+}
+
+fn bad_bound_ledger_sequence_in_loop(env: Env) {
+    let ledger = env.ledger();
+    for _ in 0..10 {
+        let _seq = ledger.sequence(); // Should Warn - second accessor, second diagnostic
+    }
+}
+
+// --- Non-triggering: a user type whose printed name merely CONTAINS `Env`.
+// The old substring test on the printed type made any local Environment/
+// EnvWrapper satisfy the Env check (#795); only soroban_sdk::Env does now.
+
+pub struct Environment;
+
+impl Environment {
+    pub fn ledger(&self) -> EnvironmentLedger {
+        EnvironmentLedger
+    }
+}
+
+pub struct EnvironmentLedger;
+
+impl EnvironmentLedger {
+    pub fn timestamp(&self) -> u64 {
+        0
+    }
+}
+
+fn good_environment_namesake_in_loop() {
+    let environment = Environment;
+    for _ in 0..10 {
+        let _ts = environment.ledger().timestamp(); // Good - not soroban_sdk::Env
     }
 }
 
@@ -74,6 +139,10 @@ fn good_timestamp_outside_loop(env: Env) {
 
 fn good_network_id_outside_loop(env: Env) {
     let _nid = env.ledger().network_id(); // Good — outside any loop
+}
+
+fn good_max_live_until_ledger_outside_loop(env: Env) {
+    let _m = env.ledger().max_live_until_ledger(); // Good — outside any loop
 }
 
 fn good_sequence_hoisted(env: Env) {

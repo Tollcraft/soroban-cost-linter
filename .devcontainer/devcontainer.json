@@ -1,6 +1,6 @@
 {
     "name": "soroban-cost-linter",
-    "image": "ghcr.io/tollcraft/soroban-cost-linter:latest",
+    "image": "ghcr.io/tollcraft/soroban-cost-linter-dev:latest",
     "customizations": {
         "vscode": {
             "extensions": [

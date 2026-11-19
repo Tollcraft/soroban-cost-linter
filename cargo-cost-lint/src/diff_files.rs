@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{LinterError, LinterResult};
@@ -96,22 +96,62 @@ fn get_diff_files(base: &str) -> LinterResult<Vec<String>> {
     Ok(files)
 }
 
-/// Whether `file` is one of the `changed` paths, comparing relative to `root`.
+/// Whether `file` is one of the `changed` paths, comparing repository-relative
+/// paths after normalising separators and resolving `..` segments.
 ///
 /// Shared by [`filter_files_by_changed`] and the per-finding `--diff-only`
 /// filter in `main.rs`, so a finding and a file are judged by the same rule.
+/// A basename match would make editing package A's `src/lib.rs` un-filter
+/// package B's findings in every other `src/lib.rs` of the workspace — the
+/// exact opposite of what `--diff-only` exists for (#794) — so only the full
+/// path is compared.
 pub fn is_file_changed(file: &str, changed: &[String], root: &Path) -> bool {
-    let path = Path::new(file);
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    let relative_str = relative.to_string_lossy();
+    let normalised = normalise_relative_path(file, root);
+    let changed_paths: Vec<String> = changed
+        .iter()
+        .map(|c| normalise_relative_path(c, root))
+        .collect();
+    changed_paths.contains(&normalised)
+}
 
-    changed.iter().any(|c| {
-        relative_str == c.as_str()
-            || Path::new(c)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| relative_str.ends_with(n))
-    })
+/// Reduces a path to a repository-relative, forward-slash-separated form with
+/// `.` and `..` segments resolved against `root`.
+fn normalise_relative_path(path: &str, root: &Path) -> String {
+    // Preserve a leading `/` so an absolute path can still be stripped of the
+    // root prefix below.
+    let absolute = path.starts_with('/');
+    let cleaned: PathBuf = path
+        .replace('\\', "/")
+        .split('/')
+        .filter(|seg| !seg.is_empty() && *seg != ".")
+        .collect();
+    // Restore the leading slash for absolute paths, strip the `root` prefix
+    // when the path is absolute or rooted at `root`, then resolve `..`
+    // segments within the remainder.
+    let cleaned = cleaned
+        .to_str()
+        .map(|c| {
+            if absolute {
+                format!("/{c}")
+            } else {
+                c.to_string()
+            }
+        })
+        .unwrap_or_default();
+    let cleaned = PathBuf::from(&cleaned);
+    let stripped = cleaned.strip_prefix(root).unwrap_or(&cleaned);
+    let mut segments: Vec<String> = Vec::new();
+    for seg in stripped.iter() {
+        match seg.to_str() {
+            Some("..") => {
+                segments.pop();
+            }
+            // A leading `..` on the remainder is dropped instead of turning
+            // into a traversal that would never match a changed file.
+            _ => segments.push(seg.to_string_lossy().into_owned()),
+        }
+    }
+    segments.join("/")
 }
 
 /// Filter a list of file paths to only those in the given `changed` set.
@@ -157,5 +197,50 @@ mod tests {
 
         let filtered = filter_files_by_changed(&files, &changed, &root);
         assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn workspace_same_basename_does_not_cross_match() {
+        // Two packages both own src/lib.rs: editing A's lib.rs must never
+        // un-filter B's findings (#794).
+        let root = PathBuf::from("/workspace");
+        let files = vec![
+            "package_a/src/lib.rs".to_string(),
+            "package_b/src/lib.rs".to_string(),
+        ];
+        let changed = vec!["package_a/src/lib.rs".to_string()];
+
+        let filtered = filter_files_by_changed(&files, &changed, &root);
+        assert_eq!(filtered, vec!["package_a/src/lib.rs".to_string()]);
+
+        // A change to the owning file does include the finding, with the
+        // absolute form normalised to the repository-relative one.
+        assert!(is_file_changed(
+            "/workspace/package_b/src/lib.rs",
+            &changed_path_b(),
+            &PathBuf::from("/workspace")
+        ));
+    }
+
+    fn changed_path_b() -> Vec<String> {
+        vec!["package_b/src/lib.rs".to_string()]
+    }
+
+    #[test]
+    fn dotdot_and_backslash_segments_normalise() {
+        let root = PathBuf::from("/workspace");
+        let changed = vec!["package_b/src/lib.rs".to_string()];
+
+        // Intra-path `..` is resolved against the remainder.
+        assert!(is_file_changed(
+            "package_b/../package_b/src/lib.rs",
+            &changed,
+            &root
+        ));
+        // Windows separators.
+        assert!(is_file_changed(r"package_b\src\lib.rs", &changed, &root));
+        // A leading `..` is dropped (see the helper's comment), so it cannot
+        // accidentally cross-match another package's finding.
+        assert!(!is_file_changed(r"package_c/src/lib.rs", &changed, &root));
     }
 }

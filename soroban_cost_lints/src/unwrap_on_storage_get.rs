@@ -8,7 +8,7 @@
 //! turns the same read into a recoverable error path.
 //!
 //! The pass is deliberately narrow — it reports *only* a panic-on-`None` that
-//! is written directly on a `get` call. See [`UnwrapOnStorageGet::check_expr`]
+//! is written directly on a `get` or `try_get` call. See [`UnwrapOnStorageGet::check_expr`]
 //! for the exact scope and the deliberately excluded shapes.
 
 use clippy_utils::diagnostics::span_lint_and_help;
@@ -26,8 +26,9 @@ declare_lint_pass!(UnwrapOnStorageGet => [UNWRAP_ON_STORAGE_GET]);
 /// consumed unconditionally either way.
 const PANICKING_METHODS: &[&str] = &["unwrap", "expect"];
 
-/// The accessor method whose `Option` result must not be unwrapped.
-const STORAGE_READ_METHOD: &str = "get";
+/// The accessor methods whose `Option` result must not be unwrapped. `try_get`
+/// is the same metered read as `get`, so unwrapping it is the same trap.
+const STORAGE_READ_METHODS: &[&str] = &["get", "try_get"];
 
 /// Message reported for a panic-on-`None` over a storage read.
 const UNWRAP_ON_STORAGE_GET_MSG: &str =
@@ -41,7 +42,7 @@ const UNWRAP_ON_STORAGE_GET_HELP: &str = "handle the None case explicitly with \
 
 /// Late pass backing [`UNWRAP_ON_STORAGE_GET`].
 impl<'tcx> LateLintPass<'tcx> for UnwrapOnStorageGet {
-    /// Flags `.unwrap()` / `.expect()` whose receiver is a `get` call on one
+    /// Flags `.unwrap()` / `.expect()` whose receiver is a `get`/`try_get` call on one
     /// of [`SOROBAN_STORAGE_TYPES`] (`Storage`, `Instance`, `Persistent`,
     /// `Temporary`).
     ///
@@ -111,7 +112,7 @@ fn is_storage_read_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx Expr<'
         return false;
     };
 
-    get_segment.ident.name.as_str() == STORAGE_READ_METHOD
+    STORAGE_READ_METHODS.contains(&get_segment.ident.name.as_str())
         && is_type_match(
             cx,
             cx.typeck_results().expr_ty(storage_receiver),
@@ -121,7 +122,7 @@ fn is_storage_read_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx Expr<'
 
 #[cfg(test)]
 mod tests {
-    use super::{PANICKING_METHODS, STORAGE_READ_METHOD};
+    use super::{PANICKING_METHODS, STORAGE_READ_METHODS};
 
     /// The lint keys off method *names*, so a name that is accidentally added
     /// to the panic list would start flagging unrelated code. These assertions
@@ -132,7 +133,13 @@ mod tests {
     }
 
     #[test]
-    fn storage_read_method_is_get() {
-        assert_eq!(STORAGE_READ_METHOD, "get");
+    fn storage_read_methods_are_get_and_try_get() {
+        assert_eq!(STORAGE_READ_METHODS, ["get", "try_get"]);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn ui_try_get() {
+        dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui_try_get");
     }
 }

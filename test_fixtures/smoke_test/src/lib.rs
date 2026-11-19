@@ -70,6 +70,17 @@ pub fn bad_storage_in_loop_multiple_keys(env: Env) {
     }
 }
 
+/// Demonstrates suppression of `soroban_storage_in_loop` via attribute.
+///
+/// Used to verify whether source-level `#[allow]` attributes take precedence
+/// over `budget.toml` configuration pinning the lint to `deny`.
+#[allow(soroban_storage_in_loop)]
+pub fn allowed_storage_in_loop(env: Env) {
+    for _ in 0..10 {
+        env.storage().instance().set(&5u32, &1i32);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

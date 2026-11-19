@@ -1,48 +1,54 @@
 # `instance_storage_write_in_loop`
 
+**Default Severity:** `warn`
+
+**Target Resource:** [Storage — ledger entry accesses and ledger I/O bytes](../cost_rationale.md#per-lint-resource-summary)
+
 ## What it does
 
-Flags `.instance().set(...)` calls that sit inside a loop body. Instance storage is a single ledger entry holding the contract's entire instance map. Writing to it does not update one field — it serialises and writes the whole entry. Doing that inside a loop rewrites the full instance state on every iteration, so a loop updating ten counters pays ten full instance-entry writes where one write after the loop would do.
+Detects `set`, `put` and `update` calls on the **instance** storage tier that
+run inside a loop or inside a closure the loop drives (`for_each`, `map`,
+`fold`). Reads (`get`, `has`) and writes to the `Persistent` and `Temporary`
+tiers are left to their own lints.
 
 ## Why is this bad?
 
-Soroban meters execution against a CPU and memory budget. Instance storage serialises and rewrites the entire instance map on every `set` call. When this happens inside a loop, each iteration pays the full serialisation and write cost for the complete map — not just the changed field. A loop that updates N fields pays N full instance-entry writes. Accumulating changes in local variables and writing once after the loop reduces this to one write.
+{% hint style="danger" %}
+Instance storage travels with the contract instance: it is loaded on every
+invocation and every write is paid for again by whoever reads the instance
+next. Writing it once per iteration multiplies the ledger write cost by the
+trip count while only the last write is visible afterwards. See the
+[Cost Rationale — Storage](../cost_rationale.md#3-storage-ledger-entry-accesses-and-ledger-io)
+for details.
+{% endhint %}
 
 ## Example
 
 ```rust
-// BAD: rewrites the full instance map on every iteration
+// ❌ Bad: one instance write per iteration
 for i in 0..10 {
-    let existing: Option<u32> = env.storage().instance().get(&i);
-    env.storage().instance().set(&i, &(existing.unwrap_or(0) + 1));
+    env.storage().instance().set(&i, &i);
 }
 
-// GOOD: accumulate in a local, write once after the loop
-let mut updates = std::vec::Vec::new();
+// ✅ Good: accumulate in memory, write the instance entry once
+let mut total = 0;
 for i in 0..10 {
-    let existing: Option<u32> = env.storage().instance().get(&i);
-    updates.push((i, existing.unwrap_or(0) + 1));
+    total += i;
 }
-for (i, val) in updates {
-    env.storage().instance().set(&i, &val);
-}
+env.storage().instance().set(&"total", &total);
 ```
 
-## Interaction with `soroban_storage_in_loop`
+## Suggested Fix
 
-Both `soroban_storage_in_loop` and `instance_storage_write_in_loop` will fire on the same expression when instance storage is written inside a loop. The former gives general "storage in a loop" advice; the latter gives the specific accumulate-then-write advice that applies because instance storage rewrites the full entry.
+Accumulate the mutations in memory during the loop and write the instance
+entry once after it. If every iteration genuinely needs a distinct instance
+entry, the data is not instance-sized — consider persistent storage or a
+batched `Map` under a single key.
 
-## Known false positives
+## Relationship to `soroban_storage_in_loop`
 
-See [Handling False Positives](../false_positives.md#instance_storage_write_in_loop).
-
-## Suppression
-
-```rust
-#[allow(instance_storage_write_in_loop)]
-fn batch_update(env: Env) {
-    for i in 0..10 {
-        env.storage().instance().set(&i, &1);
-    }
-}
-```
+`soroban_storage_in_loop` denies storage operations in loops generally and is
+registered first, so with both lints at their defaults the general diagnostic
+is emitted first. This lint adds the instance-tier specific message and the
+closure shapes; fixtures that want each diagnostic attributable to this lint
+allow `soroban_storage_in_loop` in their header.

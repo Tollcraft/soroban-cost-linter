@@ -1,8 +1,15 @@
 # `excessive_vec_capacity`
 
-**Default Severity:** `warn`
+| Default Severity | Category |
+| ---------------- | -------- |
+| `warn`           | Memory   |
 
 **Target Resource:** [Memory](../cost_rationale.md#2-memory-ram)
+
+The threshold is the named constant `EXCESSIVE_VEC_CAPACITY_THRESHOLD` in
+`soroban_cost_lints/src/excessive_vec_capacity.rs`, currently **4 096**
+elements. A literal capacity is reported only when it is strictly above it;
+the exact-threshold case is silent.
 
 ## What it does
 
@@ -19,7 +26,7 @@ collection will actually hold wastes host memory and inflates the
 metered cost of the allocation without providing a meaningful
 performance benefit for typical Soroban workloads.
 
-A capacity of 4 096 elements (roughly 16 KB for4-byte values) is
+A capacity of 4 096 elements (roughly 16 KB for 4-byte values) is
 generous for known-bound workloads while remaining well within the
 per-transaction memory cap. Values above this threshold are almost
 certainly over-estimated and should be revisited.

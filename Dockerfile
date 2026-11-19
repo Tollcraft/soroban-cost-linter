@@ -50,7 +50,7 @@ RUN NIGHTLY=$(sed -n 's/^channel = "\(nightly-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)
         sh -s -- -y --default-toolchain "${NIGHTLY}" --profile minimal && \
     . "$HOME/.cargo/env" && \
     rustup component add rustc-dev llvm-tools-preview rustfmt clippy && \
-    cargo install cargo-dylint dylint-link --version "^6.0.1" --locked && \
+    cargo install cargo-dylint dylint-link --version "=6.3.0" --locked && \
     # ── reduce image size ────────────────────────────────────────────────
     rm -rf ${HOME}/.cargo/registry/cache \
            ${HOME}/.cargo/registry/src \

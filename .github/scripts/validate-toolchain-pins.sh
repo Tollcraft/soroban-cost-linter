@@ -44,14 +44,30 @@ check_nightly_in_file() {
   fi
 }
 
-check_nightly_in_file ".github/workflows/lint.yml"
-check_nightly_in_file ".github/workflows/publish.yml"
 check_nightly_in_file "action.yml"
 check_nightly_in_file "docs/integration.md"
 check_nightly_in_file "templates/github-action.yml"
 check_nightly_in_file "CONTRIBUTING.md"
 check_nightly_in_file "README.md"
 check_nightly_in_file "docs/windows_setup.md"
+check_nightly_in_file "docs/troubleshooting.md"
+
+# ---- Workflow files must derive the nightly, never hardcode it ----
+# GITHUB_TOKEN cannot create or update files under .github/workflows/, so the
+# Nightly Bump bot must never need to touch these. They read the channel from
+# rust-toolchain at run time; a hardcoded date here makes every bump push fail.
+for workflow in ".github/workflows/lint.yml" ".github/workflows/publish.yml"; do
+  hardcoded=$(grep -oE 'nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}' "$workflow" | sort -u || true)
+  if [ -n "$hardcoded" ]; then
+    echo "::error file=$workflow::${workflow} hardcodes '${hardcoded}'. Read the channel from rust-toolchain instead; GITHUB_TOKEN cannot update workflow files, so a hardcoded pin breaks the Nightly Bump."
+    FAILED=1
+  elif ! grep -q 'steps\.toolchain\.outputs\.channel' "$workflow"; then
+    echo "::error file=$workflow::${workflow} does not use steps.toolchain.outputs.channel for its toolchain."
+    FAILED=1
+  else
+    echo "OK: ${workflow} derives its toolchain from rust-toolchain"
+  fi
+done
 
 # ---- Check clippy_utils git rev matches the nightly date ----
 CLIPPY_REV=$(sed -n 's/.*rev = "\([a-f0-9]\{40\}\)".*/\1/p' soroban_cost_lints/Cargo.toml)

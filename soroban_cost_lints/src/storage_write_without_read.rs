@@ -21,7 +21,6 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
-use std::collections::HashSet;
 
 use crate::{SOROBAN_STORAGE_TYPES, STORAGE_WRITE_WITHOUT_READ, matches_any_path, ty_adt_def};
 
@@ -67,8 +66,8 @@ fn access_pair<'tcx>(
     args: &'tcx [hir::Expr<'tcx>],
 ) -> Option<(String, String)> {
     let key = args.first()?;
-    let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_default();
-    let key_snippet = snippet_opt(cx, key.span).unwrap_or_default();
+    let receiver_snippet = snippet_opt(cx, receiver.span)?;
+    let key_snippet = snippet_opt(cx, key.span)?;
     Some((receiver_snippet, key_snippet))
 }
 

@@ -23,5 +23,30 @@ LL |         let key = Symbol::new(&env, "fixed_key"); // Should Warn — same k
    |
    = help: hoist the key construction outside the loop to avoid repeated host allocations
 
-warning: 3 warnings emitted
+warning: storage key `my_key` is constructed in more than one function body
+  --> $DIR/storage_key_construction_in_loop.rs:58:19
+   |
+LL |         let key = Symbol::new(&env, "my_key"); // Should Warn — same key every iteration
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+   = note: `#[warn(duplicate_storage_key_construction)]` on by default
+
+warning: storage key `my_key` is constructed in more than one function body
+  --> $DIR/storage_key_construction_in_loop.rs:94:15
+   |
+LL |     let key = Symbol::new(&env, "my_key"); // Good — constructed once outside loop
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: storage key `my_key` is constructed in more than one function body
+  --> $DIR/storage_key_construction_in_loop.rs:105:19
+   |
+LL |         let key = Symbol::new(&env, "my_key"); // Good (allowed)
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: construct the key once — as a named constant or in a single accessor — so every storage access shares one construction instead of paying the symbol-construction host call again
+
+warning: 6 warnings emitted
 

@@ -1,0 +1,11 @@
+[package]
+name = "flag_fixture_workspace"
+version = "0.0.0"
+edition = "2021"
+
+# Its own workspace root, so config and `.lintignore` discovery never walks up
+# into the linter's repository from the temporary copy the tests create.
+[workspace]
+
+[lib]
+path = "src/lib.rs"

@@ -31,5 +31,29 @@ LL |     let env = env.clone(); //~ WARNING redundant clone on Env object
    |
    = help: pass Env by reference or value instead of cloning
 
-warning: 4 warnings emitted
+warning: redundant clone on Env object
+  --> $DIR/redundant_env_clone.rs:80:19
+   |
+LL |     let _cloned = Env::clone(&env); //~ WARNING redundant clone on Env object
+   |                   ^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: redundant clone on Env object
+  --> $DIR/redundant_env_clone.rs:85:19
+   |
+LL |     let _cloned = Clone::clone(&env); //~ WARNING redundant clone on Env object
+   |                   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: redundant clone on Env object
+  --> $DIR/redundant_env_clone.rs:91:19
+   |
+LL |     let _cloned = s.env.clone(); //~ WARNING redundant clone on Env object
+   |                   ^^^^^^^^^^^^^
+   |
+   = help: pass Env by reference or value instead of cloning
+
+warning: 7 warnings emitted
 

@@ -1,6 +1,6 @@
 # `soroban_storage_in_loop`
 
-**Default Severity:** `warn`
+**Default Severity:** `deny`
 
 **Target Resource:** [Storage — ledger entry accesses and ledger I/O bytes](../cost_rationale.md#per-lint-resource-summary)
 
@@ -16,7 +16,7 @@ Storage operations are the **single most expensive resource** Soroban charges fo
 
 ## Example
 
-### Writes (`set`)
+### Writes (`set`, `update`, `try_update`, `remove`)
 
 ```rust
 // ❌ Bad: one storage write per iteration
@@ -50,7 +50,7 @@ cargo test bench_storage_in_loop_vs_batch -- --nocapture
 ## Suggested Fix
 
 {% hint style="success" %}
-**For writes** (`env.storage().*.set(&k, &v)`), accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, then perform a single storage write outside of the loop.
+**For writes** (`env.storage().*.set(&k, &v)` and the mutating accessors `update`, `try_update`, `remove`), accumulate mutations in memory (using a `Vec` or `Map`) during the loop execution, then perform a single storage write outside of the loop.
 {% endhint %}
 
 ### Reads (`get`, `has`)
@@ -68,7 +68,7 @@ for _ in 0..10 {
 {% endhint %}
 
 ## Known False Positives (Patterns Deliberately Flagged)
-This lint uses an AST-based analysis and does not follow control flow across function boundaries. Therefore, it will report warnings for the following patterns that might be safe or unavoidable, which are treated as baselined false positives:
+This lint uses an AST-based analysis and does not follow control flow across function boundaries. Therefore, it will report findings for the following patterns that might be safe or unavoidable, which are treated as baselined false positives:
 - Storage reads keyed by loop variables that cannot be pre-fetched or batched natively.
 - Storage writes nested deeply inside iterations where accumulating in memory would hit limits earlier.
 If you hit an edge case where it is cheaper to write iteratively than to allocate a large host `Vec`, you can safely `#[allow(soroban_cost_lints::soroban_storage_in_loop)]`.

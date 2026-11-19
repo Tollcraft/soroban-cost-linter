@@ -12,6 +12,7 @@ extern crate rustc_span;
 use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
 use clippy_utils::macros::{FormatArgsStorage, is_panic, root_macro_call_first_node};
+use clippy_utils::res::MaybeDef;
 use clippy_utils::res::MaybeResPath;
 use clippy_utils::source::snippet_opt;
 use clippy_utils::ty::peel_and_count_ty_refs;
@@ -21,28 +22,43 @@ use clippy_utils::{get_parent_expr, is_in_test};
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
+use rustc_hir::def::DefKind;
 use rustc_hir::intravisit::{self, FnKind, Visitor};
 use rustc_hir::{HirId, HirIdSet};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintStore};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DesugaringKind;
 use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::sym;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod blind_storage_write;
+mod bytes_slice_copy_in_loop;
+mod collection_len_in_loop_condition;
+mod cross_contract_result_discarded;
 mod discarded_storage_read;
+mod duplicate_storage_key_construction;
+mod excessive_vec_capacity;
+mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
+mod nested_loop_storage_access;
 mod option_wrapping_in_storage;
+mod persistent_storage_for_ephemeral_data;
+mod redundant_address_clone;
 mod redundant_require_auth;
+mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
+mod storage_read_modify_write;
 mod storage_write_without_read;
 mod string_concat_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
+mod val_conversion_chain;
 
 dylint_linting::dylint_library!();
 
@@ -71,6 +87,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         SOROBAN_REDUNDANT_STORAGE_READ,
+        STORAGE_READ_MODIFY_WRITE,
         STORAGE_WRITE_WITHOUT_READ,
         DISCARDED_STORAGE_READ,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
@@ -80,7 +97,6 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BYTES_APPEND_IN_LOOP,
         UNBOUNDED_INPUT_LOOP,
         UNNECESSARY_STRING_TO_BYTES,
-        UNNECESSARY_HOST_FUNCTION_CALL_LEGACY,
         MAP_INSERT_IN_LOOP,
         INEFFICIENT_BYTES_CONCAT,
         CONTRACT_CALL_IN_LOOP,
@@ -89,21 +105,27 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         LINEAR_SCAN_IN_LOOP,
         REQUIRE_AUTH_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
-        SYMBOL_KEY_BOUNDARY,
-        SYMBOL_KEY_ENUM_STORAGE,
-        SYMBOL_KEY_EVENT_TOPICS,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         UNBOUNDED_RECURSION,
         UNWRAP_ON_STORAGE_GET,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        VAL_CONVERSION_CHAIN,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
-        U128_WHERE_U64_SUFFICES,
-        FLOAT_ARITHMETIC_IN_CONTRACT,
         DUPLICATE_STORAGE_KEY_CONSTRUCTION,
         OPTION_WRAPPING_IN_STORAGE,
         LEDGER_CONTEXT_READ_IN_LOOP,
         REDUNDANT_REQUIRE_AUTH,
         LARGE_CONSTANT_ARRAY,
+        COLLECTION_LEN_IN_LOOP_CONDITION,
+        CROSS_CONTRACT_RESULT_DISCARDED,
+        REDUNDANT_VAL_CONVERSION,
+        INSTANCE_STORAGE_WRITE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
+        PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        REDUNDANT_ADDRESS_CLONE,
+        BLIND_STORAGE_WRITE,
+        BYTES_SLICE_COPY_IN_LOOP,
+        EXCESSIVE_VEC_CAPACITY,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -111,6 +133,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(soroban_redundant_storage_read::SorobanRedundantStorageRead)
     });
+    lint_store.register_late_pass(|_| Box::new(storage_read_modify_write::StorageReadModifyWrite));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
@@ -132,6 +155,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(CryptoHashOfConstant));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+    lint_store.register_late_pass(|_| Box::new(val_conversion_chain::ValConversionChain));
     lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
     lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
     lint_store.register_late_pass(|_| Box::new(require_auth_in_loop::RequireAuthInLoop));
@@ -162,9 +186,31 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(ledger_context_read_in_loop::LedgerContextReadInLoop));
     lint_store
         .register_late_pass(|_| Box::new(option_wrapping_in_storage::OptionWrappingInStorage));
+    lint_store.register_late_pass(|_| {
+        Box::new(duplicate_storage_key_construction::DuplicateStorageKeyConstruction::default())
+    });
     lint_store.register_late_pass(|_| Box::new(redundant_require_auth::RedundantRequireAuth));
     lint_store.register_late_pass(|_| Box::new(unbounded_input_loop::UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(large_constant_array::LargeConstantArray));
+    lint_store.register_late_pass(|_| {
+        Box::new(collection_len_in_loop_condition::CollectionLenInLoopCondition)
+    });
+    lint_store.register_late_pass(|_| {
+        Box::new(cross_contract_result_discarded::CrossContractResultDiscarded)
+    });
+    lint_store.register_late_pass(|_| Box::new(redundant_val_conversion::RedundantValConversion));
+    lint_store.register_late_pass(|_| {
+        Box::new(instance_storage_write_in_loop::InstanceStorageWriteInLoop)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(nested_loop_storage_access::NestedLoopStorageAccess));
+    lint_store.register_late_pass(|_| {
+        Box::new(persistent_storage_for_ephemeral_data::PersistentStorageForEphemeralData)
+    });
+    lint_store.register_late_pass(|_| Box::new(redundant_address_clone::RedundantAddressClone));
+    lint_store.register_late_pass(|_| Box::new(blind_storage_write::BlindStorageWrite));
+    lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
+    lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -214,6 +260,12 @@ rustc_session::declare_lint! {
     pub SOROBAN_REDUNDANT_STORAGE_READ,
     Warn,
     "multiple sequential reads of the same storage key without modification"
+}
+
+rustc_session::declare_lint! {
+    pub STORAGE_READ_MODIFY_WRITE,
+    Warn,
+    "performs two or more read-modify-write cycles on the same storage key"
 }
 
 rustc_session::declare_lint! {
@@ -271,15 +323,27 @@ rustc_session::declare_lint! {
 }
 
 rustc_session::declare_lint! {
-    pub UNNECESSARY_HOST_FUNCTION_CALL_LEGACY,
-    Warn,
-    "legacy unnecessary host function call"
-}
-
-rustc_session::declare_lint! {
     pub MAP_INSERT_IN_LOOP,
     Warn,
     "Map::insert called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub BLIND_STORAGE_WRITE,
+    Warn,
+    "blind storage write overwrites a previously written key without reading it back"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_SLICE_COPY_IN_LOOP,
+    Warn,
+    "repeatedly copying a sub-slice of `Bytes` inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub EXCESSIVE_VEC_CAPACITY,
+    Warn,
+    "excessive pre-allocation capacity in Soroban Vec"
 }
 
 rustc_session::declare_lint! {
@@ -325,24 +389,6 @@ rustc_session::declare_lint! {
 }
 
 rustc_session::declare_lint! {
-    pub SYMBOL_KEY_BOUNDARY,
-    Warn,
-    "symbol key boundary"
-}
-
-rustc_session::declare_lint! {
-    pub SYMBOL_KEY_ENUM_STORAGE,
-    Warn,
-    "symbol key enum storage"
-}
-
-rustc_session::declare_lint! {
-    pub SYMBOL_KEY_EVENT_TOPICS,
-    Warn,
-    "symbol key event topics"
-}
-
-rustc_session::declare_lint! {
     pub SYMBOL_NEW_FOR_SHORT_LITERAL,
     Warn,
     "Symbol::new used with a short literal that could use symbol_short! macro"
@@ -367,21 +413,15 @@ rustc_session::declare_lint! {
 }
 
 rustc_session::declare_lint! {
+    pub VAL_CONVERSION_CHAIN,
+    Warn,
+    "a value shuttled through `Val` three or more times across a binding chain"
+}
+
+rustc_session::declare_lint! {
     pub SOROBAN_INEFFICIENT_BYTES_CONCAT,
     Warn,
     "inefficient Bytes concatenation inside a loop"
-}
-
-rustc_session::declare_lint! {
-    pub U128_WHERE_U64_SUFFICES,
-    Warn,
-    "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32"
-}
-
-rustc_session::declare_lint! {
-    pub FLOAT_ARITHMETIC_IN_CONTRACT,
-    Warn,
-    "performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred"
 }
 
 rustc_session::declare_lint! {
@@ -412,6 +452,56 @@ rustc_session::declare_lint! {
     pub LARGE_CONSTANT_ARRAY,
     Warn,
     "embedding a large constant array in contract code"
+}
+
+rustc_session::declare_lint! {
+    pub COLLECTION_LEN_IN_LOOP_CONDITION,
+    Warn,
+    "collection len() called in a loop condition without mutation"
+}
+
+rustc_session::declare_lint! {
+    pub CROSS_CONTRACT_RESULT_DISCARDED,
+    Warn,
+    "cross-contract call result discarded"
+}
+
+// A `Val`-boundary conversion that lands on a type it started from — either a
+// straight `T -> T` no-op or a `T -> Val -> T` round trip inside one expression
+// — pays metered host calls to hand back the value it was given. Three or more
+// hops belong to `VAL_CONVERSION_CHAIN`; this lint owns the one- and two-hop
+// cases.
+rustc_session::declare_lint! {
+    pub REDUNDANT_VAL_CONVERSION,
+    Warn,
+    "a value converted into the type it already has, or bounced through `Val` and back in one expression"
+}
+
+rustc_session::declare_lint! {
+    pub INSTANCE_STORAGE_WRITE_IN_LOOP,
+    Warn,
+    "instance storage written inside a loop"
+}
+
+// A storage access two loops deep costs O(n*m) host calls. That is a different
+// order of magnitude from the single-loop case `soroban_storage_in_loop`
+// reports, so this lint is an error rather than a warning.
+rustc_session::declare_lint! {
+    pub NESTED_LOOP_STORAGE_ACCESS,
+    Deny,
+    "storage operation inside a nested loop — cost is O(n·m)"
+}
+
+rustc_session::declare_lint! {
+    pub PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+    Warn,
+    "persistent storage write is removed on every path through the function"
+}
+
+rustc_session::declare_lint! {
+    pub REDUNDANT_ADDRESS_CLONE,
+    Warn,
+    "redundant clone on Address object"
 }
 
 pub struct SorobanCostLints;
@@ -488,16 +578,16 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Host function calls cross the Wasm boundary and consume CPU.",
     },
     LintMeta {
-        name: "unnecessary_host_function_call_legacy",
-        category: LintCategory::Host,
-        description: "legacy unnecessary host function call",
-        rationale: "Retained so existing allow/deny configuration keeps working; the host call is still charged on every invocation.",
-    },
-    LintMeta {
         name: "soroban_redundant_storage_read",
         category: LintCategory::Storage,
         description: "multiple sequential reads of the same storage key without modification",
         rationale: "Repeatedly reading the same storage entry without intervening writes wastes ledger IO and CPU.",
+    },
+    LintMeta {
+        name: "storage_read_modify_write",
+        category: LintCategory::Storage,
+        description: "performs two or more read-modify-write cycles on the same storage key",
+        rationale: "A second full read-modify-write cycle on one key pays two metered storage operations for a value that never left the host; read once, accumulate, write once.",
     },
     LintMeta {
         name: "storage_write_without_read",
@@ -602,24 +692,6 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Signature verifications are computationally heavy.",
     },
     LintMeta {
-        name: "symbol_key_boundary",
-        category: LintCategory::Storage,
-        description: "symbol key boundary",
-        rationale: "Ensure symbol keys respect length limits and conventions.",
-    },
-    LintMeta {
-        name: "symbol_key_enum_storage",
-        category: LintCategory::Storage,
-        description: "symbol key enum storage",
-        rationale: "Optimizes enum storage keys.",
-    },
-    LintMeta {
-        name: "symbol_key_event_topics",
-        category: LintCategory::Host,
-        description: "symbol key event topics",
-        rationale: "Optimizes event topic symbol keys.",
-    },
-    LintMeta {
         name: "symbol_new_for_short_literal",
         category: LintCategory::Compute,
         description: "Symbol::new used with a short literal that could use symbol_short! macro",
@@ -644,22 +716,16 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Slices avoid unnecessary heap allocations.",
     },
     LintMeta {
+        name: "val_conversion_chain",
+        category: LintCategory::Compute,
+        description: "a value shuttled through `Val` three or more times across a binding chain",
+        rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a chain of hops moves one value across the boundary repeatedly where a direct conversion would cross it once.",
+    },
+    LintMeta {
         name: "soroban_inefficient_bytes_concat",
         category: LintCategory::Memory,
         description: "inefficient Bytes concatenation inside a loop",
         rationale: "Inefficient bytes concatenation in Soroban environment.",
-    },
-    LintMeta {
-        name: "u128_where_u64_suffices",
-        category: LintCategory::Compute,
-        description: "uses 128-bit arithmetic where 64 bits would suffice, which is extremely expensive on wasm32",
-        rationale: "wasm32 lacks native 128-bit integer instructions; emulating them is very slow.",
-    },
-    LintMeta {
-        name: "float_arithmetic_in_contract",
-        category: LintCategory::Compute,
-        description: "performs floating-point arithmetic in contract code where fixed-point integer arithmetic is preferred",
-        rationale: "wasm32 has no hardware floating point; every f32/f64 operation compiles to a soft-float routine costing tens to hundreds of wasm instructions. Floats are also non-deterministic across rounding paths.",
     },
     LintMeta {
         name: "duplicate_storage_key_construction",
@@ -685,6 +751,66 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "embedding a large constant array in contract code",
         rationale: "Embedding large constant arrays in the contract code increases Wasm binary size, which drives up deployment costs and loads. Consider using host-managed Bytes or storing large data in persistent storage.",
     },
+    LintMeta {
+        name: "collection_len_in_loop_condition",
+        category: LintCategory::Compute,
+        description: "collection len() called in a loop condition without mutation",
+        rationale: "len() on a Soroban Vec or Map is a host call; re-evaluating it in a while condition pays that host call on every iteration for a length that cannot change when the loop never mutates the collection.",
+    },
+    LintMeta {
+        name: "cross_contract_result_discarded",
+        category: LintCategory::Compute,
+        description: "cross-contract call result discarded",
+        rationale: "A cross-contract invocation pays host dispatch, a fresh VM context for the callee and conversion of the return value across the boundary; discarding that value pays the full cost for an answer that is thrown away.",
+    },
+    LintMeta {
+        name: "redundant_val_conversion",
+        category: LintCategory::Compute,
+        description: "a value converted into the type it already has, or bounced through `Val` and back in one expression",
+        rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a conversion to the same type, or a `T -> Val -> T` round trip in one expression, pays those crossings to hand back the value it started with.",
+    },
+    LintMeta {
+        name: "instance_storage_write_in_loop",
+        category: LintCategory::Storage,
+        description: "instance storage written inside a loop",
+        rationale: "Instance storage travels with the contract instance and every write is paid for again by the next reader; writing it once per iteration multiplies the ledger write cost by the trip count for a value only its last write makes visible.",
+    },
+    LintMeta {
+        name: "nested_loop_storage_access",
+        category: LintCategory::Storage,
+        description: "storage operation inside a nested loop — cost is O(n·m)",
+        rationale: "A storage access two loops deep costs the product of both trip counts in metered host calls, so its cost is multiplicative rather than linear and almost never intentional.",
+    },
+    LintMeta {
+        name: "persistent_storage_for_ephemeral_data",
+        category: LintCategory::Storage,
+        description: "persistent storage write is removed on every path through the function",
+        rationale: "A persistent entry that is written and removed again before the call returns never outlives the invocation; temporary storage serves the same call without paying the archival write and the rent that keeps the entry alive.",
+    },
+    LintMeta {
+        name: "redundant_address_clone",
+        category: LintCategory::Host,
+        description: "redundant clone on Address object",
+        rationale: "Address is a host-object handle, and cloning it crosses the host boundary; when the original is never read again the copy buys nothing.",
+    },
+    LintMeta {
+        name: "blind_storage_write",
+        category: LintCategory::Storage,
+        description: "blind storage write overwrites a previously written key without reading it back",
+        rationale: "A second write to a key the function already wrote, with no read in between, discards the first store; the contract pays two metered writes for one surviving value, which usually means dead work or a missing read.",
+    },
+    LintMeta {
+        name: "bytes_slice_copy_in_loop",
+        category: LintCategory::Memory,
+        description: "repeatedly copying a sub-slice of `Bytes` inside a loop",
+        rationale: "Bytes::slice and the copy-range methods allocate and copy through a metered host call; doing that per iteration turns a linear traversal of the payload into O(n^2) bytes of host traffic.",
+    },
+    LintMeta {
+        name: "excessive_vec_capacity",
+        category: LintCategory::Memory,
+        description: "excessive pre-allocation capacity in Soroban Vec",
+        rationale: "Pre-allocating host-side Vec capacity far beyond what the contract can fill is billed at allocation time; starting empty and growing on demand keeps the metered footprint proportional to the data actually stored.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -697,6 +823,7 @@ dylint_lint_impl! {
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         SOROBAN_REDUNDANT_STORAGE_READ,
+        STORAGE_READ_MODIFY_WRITE,
         STORAGE_WRITE_WITHOUT_READ,
         DISCARDED_STORAGE_READ,
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
@@ -706,7 +833,6 @@ dylint_lint_impl! {
         BYTES_APPEND_IN_LOOP,
         UNBOUNDED_INPUT_LOOP,
         UNNECESSARY_STRING_TO_BYTES,
-        UNNECESSARY_HOST_FUNCTION_CALL_LEGACY,
         MAP_INSERT_IN_LOOP,
         INEFFICIENT_BYTES_CONCAT,
         CONTRACT_CALL_IN_LOOP,
@@ -715,21 +841,27 @@ dylint_lint_impl! {
         LINEAR_SCAN_IN_LOOP,
         REQUIRE_AUTH_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
-        SYMBOL_KEY_BOUNDARY,
-        SYMBOL_KEY_ENUM_STORAGE,
-        SYMBOL_KEY_EVENT_TOPICS,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
         UNBOUNDED_RECURSION,
         UNWRAP_ON_STORAGE_GET,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        VAL_CONVERSION_CHAIN,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
-        U128_WHERE_U64_SUFFICES,
-        FLOAT_ARITHMETIC_IN_CONTRACT,
         DUPLICATE_STORAGE_KEY_CONSTRUCTION,
         OPTION_WRAPPING_IN_STORAGE,
         LEDGER_CONTEXT_READ_IN_LOOP,
         REDUNDANT_REQUIRE_AUTH,
         LARGE_CONSTANT_ARRAY,
+        COLLECTION_LEN_IN_LOOP_CONDITION,
+        CROSS_CONTRACT_RESULT_DISCARDED,
+        REDUNDANT_VAL_CONVERSION,
+        INSTANCE_STORAGE_WRITE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
+        PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        REDUNDANT_ADDRESS_CLONE,
+        BLIND_STORAGE_WRITE,
+        BYTES_SLICE_COPY_IN_LOOP,
+        EXCESSIVE_VEC_CAPACITY,
     ]
 }
 
@@ -765,21 +897,34 @@ pub(crate) fn match_soroban_def_path(
     def_id: DefId,
     segments: &[&str],
 ) -> bool {
+    if segments.is_empty() {
+        return false;
+    }
+
     let full = cached_def_path_str(cx.tcx, def_id);
     let suffix = segments.join("::");
     if full == suffix {
         return true;
     }
-    if full.ends_with(&format!("::{}", suffix)) {
-        let root_crate = full.split("::").next().unwrap_or("");
-        if root_crate == segments[0]
-            || root_crate == "soroban_sdk"
-            || root_crate == "soroban_env_host"
-            || root_crate == "soroban_env_common"
-        {
-            return true;
+
+    let full_parts: Vec<_> = full.split("::").collect();
+    if full_parts.first() != segments.first() {
+        return false;
+    }
+    if segments.len() == 1 {
+        return true;
+    }
+
+    let mut matched = 1usize;
+    for part in full_parts.iter().skip(1) {
+        if *part == segments[matched] {
+            matched += 1;
+            if matched == segments.len() {
+                return true;
+            }
         }
     }
+
     false
 }
 
@@ -810,14 +955,27 @@ pub(crate) const SOROBAN_STORAGE_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "storage", "Temporary"],
 ];
 
+/// Receiver types for [`UnnecessaryHostFunctionCall`].
+///
+/// Every row names a `pub` type in both SDKs pinned here (soroban-sdk
+/// 26.1.1 and 28.0.0): `ledger::Ledger`, `crypto::Crypto`,
+/// `crypto::bls12_381::Bls12_381`, `crypto::bn254::Bn254`, `prng::Prng`,
+/// `events::Events`, `logs::Logs` (logs.rs:92; `Env::logs` returns it and
+/// the `log!` macro expands to `$env.logs().add(...)`), and the three
+/// `deploy::Deployer*` forms (deploy.rs:133/:351/:419). The former
+/// `crypto::CryptoHazmat` row was dead: the type is declared
+/// `pub(crate) struct CryptoHazmat` with a `pub(crate) fn new` in both
+/// SDKs (crypto.rs:212/:214) and no public API returns it, so no user
+/// expression can ever have that receiver type
+/// (`Crypto::verify_secp256k1`/`secp256r1` route through it internally).
 const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "ledger", "Ledger"],
     &["soroban_sdk", "crypto", "Crypto"],
-    &["soroban_sdk", "crypto", "CryptoHazmat"],
     &["soroban_sdk", "crypto", "bls12_381", "Bls12_381"],
     &["soroban_sdk", "crypto", "bn254", "Bn254"],
     &["soroban_sdk", "prng", "Prng"],
     &["soroban_sdk", "events", "Events"],
+    &["soroban_sdk", "logs", "Logs"],
     &["soroban_sdk", "deploy", "Deployer"],
     &["soroban_sdk", "deploy", "DeployerWithAddress"],
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
@@ -1138,7 +1296,19 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
         // --- Direct storage access in a loop ---
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
-            let is_terminal_storage_op = matches!(method_name, "get" | "has" | "set");
+            // Every metered terminal accessor in `SOROBAN_STORAGE_TYPES`:
+            // the reads (`get`, `has`) and the read-modifying writes
+            // (`set`, `update`, `try_update`, `remove`) — each of `update`,
+            // `try_update` and `remove` pays a ledger read plus a ledger
+            // write per call, exactly like `set`.
+            //
+            // `extend_ttl` and `extend_ttl_with_limits` are deliberately kept
+            // OUT of this list: `extend_ttl_in_loop` owns those diagnostics,
+            // so adding them here would double-report the same call.
+            let is_terminal_storage_op = matches!(
+                method_name,
+                "get" | "has" | "set" | "update" | "try_update" | "remove"
+            );
             let is_storage_access = is_terminal_storage_op
                 && is_type_match(
                     cx,
@@ -1147,11 +1317,12 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                 );
 
             if is_storage_access && enclosing_loop_or_closure(cx, expr).is_some() {
-                // Reads (`get`, `has`) and writes (`set`) deserve different
-                // advice: writes can be buffered and flushed once after the
-                // loop, but a loop-variant read cannot be accumulated — the
-                // user typically needs to hoist a loop-invariant read or
-                // batch where possible.
+                // Reads (`get`, `has`) and writes (`set`, `update`,
+                // `try_update`, `remove`) deserve different advice: writes
+                // can be buffered and flushed once after the loop, but a
+                // loop-variant read cannot be accumulated — the user
+                // typically needs to hoist a loop-invariant read or batch
+                // where possible.
                 let help = if matches!(method_name, "get" | "has") {
                     "if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible"
                 } else {
@@ -1241,60 +1412,159 @@ pub struct RedundantEnvClone;
 
 rustc_session::impl_lint_pass!(RedundantEnvClone => [REDUNDANT_ENV_CLONE]);
 
-/// Detection: for every `MethodCall` whose segment is named `clone`, peel
-/// references off the receiver and check whether the underlying ADT
-/// resolves to `soroban_sdk::Env`. No loop analysis is needed — the lint
-/// is purely structural.
+/// Detection: a clone of a `soroban_sdk::Env` is reported when the value being
+/// copied is an owned `Env` that is not needed afterwards.
+///
+/// Three spellings name the same operation, and all three are reported:
+///
+/// * `env.clone()` — the method form.
+/// * `Env::clone(&env)` — the type-qualified form of the trait method.
+/// * `Clone::clone(&env)` — the qualified trait form.
+///
+/// No loop analysis is needed — the lint is purely structural.
 impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
-    /// Flags a `.clone()` call whose receiver is a `soroban_sdk::Env`.
+    /// Flags a clone of a `soroban_sdk::Env`.
     ///
     /// `Env` is a cheap handle to the host and is almost always better passed
-    /// by reference or value than cloned; the clone adds needless work. Matches
-    /// the `clone` method name and confirms the receiver type resolves to
-    /// `soroban_sdk::Env` before emitting a help note.
+    /// by reference or value than cloned; the clone adds needless work.
+    ///
+    /// The cloned value may be reached through a local, through a field or
+    /// through a reference target; only an *owned* `Env` is reported, because
+    /// cloning a `&Env` legitimately produces the owned `Env` the caller
+    /// asked for. A local that is still read after the clone is left alone as
+    /// well: there the original and the copy are both live.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "clone"
-        {
-            let is_env = if let Some(adt_def) =
-                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
-            {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
-            } else {
-                false
-            };
+        let Some(subject) = env_clone_subject(cx, expr) else {
+            return;
+        };
 
-            if is_env {
-                // Clone on &Env produces an owned Env from a reference — genuinely needed.
-                let receiver_ty = cx.typeck_results().expr_ty(receiver);
-                let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
-                if ref_count > 0 {
-                    return;
-                }
-            }
-
-            // If the receiver is a local binding that is still used after
-            // the clone, the original and the clone are both live — skip.
-            if let Some(local_id) = receiver.res_local_id() {
-                if local_used_after_expr(cx, local_id, expr) {
-                    return;
-                }
-            } else {
-                // Cannot statically determine whether the receiver is used
-                // after the clone — be conservative and skip.
-                return;
-            }
-
-            span_lint_and_help(
-                cx,
-                REDUNDANT_ENV_CLONE,
-                expr.span,
-                "redundant clone on Env object",
-                None,
-                "pass Env by reference or value instead of cloning",
-            );
+        // Only `soroban_sdk::Env` is worth reporting.
+        let subject_ty = cx.typeck_results().expr_ty(subject);
+        let Some(adt_def) = ty_adt_def(subject_ty.peel_refs()) else {
+            return;
+        };
+        if !match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"]) {
+            return;
         }
+
+        // Clone on &Env produces an owned Env from a reference — genuinely needed.
+        let (_inner, ref_count, _) = peel_and_count_ty_refs(subject_ty);
+        if ref_count > 0 {
+            return;
+        }
+
+        // If the receiver is a local binding that is still used after
+        // the clone, the original and the clone are both live — skip.
+        if clone_subject_is_live_after(cx, subject, expr) {
+            return;
+        }
+
+        span_lint_and_help(
+            cx,
+            REDUNDANT_ENV_CLONE,
+            expr.span,
+            "redundant clone on Env object",
+            None,
+            "pass Env by reference or value instead of cloning",
+        );
     }
+}
+
+/// The expression whose `Env` value a clone expression duplicates.
+///
+/// * `env.clone()` — a method call; the receiver is the subject.
+/// * `Env::clone(&env)` / `Clone::clone(&env)` — a call whose callee path
+///   resolves to the `Clone` trait's `clone` method; the subject is the
+///   borrowed argument, with the borrow peeled off.
+///
+/// Returns `None` for every other expression.
+pub(crate) fn env_clone_subject<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    match expr.kind {
+        hir::ExprKind::MethodCall(path_segment, receiver, _args, _span)
+            if path_segment.ident.name.as_str() == "clone" =>
+        {
+            Some(receiver)
+        }
+        hir::ExprKind::Call(callee, args) => {
+            let hir::ExprKind::Path(qpath) = callee.kind else {
+                return None;
+            };
+            if !is_clone_trait_method(cx, &qpath, callee.hir_id) {
+                return None;
+            }
+            let [arg] = args else {
+                return None;
+            };
+            // The shim takes `&self`, so the argument is a borrow of the value
+            // that gets copied. Peel the borrow to reach the `Env` itself.
+            Some(match arg.kind {
+                hir::ExprKind::AddrOf(_, _, borrowed) => borrowed,
+                _ => arg,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Whether the value a clone expression copies is still read afterwards.
+///
+/// A local that is read again after the clone keeps both the original and the
+/// copy alive, so the copy buys nothing there. A subject that is not a local —
+/// a field, say — is not consumed by the clone at all, so the copy is always
+/// redundant.
+///
+/// The rule lives in one place so that the other "redundant clone" lints can
+/// share the same last-use analysis instead of writing a second copy of it.
+pub(crate) fn clone_subject_is_live_after<'tcx>(
+    cx: &LateContext<'tcx>,
+    subject: &'tcx hir::Expr<'tcx>,
+    clone_expr: &'tcx hir::Expr<'tcx>,
+) -> bool {
+    subject
+        .res_local_id()
+        .is_some_and(|local_id| local_used_after_expr(cx, local_id, clone_expr))
+}
+
+/// Whether the callee of a call expression is the `Clone` trait's `clone`
+/// method — the shim behind `env.clone()`, `Env::clone(&env)` and
+/// `Clone::clone(&env)`.
+///
+/// The check runs on the resolved `DefId`, so a user-defined function that
+/// merely happens to be called `clone` is not mistaken for the trait method.
+/// The implementing type is deliberately not checked here: the caller
+/// confirms that the value being copied is a `soroban_sdk::Env`.
+fn is_clone_trait_method<'tcx>(
+    cx: &LateContext<'tcx>,
+    qpath: &hir::QPath<'tcx>,
+    hir_id: HirId,
+) -> bool {
+    let Some(def_id) = cx.qpath_res(qpath, hir_id).opt_def_id() else {
+        return false;
+    };
+    if cx.tcx.item_name(def_id) != sym::clone {
+        return false;
+    }
+    let Some(parent) = def_id.assoc_fn_parent(cx) else {
+        return false;
+    };
+    // `Clone::clone` written as a trait path resolves to the trait's own
+    // method, whose parent is the `Clone` trait.
+    if parent.is_diag_item(cx, sym::Clone) {
+        return true;
+    }
+    // `Env::clone` resolves to the trait method's implementation, whose parent
+    // is the `impl Clone for Env` block; the block's trait reference points
+    // back at `Clone`.
+    matches!(cx.tcx.def_kind(parent), DefKind::Impl { of_trait: true })
+        && cx
+            .tcx
+            .impl_trait_ref(parent)
+            .skip_binder()
+            .def_id
+            .is_diag_item(cx, sym::Clone)
 }
 
 /// Concrete pass that fires [`UNNECESSARY_HOST_FUNCTION_CALL`].
@@ -1341,7 +1611,10 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
                 false
             };
 
-            if is_host_function && enclosing_loop_or_closure(cx, expr).is_some() {
+            if let Some(loop_expr) = enclosing_loop_or_closure(cx, expr)
+                && is_host_function
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
                 span_lint_and_help(
                     cx,
                     UNNECESSARY_HOST_FUNCTION_CALL,
@@ -1372,7 +1645,7 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
             let is_host = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                match_soroban_def_path(cx, adt_def.did(), &["host", "Host"])
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_env_host", "Host"])
             } else {
                 false
             };
@@ -1928,22 +2201,27 @@ pub struct ExtendTtlInLoop;
 rustc_session::impl_lint_pass!(ExtendTtlInLoop => [EXTEND_TTL_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
-    /// Flags a call to `extend_ttl` on instance, persistent, or temporary
-    /// storage when the call site sits directly inside a loop body.
+    /// Flags a call to `extend_ttl` or `extend_ttl_with_limits` on instance,
+    /// persistent, or temporary storage when the call site sits directly
+    /// inside a loop body.
     ///
-    /// Each `extend_ttl` call is its own metered host call that *also*
-    /// writes ledger state (a rent payment — see
+    /// Each `extend_ttl`/`extend_ttl_with_limits` call is its own metered
+    /// host call that *also* writes ledger state (a rent payment — see
     /// `docs/cost_rationale.md`, "Ledger Space Rent"), so issuing one per
     /// iteration multiplies both costs by the iteration count.
     ///
     /// This is deliberately narrower than [`SOROBAN_STORAGE_IN_LOOP`]'s
     /// direct in-loop check: that pass only treats `get`/`has`/`set` as a
-    /// storage access before checking the loop, so `extend_ttl` never
-    /// reaches it and there is no risk of double-reporting the same call.
-    /// This lint owns the `extend_ttl`-in-loop diagnostic.
+    /// storage access before checking the loop, so neither `extend_ttl` nor
+    /// `extend_ttl_with_limits` reaches it and there is no risk of
+    /// double-reporting the same call. This lint owns the
+    /// `extend_ttl`/`extend_ttl_with_limits`-in-loop diagnostic.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "extend_ttl"
+            && matches!(
+                path_segment.ident.name.as_str(),
+                "extend_ttl" | "extend_ttl_with_limits"
+            )
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
@@ -1961,13 +2239,16 @@ impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
                     expr.span,
                     "extend_ttl called inside a loop",
                     None,
-                    "each extend_ttl call is a separate metered host call that also writes \
-                     ledger state, so calling it once per iteration multiplies both costs by \
-                     the iteration count; batch the extension by collecting the keys/entries \
-                     first and making a single extend_ttl call after the loop (if the entries \
-                     share one accessor, e.g. multiple keys under Persistent), or extend once \
-                     with a threshold sized generously enough to cover the whole batch instead \
-                     of refreshing per-entry per-iteration",
+                    "each extend_ttl/extend_ttl_with_limits call is a separate metered host \
+                     call that also writes ledger state, so calling it once per iteration \
+                     multiplies both costs by the iteration count; batch the extension by \
+                     collecting the keys/entries first and making a single extension call \
+                     after the loop (if the entries share one keyed accessor, e.g. multiple \
+                     keys under Persistent), or extend once with a threshold sized generously \
+                     enough to cover the whole batch instead of refreshing per-entry \
+                     per-iteration; the unkeyed Instance::extend_ttl_with_limits form takes \
+                     threshold arguments rather than a key, so prefer a single generous \
+                     extension there",
                 );
             }
         }
@@ -2714,6 +2995,17 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                     path
                 );
             }
+
+            // A fixture with no blessed golden asserts nothing: the harness
+            // compares against the `.stderr` sibling, so its Should-Warn /
+            // Should-not-warn annotations are unenforced without one.
+            let golden = path.with_extension("stderr");
+            assert!(
+                golden.exists(),
+                "UI fixture '{:?}' has no blessed .stderr golden at {:?}",
+                path,
+                golden
+            );
         }
         if path.extension().and_then(|ext| ext.to_str()) == Some("stderr") {
             let content = std::fs::read_to_string(&path).expect("stderr must be readable");
@@ -2784,4 +3076,78 @@ fn storage_write_without_read_lookup_benchmark() {
     eprintln!(
         "storage_write_without_read_lookup/{N}x{N}: hashset={hashset_elapsed:?} vec_scan={vec_elapsed:?}"
     );
+}
+
+/**
+ * Guard: every registered lint must have at least one emitting site (#785).
+ *
+ * A lint that is declared, registered and documented but never named in a
+ * `span_lint*` call gives an operator who denies it a clean run and a false
+ * belief that the pattern is checked. This test walks every `.rs` file under
+ * `soroban_cost_lints/src/`, collects the lint constants that appear as the
+ * first argument of a `span_lint*` diagnostic call, and fails when any
+ * `LINT_METADATA` entry has no such site — so the phantom-lint drift this
+ * guard was written for cannot come back silently.
+ */
+#[test]
+fn registered_lints_all_have_emitting_sites() {
+    let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+
+    let mut emitting: HashSet<String> = HashSet::new();
+    let mut stack: Vec<std::path::PathBuf> = vec![src_dir.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)
+            .expect("src dir must exist")
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).expect("source must be readable");
+            let mut from = 0;
+            while let Some(rel) = content[from..].find("span_lint") {
+                let window = &content[from + rel..];
+                // The lint constant is the first ALL_CAPS identifier after
+                // `span_lint*(` — allow an intervening `cx,`/newline which the
+                // call style of this crate uses freely.
+                let mut upper: Option<String> = None;
+                for (i, ch) in window.char_indices() {
+                    if ch == ';' {
+                        break;
+                    }
+                    if ch.is_ascii_uppercase() {
+                        let rest = &window[i..];
+                        let len = rest
+                            .find(|c: char| !(c.is_ascii_uppercase() || c == '_'))
+                            .unwrap_or(rest.len());
+                        let candidate = &rest[..len];
+                        if candidate.len() > 4 && !candidate.ends_with('_') {
+                            upper = Some(candidate.to_string());
+                        }
+                        break;
+                    }
+                }
+                if let Some(name) = upper {
+                    emitting.insert(name);
+                }
+                from += rel + "span_lint".len();
+            }
+        }
+    }
+
+    for meta in LINT_METADATA {
+        let constant = meta.name.to_uppercase();
+        assert!(
+            emitting.contains(&constant),
+            "registered lint `{}` (constant `{}`) has no emitting span_lint* site in src/ — \
+             implement its pass or remove the lint from registration and docs",
+            meta.name,
+            constant
+        );
+    }
 }

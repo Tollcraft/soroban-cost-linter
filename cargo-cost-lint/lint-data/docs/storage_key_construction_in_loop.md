@@ -77,8 +77,10 @@ Measured with `Env::default()` in the [`cost_benchmarks`](https://github.com/Tol
 
 | Pattern | Iterations | CPU instructions (delta) | Memory bytes (delta) |
 | --- | --- | --- | --- |
-| `Symbol::new` in loop (bad) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
-| Hoisted: call once, reuse (good) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+| `Symbol::new` in loop (bad) | 100 | 0 | 0 |
+| Hoisted: call once, reuse (good) | 100 | 0 | 0 |
+
+Figures are the `cpu:` / `mem:` deltas printed by `cd cost_benchmarks && cargo test bench_storage_key_construction_in_loop -- --nocapture` over the harness's 100 iterations (`ITER_COUNT = 100`, scenarios `build key in loop` / `hoisted key`); both print 0 because loop-local key construction via the SDK's short-symbol path consumes no metered host work in the native `Env::default()` test environment — see the measurement caveats in `cost_benchmarks/src/lib.rs`.
 
 ### How to reproduce
 

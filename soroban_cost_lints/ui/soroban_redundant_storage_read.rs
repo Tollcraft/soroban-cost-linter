@@ -29,6 +29,7 @@ pub mod soroban_sdk {
         pub struct Instance;
         impl Instance {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
         }
@@ -36,6 +37,7 @@ pub mod soroban_sdk {
         pub struct Persistent;
         impl Persistent {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
             pub fn extend_ttl<K>(&self, _k: &K, _ttl: &()) {}
@@ -44,6 +46,7 @@ pub mod soroban_sdk {
         pub struct Temporary;
         impl Temporary {
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
         }
@@ -70,6 +73,20 @@ fn redundant_read_after_has(env: Env) {
 fn redundant_read_persistent(env: Env) {
     let _: Option<i32> = env.storage().persistent().get(&1);
     let _: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+}
+
+// Fires: try_get is also a metered read and repeats the same key without an
+// intervening write.
+fn redundant_try_get(env: Env) {
+    let _: Option<i32> = env.storage().instance().try_get(&1);
+    let _: Option<i32> = env.storage().instance().try_get(&1); // Should Warn
+}
+
+// Fires: a `get` followed by `try_get` is still the same read, just observed by a
+// different accessor method.
+fn redundant_get_then_try_get(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&1);
+    let _: Option<i32> = env.storage().instance().try_get(&1); // Should Warn
 }
 
 // Near-miss: a write between the reads clears the tracked key, so the second

@@ -1,6 +1,8 @@
 # `bytes_slice_copy_in_loop`
 
-**Default Severity:** `warn`
+| Default Severity | Category |
+| ---------------- | -------- |
+| `warn`           | Memory   |
 
 **Target Resource:** [Memory — host buffer allocation and copy cost](../cost_rationale.md#per-lint-resource-summary)
 

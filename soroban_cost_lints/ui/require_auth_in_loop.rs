@@ -91,11 +91,37 @@ fn good_distinct_address_per_iteration(env: Env, addrs: [Address; 5]) {
     }
 }
 
+// --- Positive: the UFCS spelling is recognized exactly like the method call ---
+
+/// `Address::require_auth(&addr)` is the same authorization as
+/// `addr.require_auth()`, written in universal-function-call syntax. It must
+/// be flagged in a loop for the same reason.
+fn bad_ufcs_auth_in_loop(env: Env) {
+    let addr = Address;
+    for _ in 0..10 {
+        Address::require_auth(&addr); // Should Warn — UFCS form in a loop
+    }
+}
+
+/// UFCS `require_auth_for_args` in a loop, mirroring the method-call case.
+fn bad_ufcs_auth_for_args_in_loop(env: Env) {
+    let addr = Address;
+    for i in 0..10 {
+        Address::require_auth_for_args(&addr, &[i]); // Should Warn
+    }
+}
+
 // --- Negative (should not warn): authorization outside a loop ---
 
 fn good_auth_outside_loop(env: Env) {
     let addr = Address;
     addr.require_auth(); // Good — called once
+}
+
+/// The UFCS spelling outside a loop is just as harmless as the method call.
+fn good_ufcs_auth_outside_loop(env: Env) {
+    let addr = Address;
+    Address::require_auth(&addr); // Good — not inside a loop
 }
 
 // --- Negative: a receiver that is not a soroban_sdk::Address is out of scope ---

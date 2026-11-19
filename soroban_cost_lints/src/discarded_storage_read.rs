@@ -1,9 +1,11 @@
 use clippy_utils::diagnostics::span_lint_and_help;
-use rustc_hir::{Expr, ExprKind, PatKind, Stmt, StmtKind};
+use rustc_hir::def::Res;
+use rustc_hir::intravisit::{Visitor, walk_expr};
+use rustc_hir::{Expr, ExprKind, HirId, Node, PatKind, QPath, Stmt, StmtKind};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::DISCARDED_STORAGE_READ;
+use crate::{DISCARDED_STORAGE_READ, SOROBAN_STORAGE_TYPES, matches_any_path, ty_adt_def};
 
 declare_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
 
@@ -27,27 +29,14 @@ fn is_storage_read(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
         let name = path.ident.as_str();
         if name == "get" || name == "has" {
             let ty = cx.typeck_results().expr_ty(receiver);
-            let ty_str = format!("{:?}", ty);
-            if ty_str.contains("storage")
-                || ty_str.contains("Instance")
-                || ty_str.contains("Persistent")
-                || ty_str.contains("Temporary")
-                || is_storage_receiver(cx, receiver)
+            if ty_adt_def(ty.peel_refs())
+                .is_some_and(|adt_def| matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES))
             {
                 return true;
             }
         }
     }
     false
-}
-
-fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    let ty = cx.typeck_results().expr_ty(expr);
-    let s = format!("{:?}", ty);
-    s.contains("Storage")
-        || s.contains("Instance")
-        || s.contains("Persistent")
-        || s.contains("Temporary")
 }
 
 fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
@@ -69,7 +58,7 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
                 let name = ident.as_str();
                 if name.starts_with('_') && name != "_" {
                     // Conventionally unused, but let's be precise: if never referenced, treat as discarded
-                    !is_local_referenced_in_body(cx, expr, ident.name)
+                    !is_binding_referenced(cx, expr, local.pat.hir_id)
                 } else {
                     false
                 }
@@ -94,13 +83,68 @@ fn is_expr_discarded(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     }
 }
 
-fn is_local_referenced_in_body(
-    _cx: &LateContext<'_>,
-    expr: &Expr<'_>,
-    name: rustc_span::Symbol,
-) -> bool {
-    // Simple lexical/hir scope check or conservative fallback
-    // For safety, let's walk the enclosing body if possible or assume used if not wild/underscore
-    let _ = (expr, name);
-    true
+/// Returns `true` if the `_`-prefixed binding created by this statement is
+/// referenced anywhere inside its enclosing block.
+///
+/// Rust scopes a `let` binding to the block that declares it, so walking that
+/// block is both complete (no use can live outside it) and conservative: a use
+/// in a nested block or closure still counts, because `Res::Local` resolves
+/// across both. Any reference at all means the value is live, so the lint
+/// stays quiet.
+///
+/// If the enclosing block cannot be resolved, this returns `true` — a binding
+/// whose scope cannot be inspected is assumed to be in use, and the lint
+/// rather misses one case than reports a live value as discarded.
+fn is_binding_referenced(cx: &LateContext<'_>, expr: &Expr<'_>, binding_id: HirId) -> bool {
+    let Some(block) = enclosing_block(cx, expr.hir_id) else {
+        return true;
+    };
+
+    let mut visitor = BindingUseVisitor {
+        target: binding_id,
+        found: false,
+    };
+    visitor.visit_block(block);
+    visitor.found
+}
+
+/// The closest enclosing `Block` of `id`, if there is one.
+fn enclosing_block<'tcx>(
+    cx: &LateContext<'tcx>,
+    mut id: HirId,
+) -> Option<&'tcx rustc_hir::Block<'tcx>> {
+    loop {
+        match cx.tcx.parent_hir_node(id) {
+            Node::Block(block) => return Some(block),
+            Node::Stmt(stmt) => id = stmt.hir_id,
+            Node::Expr(expr) => id = expr.hir_id,
+            Node::LetStmt(local) => id = local.hir_id,
+            _ => return None,
+        }
+    }
+}
+
+/// Searches one block for a use of the target binding, stopping at the first
+/// one found.
+struct BindingUseVisitor {
+    target: HirId,
+    found: bool,
+}
+
+impl<'hir> Visitor<'hir> for BindingUseVisitor {
+    fn visit_expr(&mut self, expr: &'hir Expr<'hir>) {
+        if self.found {
+            return;
+        }
+
+        if let ExprKind::Path(QPath::Resolved(None, path)) = expr.kind
+            && let Res::Local(id) = path.res
+            && id == self.target
+        {
+            self.found = true;
+            return;
+        }
+
+        walk_expr(self, expr);
+    }
 }

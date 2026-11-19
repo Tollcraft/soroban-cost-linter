@@ -22,8 +22,10 @@ Measured with `Env::default()` in the [`cost_benchmarks`](https://github.com/Tol
 
 | Pattern | Iterations | CPU instructions (delta) | Memory bytes (delta) |
 | --- | --- | --- | --- |
-| `env.clone()` (bad) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
-| `&env` (good) | 100 | *run `cargo test -- --nocapture` in `cost_benchmarks/`* | *run `cargo test -- --nocapture` in `cost_benchmarks/`* |
+| `env.clone()` (bad) | 100 | 0 | 0 |
+| `&env` (good) | 100 | 0 | 0 |
+
+Figures are the `cpu:` / `mem:` deltas printed by `cd cost_benchmarks && cargo test bench_env_clone_vs_reuse -- --nocapture` over the harness's 100 iterations (`ITER_COUNT = 100`); both halves measure 0 because an `Env` handle clone is SDK-side work that consumes no metered host work in the native test environment — see the measurement caveats in `cost_benchmarks/src/lib.rs`.
 
 {% hint style="info" %}
 The cost of an individual `env.clone()` is small, but in hot paths (e.g., contract entry points called thousands of times across a protocol's lifetime) the cumulative overhead is real and avoidable.

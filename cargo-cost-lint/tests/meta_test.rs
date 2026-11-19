@@ -56,21 +56,11 @@ fn test_readme_lint_count() {
         .filter(|l| !l.is_empty() && !l.starts_with("//"))
         .count();
 
-    // The README uses text like "Thirty lints ship in", "Thirty-one", or "30 lints ship in".
-    let word = match count {
-        30 => "Thirty",
-        31 => "Thirty-one",
-        32 => "Thirty-two",
-        33 => "Thirty-three",
-        34 => "Thirty-four",
-        35 => "Thirty-five",
-        36 => "Thirty-six",
-        37 => "Thirty-seven",
-        38 => "Thirty-eight",
-        39 => "Thirty-nine",
-        40 => "Forty",
-        _ => "unknown",
-    };
+    // The README uses text like "Thirty lints ship in", "Thirty-one", or
+    // "30 lints ship in". The word is derived from the counted registry rather
+    // than hard-coded per count, so registering the next lint does not redden
+    // this test.
+    let word = count_word(count);
 
     let expected_num = format!("{} lints ship in", count);
     let expected_word = format!("{} lints ship in", word);
@@ -82,5 +72,103 @@ fn test_readme_lint_count() {
         "README lint count {} ({}) doesn't match shipped lints!",
         count,
         word
+    );
+}
+
+/// The English word for `count` in the "Forty-one" spelling the README uses,
+/// derived from the number instead of a table that has to grow with the lint
+/// registry.
+fn count_word(count: usize) -> String {
+    const ONES: [&str; 20] = [
+        "Zero",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Eleven",
+        "Twelve",
+        "Thirteen",
+        "Fourteen",
+        "Fifteen",
+        "Sixteen",
+        "Seventeen",
+        "Eighteen",
+        "Nineteen",
+    ];
+    const TENS: [&str; 10] = [
+        "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+    ];
+
+    if let Some(ones) = ONES.get(count) {
+        return (*ones).to_string();
+    }
+    let tens = count / 10;
+    let rest = count % 10;
+    let Some(tens_word) = TENS.get(tens).filter(|word| !word.is_empty()) else {
+        return "unknown".to_string();
+    };
+    if rest == 0 {
+        (*tens_word).to_string()
+    } else {
+        format!("{}-{}", tens_word, ONES[rest].to_lowercase())
+    }
+}
+
+#[test]
+fn test_severity_rationale_lint_count() {
+    let ws = workspace_dir();
+    let doc = fs::read_to_string(ws.join("docs/severity_rationale.md"))
+        .expect("Failed to read docs/severity_rationale.md");
+    let lib_rs = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
+        .expect("Failed to read lib.rs");
+
+    // Count declare_lint! blocks and their levels
+    let total = lib_rs.matches("declare_lint! {").count();
+    let deny_count = lib_rs
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "Deny,"
+        })
+        .count();
+    let warn_count = lib_rs
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "Warn,"
+        })
+        .count();
+
+    // The doc may state the count as a numeral ("**40 lints**") or a word
+    // ("**Forty lints**"). Accept either form.
+    let expected_num = format!("ships **{} lints**", total);
+    assert!(
+        doc.contains(&expected_num),
+        "severity_rationale.md lint count doesn't match registry! Expected '{}', total declared: {}",
+        expected_num,
+        total
+    );
+
+    // Check deny count: "exactly two ... default to deny"
+    assert_eq!(
+        deny_count, 2,
+        "severity_rationale says 'exactly two default to deny' but registry has {} Deny lints",
+        deny_count
+    );
+
+    // Check warn count consistency
+    assert_eq!(
+        warn_count + deny_count,
+        total,
+        "Warn({}) + Deny({}) != total({})",
+        warn_count,
+        deny_count,
+        total
     );
 }

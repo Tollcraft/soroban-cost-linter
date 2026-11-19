@@ -91,6 +91,36 @@ fn good_plain_bool(env: Env) {
     env.storage().instance().set(&"flag", &true); // Good — bool
 }
 
+// --- Non-triggering: a user type whose printed name merely CONTAINS a
+// storage word. The old Debug-substring heuristic treated any such receiver
+// as a storage accessor and warned on the Option value (#796).
+
+pub struct PersistentBuffer {
+    data: [u8; 32],
+}
+
+impl PersistentBuffer {
+    pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+}
+
+pub struct TemporaryStore {
+    slot: u32,
+}
+
+impl TemporaryStore {
+    pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+}
+
+fn good_persistent_namesake(_env: Env) {
+    let buf = PersistentBuffer { data: [0u8; 32] };
+    buf.set(&"key", &Some(42u32)); // Good — not a storage accessor, just a name
+}
+
+fn good_temporary_namesake(_env: Env) {
+    let store = TemporaryStore { slot: 1 };
+    store.set(&"key", &Option::<u32>::None); // Good — same rule
+}
+
 #[allow(option_wrapping_in_storage)]
 fn allowed_option_in_storage(env: Env) {
     let val: Option<u32> = Some(42);

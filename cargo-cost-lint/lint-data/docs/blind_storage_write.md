@@ -5,9 +5,9 @@ sidebar_position: 5
 
 # `blind_storage_write`
 
-| Default Severity | Category     |
-| ---------------- | ------------ |
-| `warn`           | StorageOperations |
+| Default Severity | Category |
+| ---------------- | -------- |
+| `warn`           | Storage  |
 
 ## What it does
 

@@ -50,15 +50,45 @@ fn bad_statement(env: Env) {
     env.storage().persistent().get::<u32, i32>(&1); //~ WARNING storage read result is discarded
 }
 
+/// A `_`-prefixed binding is the convention for "intentionally unused" — but
+/// the convention is only honest if the binding really is never read. Here it
+/// is not, so the discarded read is reported.
+fn bad_underscore_binding_never_read(env: Env) {
+    let _cached = env.storage().instance().get::<u32, i32>(&1); //~ WARNING storage read result is discarded
+}
+
 fn good_used(env: Env) {
     let val: Option<i32> = env.storage().instance().get(&1);
     let _ = val;
+}
+
+/// A `_`-prefixed binding that is actually read later is live, not discarded.
+fn good_underscore_binding_referenced(env: Env) {
+    let _cached: Option<i32> = env.storage().instance().get(&1);
+    if _cached.is_some() {
+        // Good — the value is read below its binding
+    }
 }
 
 fn good_has_branch(env: Env) {
     if env.storage().persistent().has(&1) {
         let _ = env.storage().persistent().get::<u32, i32>(&1);
     }
+}
+
+mod storage {
+    pub struct PersistentCounters;
+
+    impl PersistentCounters {
+        pub fn get(&self, _key: u32) -> u32 { 0 }
+        pub fn has(&self, _key: u32) -> bool { false }
+    }
+}
+
+fn good_user_storage_types() {
+    let counters = storage::PersistentCounters;
+    let _ = counters.get(1);
+    let _ = counters.has(1);
 }
 
 fn main() {}

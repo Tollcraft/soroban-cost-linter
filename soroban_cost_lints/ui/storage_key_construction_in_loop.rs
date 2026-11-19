@@ -8,7 +8,7 @@
     soroban_storage_in_loop,
     loop_invariant_storage_access,
     storage_write_without_read,
-    formatted_panic_payload
+    formatted_panic_payload, instance_storage_write_in_loop
 )]
 
 /// Mock Soroban SDK definitions for UI testing.

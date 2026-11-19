@@ -74,6 +74,23 @@ fn bad_clone_env_shadow(env: Env) {
     let _ = env;
 }
 
+/// UFCS form: `Env::clone(&env)` names the very same trait method as
+/// `env.clone()`, only spelled with the type in front of it.
+fn bad_clone_env_ufcs_env(env: Env) {
+    let _cloned = Env::clone(&env); //~ WARNING redundant clone on Env object
+}
+
+/// Qualified trait form: `Clone::clone(&env)`.
+fn bad_clone_env_ufcs_clone(env: Env) {
+    let _cloned = Clone::clone(&env); //~ WARNING redundant clone on Env object
+}
+
+/// Clone of a struct field: the field holds the same `Env` and the clone does
+/// not consume it, so the copy buys nothing.
+fn bad_non_local_receiver(s: soroban_sdk::MyStruct) {
+    let _cloned = s.env.clone(); //~ WARNING redundant clone on Env object
+}
+
 // ===========================================================================
 //  Non-triggering cases — these MUST NOT produce a warning
 // ===========================================================================
@@ -81,6 +98,13 @@ fn bad_clone_env_shadow(env: Env) {
 /// Cloning a reference `&Env` produces an owned `Env`; this is legitimate.
 fn good_env_ref_clone(env_ref: &Env) {
     let _cloned = env_ref.clone();
+}
+
+/// A reference bound to a local names the same `&Env`; cloning it is still
+/// legitimate.
+fn good_bound_ref_clone(env: Env) {
+    let r = &env;
+    let _cloned = r.clone();
 }
 
 /// Original `env` is used after the clone on the next line.
@@ -101,9 +125,11 @@ fn good_no_clone(env: Env) {
     let _ref = &env;
 }
 
-/// Clone on a struct field (non-local binding) — conservatively skipped.
-fn good_non_local_receiver(s: soroban_sdk::MyStruct) {
-    let _cloned = s.env.clone();
+/// A clone of some other type is none of this lint's business: the receiver
+/// type is checked before anything is reported, so a dead local of an
+/// unrelated type stays silent.
+fn good_clone_of_other_type(text: String) {
+    let _cloned = text.clone();
 }
 
 /// Clone is explicitly allowed via attribute.

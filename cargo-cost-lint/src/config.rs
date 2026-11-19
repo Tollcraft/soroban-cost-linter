@@ -15,6 +15,10 @@ pub struct BudgetConfig {
     pub lints: Option<HashMap<String, String>>,
 }
 
+pub fn normalize_lint_name(name: &str) -> String {
+    name.trim().to_ascii_lowercase().replace('-', "_")
+}
+
 impl BudgetConfig {
     /// Reads and parses `path` into a `BudgetConfig`, validating that every
     /// configured lint name is one of `known_lints` and every level is one
@@ -31,7 +35,7 @@ impl BudgetConfig {
         if let Some(lints) = &mut config.lints {
             let normalized_lints: HashMap<String, String> = lints
                 .drain()
-                .map(|(k, v)| (k.replace('-', "_"), v))
+                .map(|(k, v)| (normalize_lint_name(&k), v))
                 .collect();
             *lints = normalized_lints;
 

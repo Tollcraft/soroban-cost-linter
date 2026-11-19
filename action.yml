@@ -26,7 +26,7 @@ runs:
   using: 'composite'
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
       with:
         toolchain: ${{ inputs.toolchain }}
         components: rustc-dev, llvm-tools-preview
@@ -42,10 +42,11 @@ runs:
         workspaces: ${{ github.action_path }} -> target
 
     - name: Install Dylint
+      # Exact pin: 6.4.0 requires rustc 1.98, which the pinned nightly is not.
       shell: bash
       env:
         CARGO_NET_RETRY: '10'
-      run: cargo install cargo-dylint dylint-link --version "^6.0.1" --locked
+      run: cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
 
     - name: Build lint library
       shell: bash

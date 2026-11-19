@@ -63,6 +63,28 @@ fn bad_second_fires(env: Env) {
     addr.require_auth(); //~ WARNING require_auth already called on this address
 }
 
+/// Sibling blocks of one function share one authorization scope: the first
+/// block authorizes the address, so the second block's call is redundant.
+fn bad_sibling_blocks(env: Env, choose: bool) {
+    let addr = Address;
+    if choose {
+        addr.require_auth(); // first — no warning
+    } else {
+        addr.require_auth(); //~ WARNING require_auth already called on this address
+    }
+}
+
+/// The same, with plain nested blocks instead of an if/else.
+fn bad_sequential_nested_blocks(env: Env) {
+    let addr = Address;
+    {
+        addr.require_auth(); // first — no warning
+    }
+    {
+        addr.require_auth(); //~ WARNING require_auth already called on this address
+    }
+}
+
 // =======================================================================
 // Non-triggering cases — these MUST NOT produce any warning
 // =======================================================================
@@ -86,6 +108,11 @@ fn good_separated_by_invoke_contract(env: Env, target: Address, func: Symbol) {
 }
 
 /// Same address but separated by a `try_invoke_contract` call.
+///
+/// The result is discarded deliberately — this fixture pins how
+/// `redundant_require_auth` resets across a fallible cross-contract call, not
+/// whether the call's value is used.
+#[allow(cross_contract_result_discarded)]
 fn good_separated_by_try_invoke_contract(env: Env, target: Address, func: Symbol) {
     let addr = Address;
     addr.require_auth();
@@ -99,9 +126,47 @@ fn good_single_require_auth() {
     addr.require_auth();
 }
 
+/// Two functions are two scopes: an authorization established in one says
+/// nothing about the other, even for the same syntactic address.
+fn good_across_functions_a(env: Env) {
+    let addr = Address;
+    addr.require_auth();
+}
+
+fn good_across_functions_b(env: Env) {
+    let addr = Address;
+    addr.require_auth(); // Good — a different function
+}
+
 /// No `require_auth` calls at all.
 fn good_no_require_auth() {
     let _env = Env;
+}
+
+struct AddressBook;
+
+impl AddressBook {
+    fn require_auth(&self) {}
+}
+
+fn good_user_address_book() {
+    let book = AddressBook;
+    book.require_auth();
+    book.require_auth();
+}
+
+struct MockEnv;
+
+impl MockEnv {
+    fn invoke_contract(&self) {}
+}
+
+fn bad_user_mock_env_does_not_reset_tracking() {
+    let env = MockEnv;
+    let addr = Address;
+    addr.require_auth();
+    env.invoke_contract();
+    addr.require_auth(); //~ WARNING require_auth already called on this address
 }
 
 fn main() {}

@@ -218,20 +218,3 @@ Rustc resolves the effective lint level in this order (highest priority first):
 3. Compiler flags from `DYLINT_RUSTFLAGS` (the mechanism used by budget.toml)
 4. The lint's built-in default
 
-`cargo-cost-lint` supports generating shell completion scripts. Use the `--completions` flag to generate a script for your shell.
-
-### Bash
-```bash
-cargo cost-lint --completions bash > ~/.local/share/bash-completion/completions/cargo-cost-lint
-```
-
-### Zsh
-```zsh
-cargo cost-lint --completions zsh > _cargo-cost-lint
-# Ensure it's in your fpath
-```
-
-### Fish
-```fish
-cargo cost-lint --completions fish > ~/.config/fish/completions/cargo-cost-lint.fish
-```

@@ -7,7 +7,7 @@
 
 ## What it does
 
-Reading a ledger context value (`sequence`, `timestamp`, `network_id`, `protocol_version`) inside a loop body.
+Reading a ledger context value (`sequence`, `timestamp`, `network_id`, `protocol_version`, `max_live_until_ledger`) inside a loop body.
 
 ## Why is this bad?
 
@@ -43,6 +43,7 @@ fn process_items(env: Env, items: Vec<u32>) {
 - `env.ledger().timestamp()` → `u64`
 - `env.ledger().network_id()` → `BytesN<32>`
 - `env.ledger().protocol_version()` → `u32` (deprecated)
+- `env.ledger().max_live_until_ledger()` → `u32`
 
 ## Relationship with `host_in_loop`
 

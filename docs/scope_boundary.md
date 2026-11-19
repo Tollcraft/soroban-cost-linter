@@ -24,8 +24,7 @@ These patterns are already covered by named Clippy lints. Do not re-implement th
 | Calling `.clone()` on a `Copy` type | `clippy::clone_on_copy` | Trivially redundant regardless of runtime |
 | Collecting an iterator into a collection that is never used as a collection | `clippy::needless_collect` | Unnecessary allocation on any target |
 | Redundant `Into` / `From` / `IntoIterator` conversions | `clippy::useless_conversion` | Pure type-system waste; cost-neutral on Soroban |
-| Floating-point arithmetic in contract code | `clippy::float_arithmetic` | General WASM non-determinism and floating-point operations are fully flagged by Clippy |
-| Large constant arrays embedded in contract code | `clippy::large_const_arrays` | Large inline stack/static array allocation is already caught by Clippy |
+| Floating-point arithmetic in contract code | `clippy::float_arithmetic` | Disposition pending issue #785 |
 
 ## Deliberately Implemented Overlaps (Distinct Soroban Lints)
 
@@ -37,6 +36,7 @@ When a pattern has a plausible Clippy counterpart but moves a specific Soroban r
 | `bytes_append_in_loop` / `soroban_inefficient_bytes_concat` | `clippy::string_add_assign` | **Host Memory Allocation Meter & Host Crossing CPU Meter** | Clippy only checks `std::string::String`; SDK `Bytes` / `String` appends trigger host buffer re-allocations and host function calls per iteration. |
 | `vec_where_slice_could_be_used` | `clippy::ptr_arg` | **Host Crossing CPU Meter & Host Object Table Meter** | Passing `soroban_sdk::Vec` by value or reference incurs host handle lookup overhead vs native WASM stack slices (`[u8; N]`). |
 | `formatted_panic_payload` | `clippy::panic` / `clippy::format_push_string` | **WASM Bytecode Size Meter & Guest Memory Allocation Meter** | Formatting strings in panics pulls complex formatting tables into WASM binaries, inflating WASM deployment fees and guest heap allocation. |
+| [`large_constant_array`](lints/large_constant_array.md) | `clippy::large_const_arrays` | **WASM Bytecode Size Meter** | Large constant arrays increase contract WASM bytecode size and deployment cost. |
 | `symbol_new_for_short_literal` | `clippy::string_lit_as_bytes` | **WASM Bytecode Size Meter & Host Symbol Encoding CPU Meter** | `Symbol::new` computes symbol encoding at runtime via host call, whereas `symbol_short!` encodes <= 9 char symbols as 64-bit inline `Val` constants at compile time. |
 
 ## The Genuine Overlap: When to Write a Distinct Soroban Lint

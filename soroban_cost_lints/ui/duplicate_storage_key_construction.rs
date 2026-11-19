@@ -58,22 +58,22 @@ fn set_balance(env: &Env, amount: i128) {
     env.storage().instance().set(&key, &amount);
 }
 
-// --- Three functions using same key ---
+// --- Three functions using same key (instance storage: not the TTL lint's) ---
 
 fn read_config(env: &Env) -> i32 {
     let key = Symbol::new(env, "config"); // Should Warn — same key as write_config and delete_config
-    let val: Option<i32> = env.storage().persistent().get(&key);
+    let val: Option<i32> = env.storage().instance().get(&key);
     val.unwrap_or(0)
 }
 
 fn write_config(env: &Env, value: i32) {
     let key = Symbol::new(env, "config"); // Should Warn — same key as read_config and delete_config
-    env.storage().persistent().set(&key, &value);
+    env.storage().instance().set(&key, &value);
 }
 
 fn delete_config(env: &Env) {
     let key = Symbol::new(env, "config"); // Should Warn — same key as read_config and write_config
-    env.storage().persistent().set(&key, &0);
+    env.storage().instance().set(&key, &0);
 }
 
 // --- Negative (should not warn): different keys ---
