@@ -1,5 +1,5 @@
 warning: writing an unchanged value back to storage
-  --> $DIR/storage_write_of_unchanged_value.rs:67:5
+  --> $DIR/storage_write_of_unchanged_value.rs:70:5
    |
 LL |     env.storage().instance().set(&1, &val);
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

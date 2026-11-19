@@ -171,11 +171,11 @@ fn extract_storage_read<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) ->
         }
     }
 
-    if let ExprKind::MethodCall(seg, receiver, args, span) = cur.kind {
+    if let ExprKind::MethodCall(seg, receiver, args, _span) = cur.kind {
         let name = seg.ident.as_str();
         if (name == "get" || name == "try_get") && !args.is_empty() && is_storage_tier(cx, receiver)
         {
-            return Some(span);
+            return Some(cur.span);
         }
     }
     None

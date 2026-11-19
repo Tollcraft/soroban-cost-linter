@@ -1,3 +1,5 @@
+#![allow(unwrap_on_storage_get)]
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {

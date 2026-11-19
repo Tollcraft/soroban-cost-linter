@@ -1,5 +1,5 @@
 warning: persistent storage write without TTL extension — archival cost cliff
-  --> $DIR/persistent_write_without_ttl_extension.rs:67:5
+  --> $DIR/persistent_write_without_ttl_extension.rs:77:5
    |
 LL |     env.storage().persistent().set(&1, &42);
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

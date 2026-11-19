@@ -151,14 +151,14 @@ fn extract_storage_write<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Option<(&'static str, String, &'tcx Expr<'tcx>, Span)> {
-    if let ExprKind::MethodCall(seg, receiver, args, span) = expr.kind
+    if let ExprKind::MethodCall(seg, receiver, args, _span) = expr.kind
         && seg.ident.as_str() == "set"
         && args.len() >= 2
     {
         let tier = storage_tier_of(cx, receiver)?;
         let key_text = extract_key_snippet(cx, &args[0])?;
         let val_expr = &args[1];
-        return Some((tier, key_text, val_expr, span));
+        return Some((tier, key_text, val_expr, expr.span));
     }
     None
 }

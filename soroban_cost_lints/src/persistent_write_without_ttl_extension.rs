@@ -15,6 +15,7 @@ use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty;
 use rustc_session::declare_lint_pass;
 use rustc_span::Span;
+use rustc_span::def_id::DefId;
 
 use crate::{PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION, match_soroban_def_path};
 
@@ -55,13 +56,13 @@ impl<'tcx> LateLintPass<'tcx> for PersistentWriteWithoutTtlExtension {
 
 impl<'tcx> Visitor<'tcx> for PersistentWriteVisitor<'_, 'tcx> {
     fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
-        if let ExprKind::MethodCall(path_segment, receiver, args, span) = expr.kind {
+        if let ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
             if is_persistent_storage(self.cx, receiver) {
                 match method_name {
                     "set" if args.len() >= 2 => {
                         if let Some(key_text) = extract_key_snippet(self.cx, &args[0]) {
-                            self.writes.push((key_text, span));
+                            self.writes.push((key_text, expr.span));
                         }
                     }
                     "extend_ttl" if !args.is_empty() => {
@@ -82,7 +83,24 @@ fn is_persistent_storage<'tcx>(cx: &LateContext<'tcx>, expr: &Expr<'tcx>) -> boo
     let ty::Adt(adt_def, _) = peeled.kind() else {
         return false;
     };
-    match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Persistent"])
+    if !match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Persistent"]) {
+        return false;
+    }
+    persistent_type_supports_extend_ttl(cx, adt_def.did())
+}
+
+fn persistent_type_supports_extend_ttl(cx: &LateContext<'_>, def_id: DefId) -> bool {
+    if def_id.krate != rustc_hir::def_id::LOCAL_CRATE {
+        return true;
+    }
+    for &impl_did in cx.tcx.inherent_impls(def_id) {
+        for &item_id in cx.tcx.associated_item_def_ids(impl_did) {
+            if cx.tcx.associated_item(item_id).name().as_str() == "extend_ttl" {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn extract_key_snippet(cx: &LateContext<'_>, expr: &Expr<'_>) -> Option<String> {

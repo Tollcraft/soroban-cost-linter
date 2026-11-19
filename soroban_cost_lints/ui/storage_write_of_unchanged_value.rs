@@ -1,3 +1,5 @@
+#![allow(unwrap_on_storage_get)]
+
 pub mod soroban_sdk {
     pub struct Env;
     impl Clone for Env {
@@ -95,3 +97,5 @@ fn allow_suppresses(env: Env) {
     let val: i32 = env.storage().instance().get(&1).unwrap();
     env.storage().instance().set(&1, &val);
 }
+
+fn main() {}
