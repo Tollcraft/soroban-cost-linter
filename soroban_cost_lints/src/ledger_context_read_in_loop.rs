@@ -4,7 +4,10 @@ use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::LEDGER_CONTEXT_READ_IN_LOOP;
+use crate::{LEDGER_CONTEXT_READ_IN_LOOP, match_soroban_def_path, ty_adt_def};
+
+/// Canonical Soroban ledger accessor type path.
+const LEDGER_TYPE_PATH: &[&str] = &["soroban_sdk", "ledger", "Ledger"];
 
 declare_lint_pass!(LedgerContextReadInLoop => [LEDGER_CONTEXT_READ_IN_LOOP]);
 
@@ -45,16 +48,15 @@ impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
     }
 }
 
-/// Returns `true` if `expr` is the result of calling `env.ledger()`.
-fn is_ledger_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    // Check for <env>.ledger() method call
-    if let rustc_hir::ExprKind::MethodCall(path, receiver, args, _) = expr.kind
-        && path.ident.as_str() == "ledger"
-        && args.is_empty()
-    {
-        // The receiver of ledger() should be an Env-like type
-        let ty = cx.typeck_results().expr_ty(receiver);
-        return ty.to_string().contains("Env");
-    }
-    false
+/// Returns `true` if `expr` resolves to a Soroban `Ledger` accessor, handling
+/// both direct chained calls (`env.ledger().sequence()`) and local bindings
+/// (`let ledger = env.ledger(); ledger.sequence()`).
+///
+/// Type-based detection: check whether the expression's type is
+/// `soroban_sdk::ledger::Ledger` by its canonical definition path rather than
+/// by inspecting the expression shape. This catches both forms uniformly.
+fn is_ledger_receiver<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
+    let ty = cx.typeck_results().expr_ty(expr).peel_refs();
+    ty_adt_def(ty)
+        .is_some_and(|adt_def| match_soroban_def_path(cx, adt_def.did(), LEDGER_TYPE_PATH))
 }
