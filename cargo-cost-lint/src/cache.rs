@@ -122,7 +122,14 @@ pub fn get_cache_dir(base_dir: Option<&Path>) -> PathBuf {
 
 /// Computes a deterministic hash of all relevant source files in `dir`.
 /// Respects `.gitignore` rules via the `ignore` crate.
-pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
+///
+/// `custom_config` is the path to a user-supplied `--config` file.  When
+/// provided its contents join the hash so that editing the file invalidates
+/// the cache.  `.cargo/config.toml` (relative to `dir`) is also always
+/// included when it exists, because it controls linker flags, compiler
+/// options, and Dylint paths that can alter lint results without touching
+/// any Rust source file.
+pub fn compute_source_hash(dir: &Path, custom_config: Option<&Path>) -> Result<String, String> {
     // Keep only paths during discovery. Retaining every file's contents until
     // after sorting needlessly duplicates the workspace in memory, especially
     // for large generated Rust sources.
@@ -169,6 +176,25 @@ pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
         hasher.write_bytes(&content);
     }
 
+    // Include `.cargo/config.toml` when it exists: it controls linker flags,
+    // compiler options, and Dylint paths that can change which lints fire.
+    let cargo_config = dir.join(".cargo").join("config.toml");
+    if cargo_config.is_file() {
+        if let Ok(content) = fs::read(&cargo_config) {
+            hasher.write_str(".cargo/config.toml");
+            hasher.write_bytes(&content);
+        }
+    }
+
+    // Include the user-supplied `--config` file so that editing custom rules
+    // invalidates the cache even when no Rust source changes.
+    if let Some(config_path) = custom_config {
+        if let Ok(content) = fs::read(config_path) {
+            hasher.write_str(&config_path.to_string_lossy());
+            hasher.write_bytes(&content);
+        }
+    }
+
     Ok(hasher.finish_hex())
 }
 
@@ -207,11 +233,21 @@ pub fn save_cache_entry(
 }
 
 /// Clears all cached entries in `cache_dir`.
+///
+/// Returns `Ok(count)` when every JSON cache file was successfully deleted.
+/// Returns `Err(message)` when one or more files could not be removed, so
+/// the caller can warn the user that stale artifacts remain in the cache
+/// directory; `message` lists every failing path and its error.  Files that
+/// *were* deleted before the first failure are not un-deleted, and their
+/// count is included in the error message so the caller has an accurate view
+/// of what happened.
 pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     if !cache_dir.exists() {
         return Ok(0);
     }
-    let mut count = 0;
+    let mut count = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+
     let entries = fs::read_dir(cache_dir).map_err(|e| {
         format!(
             "Failed to read cache directory {}: {}",
@@ -222,11 +258,25 @@ pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     for entry in entries.flatten() {
         let path = entry.path();
         let is_json = path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json");
-        if is_json && fs::remove_file(path).is_ok() {
-            count += 1;
+        if !is_json {
+            continue;
+        }
+        match fs::remove_file(&path) {
+            Ok(()) => count += 1,
+            Err(e) => failures.push(format!("{}: {}", path.display(), e)),
         }
     }
-    Ok(count)
+
+    if failures.is_empty() {
+        Ok(count)
+    } else {
+        Err(format!(
+            "Failed to remove {} cache file(s) ({} removed successfully):\n{}",
+            failures.len(),
+            count,
+            failures.join("\n")
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -373,10 +423,10 @@ mod tests {
         let main_rs = src_dir.join("main.rs");
         fs::write(&main_rs, "fn main() {}").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(&main_rs, "fn main() { let x = 1; }").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -387,10 +437,10 @@ mod tests {
         fs::write(tmp.path().join("README.md"), "hello").unwrap();
         fs::write(tmp.path().join("data.txt"), "world").unwrap();
 
-        let hash = compute_source_hash(tmp.path()).unwrap();
+        let hash = compute_source_hash(tmp.path(), None).unwrap();
         // Should be the hash of an empty file set (same as empty dir)
         let tmp2 = tempfile::tempdir().unwrap();
-        let hash2 = compute_source_hash(tmp2.path()).unwrap();
+        let hash2 = compute_source_hash(tmp2.path(), None).unwrap();
         assert_eq!(hash, hash2);
     }
 
@@ -399,10 +449,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"foo\"").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -412,10 +462,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("budget.toml"), "[lints]").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(tmp.path().join("budget.toml"), "[lints]\nfoo = \"bar\"").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -423,7 +473,7 @@ mod tests {
     #[test]
     fn test_compute_source_hash_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let hash = compute_source_hash(tmp.path()).unwrap();
+        let hash = compute_source_hash(tmp.path(), None).unwrap();
         assert_eq!(hash.len(), 16); // FNV-1a produces 16 hex chars
     }
 
