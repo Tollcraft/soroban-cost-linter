@@ -35,6 +35,10 @@
 mod bench_env;
 use bench_env::{parse_iterations, parse_threshold};
 
+#[path = "bench_stats.rs"]
+mod bench_stats;
+use bench_stats::{median_ms, p95_ms};
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::env;
@@ -79,6 +83,10 @@ pub struct BenchmarkBaseline {
     /// Sum of all per-contract median durations (ms).  Used for a single
     /// aggregate regression check in addition to the per-contract checks.
     pub total_median_ms: f64,
+    /// Sum of all per-contract p95 durations (ms).  Reported alongside the
+    /// median to surface tail-latency spikes on noisy CI runners.
+    #[serde(default)]
+    pub total_p95_ms: f64,
 }
 
 // ---------------------------------------------------------------------------
@@ -326,17 +334,6 @@ fn run_linter(linter: &Path, contract: &Path, target_dir: &Path) -> Duration {
     elapsed
 }
 
-/// Computes the value at the given `percentile` (0–100) from a **sorted**
-/// slice of `Duration` samples.
-///
-/// Uses ceiling-division for the index so that e.g. the 50th percentile of a
-/// 3-element slice returns the middle element (index 1) rather than the lower
-/// one (index 0).
-fn percentile(sorted_samples: &[Duration], percentile: usize) -> Duration {
-    let index = ((sorted_samples.len() - 1) * percentile).div_ceil(100);
-    sorted_samples[index]
-}
-
 // ---------------------------------------------------------------------------
 // Baseline I/O helpers
 // ---------------------------------------------------------------------------
@@ -375,17 +372,22 @@ fn load_baseline() -> Option<BenchmarkBaseline> {
 // Benchmark measurement
 // ---------------------------------------------------------------------------
 
-/// Runs one untimed warmup, then the linter `iterations` times against every contract in `contracts`,
-/// and returns a map of contract name → median duration in milliseconds plus
-/// the sum of all medians.
+/// Runs one untimed warmup, then the linter `iterations` times against every
+/// contract in `contracts`, and returns:
+/// - a map of contract name → median duration in milliseconds,
+/// - a map of contract name → p95 duration in milliseconds,
+/// - the sum of all per-contract medians,
+/// - the sum of all per-contract p95 values.
 fn measure_contracts(
     contracts: &[PathBuf],
     linter: &Path,
     target_dir: &Path,
     iterations: usize,
-) -> (BTreeMap<String, f64>, f64) {
+) -> (BTreeMap<String, f64>, BTreeMap<String, f64>, f64, f64) {
     let mut results: BTreeMap<String, f64> = BTreeMap::new();
+    let mut results_p95: BTreeMap<String, f64> = BTreeMap::new();
     let mut total_median_ms = 0.0_f64;
+    let mut total_p95_ms = 0.0_f64;
 
     for contract in contracts {
         // Untimed warmup run so cold caches / first-load costs do not skew
@@ -396,17 +398,20 @@ fn measure_contracts(
             .collect();
         samples.sort_unstable();
 
-        let median_ms = percentile(&samples, 50).as_secs_f64() * 1000.0;
+        let med = median_ms(&samples);
+        let p95 = p95_ms(&samples);
         let name = contract
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
 
-        results.insert(name, median_ms);
-        total_median_ms += median_ms;
+        results.insert(name.clone(), med);
+        results_p95.insert(name, p95);
+        total_median_ms += med;
+        total_p95_ms += p95;
     }
 
-    (results, total_median_ms)
+    (results, results_p95, total_median_ms, total_p95_ms)
 }
 
 // ---------------------------------------------------------------------------
@@ -420,21 +425,24 @@ fn measure_contracts(
 /// regressed beyond `threshold_pct`.
 fn report_regression(
     current: &BTreeMap<String, f64>,
+    current_p95: &BTreeMap<String, f64>,
     total_current_ms: f64,
+    total_current_p95_ms: f64,
     baseline: &BenchmarkBaseline,
     threshold_pct: f64,
 ) -> bool {
     eprintln!("\n=== Linter Performance Benchmark vs Baseline ===");
     eprintln!(
-        "{:<35} | {:>12} | {:>12} | {:>14}",
-        "Contract", "Baseline(ms)", "Current(ms)", "Delta"
+        "{:<35} | {:>12} | {:>12} | {:>10} | {:>14}",
+        "Contract", "Baseline(ms)", "Median(ms)", "P95(ms)", "Delta"
     );
-    eprintln!("{}", "-".repeat(78));
+    eprintln!("{}", "-".repeat(89));
 
     let mut has_regression = false;
     let mut gaps = Vec::new();
 
     for (name, current_ms) in current {
+        let p95 = current_p95.get(name).copied().unwrap_or(0.0);
         let (baseline_col, delta_col, status_str) = match baseline.contracts.get(name) {
             Some(&baseline_ms) => {
                 let delta_ms = current_ms - baseline_ms;
@@ -466,8 +474,8 @@ fn report_regression(
         };
 
         eprintln!(
-            "{:<35} | {} | {:>12.2} | {} {}",
-            name, baseline_col, current_ms, delta_col, status_str
+            "{:<35} | {} | {:>12.2} | {:>10.2} | {} {}",
+            name, baseline_col, current_ms, p95, delta_col, status_str
         );
     }
 
@@ -478,10 +486,14 @@ fn report_regression(
         0.0
     };
 
-    eprintln!("{}", "=".repeat(78));
+    eprintln!("{}", "=".repeat(89));
     eprintln!(
-        "TOTAL BENCHMARK: Baseline={:.2} ms | Current={:.2} ms | Delta={:+.2} ms ({:+.2}%)",
-        baseline.total_median_ms, total_current_ms, total_delta_ms, total_delta_pct
+        "TOTAL BENCHMARK: Baseline={:.2} ms | Median={:.2} ms | P95={:.2} ms | Delta={:+.2} ms ({:+.2}%)",
+        baseline.total_median_ms,
+        total_current_ms,
+        total_current_p95_ms,
+        total_delta_ms,
+        total_delta_pct
     );
     eprintln!("REGRESSION THRESHOLD: {:.2}%", threshold_pct);
 
@@ -568,7 +580,7 @@ fn linter_performance() {
         iterations
     );
 
-    let (current_results, total_median_ms) =
+    let (current_results, current_p95, total_median_ms, total_p95_ms) =
         measure_contracts(&contracts, &linter, &target_dir, iterations);
 
     if is_bless {
@@ -579,6 +591,7 @@ fn linter_performance() {
                  Update deliberately by running: BLESS_BENCH=1 cargo bench --bench linter_performance --package cargo-cost-lint".to_string(),
             contracts: current_results,
             total_median_ms,
+            total_p95_ms,
         };
         write_baseline(&new_baseline);
         return;
@@ -608,7 +621,9 @@ fn linter_performance() {
 
     let has_regression = report_regression(
         &current_results,
+        &current_p95,
         total_median_ms,
+        total_p95_ms,
         &baseline,
         effective_threshold,
     );
