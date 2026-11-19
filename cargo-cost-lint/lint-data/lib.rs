@@ -49,6 +49,7 @@ mod loop_invariant_storage_access;
 mod nested_loop_storage_access;
 mod option_wrapping_in_storage;
 mod persistent_storage_for_ephemeral_data;
+mod persistent_write_without_ttl_extension;
 mod redundant_address_clone;
 mod redundant_require_auth;
 mod redundant_val_conversion;
@@ -130,6 +131,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         EXCESSIVE_VEC_CAPACITY,
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
+        PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -220,6 +222,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     });
     lint_store.register_late_pass(|_| {
         Box::new(large_value_decoded_for_one_field::LargeValueDecodedForOneField)
+    });
+    lint_store.register_late_pass(|_| {
+        Box::new(persistent_write_without_ttl_extension::PersistentWriteWithoutTtlExtension)
     });
 }
 
@@ -366,6 +371,12 @@ rustc_session::declare_lint! {
     pub LARGE_VALUE_DECODED_FOR_ONE_FIELD,
     Warn,
     "decoding a large stored value to read only a single field"
+}
+
+rustc_session::declare_lint! {
+    pub PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+    Warn,
+    "persistent storage write without TTL extension — archival cost cliff"
 }
 
 rustc_session::declare_lint! {
@@ -845,6 +856,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "decoding a large stored value to read only a single field",
         rationale: "Deserializing an entire multi-field struct to read only a single field decodes unused fields into memory, wasting CPU cycles and host allocations.",
     },
+    LintMeta {
+        name: "persistent_write_without_ttl_extension",
+        category: LintCategory::Storage,
+        description: "persistent storage write without TTL extension — archival cost cliff",
+        rationale: "Writing to persistent storage without extending its TTL leaves the entry vulnerable to premature archiving, which forces an expensive restoration transaction.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -898,6 +915,7 @@ dylint_lint_impl! {
         EXCESSIVE_VEC_CAPACITY,
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
+        PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
     ]
 }
 

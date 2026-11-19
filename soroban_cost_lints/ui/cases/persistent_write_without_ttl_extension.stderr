@@ -1,0 +1,10 @@
+warning: persistent storage write without TTL extension — archival cost cliff
+  --> $DIR/persistent_write_without_ttl_extension.rs:67:5
+   |
+LL |     env.storage().persistent().set(&1, &42);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: after writing to persistent storage, call extend_ttl with an explicit threshold and extension length to avoid archival
+   = note: `#[warn(persistent_write_without_ttl_extension)]` on by default
+
+warning: 1 warning emitted

@@ -31,6 +31,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec | [Link](lints/excessive_vec_capacity.md) |
 | `storage_write_of_unchanged_value` | warn | writing an unchanged value back to storage | [Link](lints/storage_write_of_unchanged_value.md) |
 | `large_value_decoded_for_one_field` | warn | decoding a large stored value to read only a single field | [Link](lints/large_value_decoded_for_one_field.md) |
+| `persistent_write_without_ttl_extension` | warn | persistent storage write without TTL extension — archival cost cliff | [Link](lints/persistent_write_without_ttl_extension.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |
