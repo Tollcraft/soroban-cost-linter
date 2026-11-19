@@ -1032,7 +1032,10 @@ fn main() {
         if cli.format == OutputFormat::Sarif {
             // `emit_sarif` (write-into-a-sink) was replaced by
             // `generate_sarif_report`, which returns the serialized report.
-            let sarif_str = output_formatters::generate_sarif_report(&sarif_findings);
+            let lint_descriptions: Vec<(&str, &str)> =
+                LINT_INFO.iter().map(|i| (i.name, i.description)).collect();
+            let sarif_str =
+                output_formatters::generate_sarif_report(&sarif_findings, &lint_descriptions);
             print!("{}", sarif_str);
             recorded_stdout.push_str(&sarif_str);
         }
