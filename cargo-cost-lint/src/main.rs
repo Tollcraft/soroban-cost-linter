@@ -476,7 +476,12 @@ pub fn discover_config_file(cwd: &Path, workspace_root: &Path) -> Option<PathBuf
 pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, String> {
     if let Some(path_str) = config_arg {
         let path = PathBuf::from(path_str);
-        if path.exists() {
+        if path.is_dir() {
+            Err(format!(
+                "Error: Config path '{}' is a directory, not a file",
+                path_str
+            ))
+        } else if path.exists() {
             Ok(Some(path))
         } else {
             Err(format!("Error: Config file '{}' does not exist", path_str))
@@ -1987,6 +1992,14 @@ mod tests {
             Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
         assert!(cli.no_cache);
         assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn resolve_config_rejects_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = resolve_config(Some(tmp.path().to_str().unwrap()))
+            .expect_err("a directory must not be accepted as a config file");
+        assert!(err.contains("is a directory"), "unexpected error: {err}");
     }
 
     #[test]
