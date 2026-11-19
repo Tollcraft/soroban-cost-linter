@@ -1124,7 +1124,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_readme(&entries);
+        let generated = generate_readme(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lints/README.md"))
             .expect("Failed to read docs/lints/README.md");
         let actual = actual.replace("\r\n", "\n");
@@ -1140,7 +1140,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_catalog(&entries);
+        let generated = generate_catalog(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lint_catalog.md"))
             .expect("Failed to read docs/lint_catalog.md");
         let actual = actual.replace("\r\n", "\n");
