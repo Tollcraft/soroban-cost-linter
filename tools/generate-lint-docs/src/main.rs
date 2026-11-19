@@ -588,9 +588,10 @@ fn validate_args<I: IntoIterator<Item = String>>(args: I) -> Result<(), String> 
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--check" => {}
-            "--workspace-root" => {
-                it.next();
-            }
+            "--workspace-root" => match it.next() {
+                Some(v) if !v.is_empty() && !v.starts_with("--") => {}
+                _ => return Err("--workspace-root requires a path value".to_string()),
+            },
             other => return Err(format!("unknown argument '{other}'")),
         }
     }
@@ -1545,6 +1546,8 @@ multiline description"
     fn validate_args_rejects_unknown_flag() {
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(validate_args(a(&["bin", "--chek"])).is_err());
+        assert!(validate_args(a(&["bin", "--workspace-root"])).is_err());
+        assert!(validate_args(a(&["bin", "--workspace-root", "--check"])).is_err());
         assert!(validate_args(a(&["bin", "--check", "--workspace-root", "x"])).is_ok());
         assert!(validate_args(a(&["bin"])).is_ok());
     }
@@ -1565,6 +1568,13 @@ multiline description"
         assert!(!status.success());
         assert!(!root.join("docs/lints/README.md").exists());
 
+        let status = Command::new(&bin)
+            .arg("--workspace-root")
+            .current_dir(root)
+            .status()
+            .expect("Failed to execute binary");
+        assert!(!status.success());
+        assert!(!root.join("docs").exists());
     }
 
     #[test]
