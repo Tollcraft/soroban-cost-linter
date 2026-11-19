@@ -8,3 +8,4 @@ LL |     let cfg: BigConfig = env.storage().instance().get(&1).unwrap();
    = note: `#[warn(large_value_decoded_for_one_field)]` on by default
 
 warning: 1 warning emitted
+

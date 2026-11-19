@@ -8,3 +8,4 @@ LL |     env.storage().persistent().set(&1, &42);
    = note: `#[warn(persistent_write_without_ttl_extension)]` on by default
 
 warning: 1 warning emitted
+

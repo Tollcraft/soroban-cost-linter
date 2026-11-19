@@ -1,4 +1,4 @@
-#![allow(unwrap_on_storage_get)]
+#![allow(unwrap_on_storage_get, storage_write_without_read)]
 
 pub mod soroban_sdk {
     pub struct Env;
