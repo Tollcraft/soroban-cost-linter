@@ -247,10 +247,15 @@ pub fn validate_and_build_package_args(
         }
     }
 
+    // Deduplicate while preserving first-seen order so that
+    // `--package a --package a` behaves the same as `--package a`.
+    let mut seen = std::collections::HashSet::new();
     let mut args = Vec::new();
     for pkg in packages {
-        args.push("--package".to_string());
-        args.push(pkg.clone());
+        if seen.insert(pkg.clone()) {
+            args.push("--package".to_string());
+            args.push(pkg.clone());
+        }
     }
     Ok(args)
 }
