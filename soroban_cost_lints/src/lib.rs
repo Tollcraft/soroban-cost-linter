@@ -43,6 +43,7 @@ mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
+mod large_value_decoded_for_one_field;
 mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
 mod nested_loop_storage_access;
@@ -128,6 +129,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
+        LARGE_VALUE_DECODED_FOR_ONE_FIELD,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -215,6 +217,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
     lint_store.register_late_pass(|_| {
         Box::new(storage_write_of_unchanged_value::StorageWriteOfUnchangedValue)
+    });
+    lint_store.register_late_pass(|_| {
+        Box::new(large_value_decoded_for_one_field::LargeValueDecodedForOneField)
     });
 }
 
@@ -355,6 +360,12 @@ rustc_session::declare_lint! {
     pub STORAGE_WRITE_OF_UNCHANGED_VALUE,
     Warn,
     "writing an unchanged value back to storage"
+}
+
+rustc_session::declare_lint! {
+    pub LARGE_VALUE_DECODED_FOR_ONE_FIELD,
+    Warn,
+    "decoding a large stored value to read only a single field"
 }
 
 rustc_session::declare_lint! {
@@ -828,6 +839,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "writing an unchanged value back to storage",
         rationale: "Reading a value from storage and writing it back unchanged pays a metered host write and entry rent for identical data; guard the write with an inequality check or omit the write.",
     },
+    LintMeta {
+        name: "large_value_decoded_for_one_field",
+        category: LintCategory::Storage,
+        description: "decoding a large stored value to read only a single field",
+        rationale: "Deserializing an entire multi-field struct to read only a single field decodes unused fields into memory, wasting CPU cycles and host allocations.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -880,6 +897,7 @@ dylint_lint_impl! {
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
+        LARGE_VALUE_DECODED_FOR_ONE_FIELD,
     ]
 }
 

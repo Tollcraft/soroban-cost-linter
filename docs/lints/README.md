@@ -23,6 +23,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`blind_storage_write`](blind_storage_write.md) | `warn` | blind storage write overwrites a previously written key without reading it back |
 | [`storage_write_of_unchanged_value`](storage_write_of_unchanged_value.md) | `warn` | writing an unchanged value back to storage |
+| [`large_value_decoded_for_one_field`](large_value_decoded_for_one_field.md) | `warn` | decoding a large stored value to read only a single field |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
