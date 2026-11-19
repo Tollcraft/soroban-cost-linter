@@ -29,6 +29,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `blind_storage_write` | warn | blind storage write overwrites a previously written key without reading it back | [Link](lints/blind_storage_write.md) |
 | `bytes_slice_copy_in_loop` | warn | repeatedly copying a sub-slice of `Bytes` inside a loop | [Link](lints/bytes_slice_copy_in_loop.md) |
 | `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec | [Link](lints/excessive_vec_capacity.md) |
+| `storage_write_of_unchanged_value` | warn | writing an unchanged value back to storage | [Link](lints/storage_write_of_unchanged_value.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |

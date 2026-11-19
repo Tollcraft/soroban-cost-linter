@@ -66,6 +66,7 @@
   * [blind\_storage\_write](lints/blind_storage_write.md)
   * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
+  * [storage\_write\_of\_unchanged\_value](lints/storage_write_of_unchanged_value.md)
 
 ## Branding
 

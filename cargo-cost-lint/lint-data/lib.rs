@@ -54,6 +54,7 @@ mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
 mod storage_read_modify_write;
+mod storage_write_of_unchanged_value;
 mod storage_write_without_read;
 mod string_concat_in_loop;
 mod unbounded_input_loop;
@@ -126,6 +127,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BLIND_STORAGE_WRITE,
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
+        STORAGE_WRITE_OF_UNCHANGED_VALUE,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -211,6 +213,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(blind_storage_write::BlindStorageWrite));
     lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
+    lint_store.register_late_pass(|_| {
+        Box::new(storage_write_of_unchanged_value::StorageWriteOfUnchangedValue)
+    });
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -344,6 +349,12 @@ rustc_session::declare_lint! {
     pub EXCESSIVE_VEC_CAPACITY,
     Warn,
     "excessive pre-allocation capacity in Soroban Vec"
+}
+
+rustc_session::declare_lint! {
+    pub STORAGE_WRITE_OF_UNCHANGED_VALUE,
+    Warn,
+    "writing an unchanged value back to storage"
 }
 
 rustc_session::declare_lint! {
@@ -811,6 +822,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "excessive pre-allocation capacity in Soroban Vec",
         rationale: "Pre-allocating host-side Vec capacity far beyond what the contract can fill is billed at allocation time; starting empty and growing on demand keeps the metered footprint proportional to the data actually stored.",
     },
+    LintMeta {
+        name: "storage_write_of_unchanged_value",
+        category: LintCategory::Storage,
+        description: "writing an unchanged value back to storage",
+        rationale: "Reading a value from storage and writing it back unchanged pays a metered host write and entry rent for identical data; guard the write with an inequality check or omit the write.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -862,6 +879,7 @@ dylint_lint_impl! {
         BLIND_STORAGE_WRITE,
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
+        STORAGE_WRITE_OF_UNCHANGED_VALUE,
     ]
 }
 
