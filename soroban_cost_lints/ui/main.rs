@@ -1,92 +1,163 @@
+//! Fixture program covering the lints registered by the test harness.
+//!
+//! The local `soroban_sdk` declarations intentionally model only the API
+//! shapes needed by the fixtures. Keeping the expensive operations visible in
+//! one file lets UI tests exercise both positive and negative examples without
+//! depending on a deployed contract SDK.
+//
+// Note: at this point three of the lints referenced in
+// `#[allow(...)]` markers below (`expensive_crypto_in_loop`,
+// `redundant_storage_read`,
+// `unnecessary_vec_allocation`) are not yet implemented — they exist as
+// community-proposed follow-ups tracked in GitHub issues #59/#60/#61/#62.
+// The unknown-lint allow forward-suppresses rustc warnings on those markers
+// so we can land the fixtures today; once each lint lands, the corresponding
+// `#[allow(<name>)]` becomes a real suppression with no edit needed.
+#![allow(unknown_lints)]
+#![allow(instance_storage_write_in_loop)]
+
+//! Shared mock SDK and fixture functions used by the lint UI tests.
+//!
+//! The test harness intentionally keeps the SDK surface small. Each mock method
+//! mirrors the shape of a host call that a lint must recognize, while the
+//! fixtures below provide both positive and negative examples. Keeping the
+//! mocks here avoids coupling diagnostic tests to a particular SDK release.
+
 pub mod soroban_sdk {
+    //! Minimal SDK-shaped types used by the lint fixtures.
     pub struct Env;
     impl Clone for Env {
         fn clone(&self) -> Self { Env }
     }
     impl Env {
+        /// Returns the storage facade used by the fixture expressions.
         pub fn storage(&self) -> storage::Storage {
             storage::Storage
         }
+        /// Returns the ledger facade used by host-call fixtures.
         pub fn ledger(&self) -> ledger::Ledger {
             ledger::Ledger
         }
+        /// Returns the host facade used by invocation fixtures.
         pub fn host(&self) -> host::Host {
             host::Host
         }
+        /// Returns the cryptography facade used by loop-cost fixtures.
         pub fn crypto(&self) -> crypto::Crypto {
             crypto::Crypto
         }
+        /// Returns the pseudo-randomness facade used by loop-cost fixtures.
         pub fn prng(&self) -> prng::Prng {
             prng::Prng
         }
+        /// Returns the event facade used by publish fixtures.
         pub fn events(&self) -> events::Events {
             events::Events
         }
+        /// Returns the deployment facade used by host-call fixtures.
         pub fn deployer(&self) -> deploy::Deployer {
             deploy::Deployer
         }
+        /// Returns the current contract address.
         pub fn current_contract_address(&self) -> Address {
             Address
+        }
+        /// Invokes a contract and returns a default fixture value.
+        pub fn invoke_contract<T>(&self, _contract: &Address, _func: &Symbol, _args: ()) -> T
+        where
+            T: Default,
+        {
+            T::default()
         }
     }
 
     pub struct Address;
+    impl Address {
+        /// Marks the address as authenticated in the fixture API.
+        pub fn require_auth(&self) {}
+        /// Marks the address as authenticated for argument-dependent calls.
+        pub fn require_auth_for_args(&self, _args: &[Env]) {}
+    }
 
     pub mod storage {
         pub struct Storage;
         impl Storage {
+            /// Returns instance storage.
             pub fn instance(&self) -> Instance { Instance }
+            /// Returns persistent storage.
             pub fn persistent(&self) -> Persistent { Persistent }
+            /// Returns temporary storage.
             pub fn temporary(&self) -> Temporary { Temporary }
         }
 
         pub struct Instance;
         impl Instance {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            /// Reads a value from instance storage.
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to instance storage.
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether an instance key exists.
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
 
         pub struct Persistent;
         impl Persistent {
+            /// Reads a value from persistent storage.
             pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to persistent storage.
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether a persistent key exists.
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            /// Extends the lifetime of a persistent entry.
+            pub fn extend_ttl<K>(&self, _k: &K, _threshold: &()) {}
         }
 
         pub struct Temporary;
         impl Temporary {
-            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K>(&self, _k: &K) -> bool { false }
+            /// Reads a value from temporary storage.
+            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+            /// Writes a value to temporary storage.
+            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
+            /// Reports whether a temporary key exists.
+            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
         }
     }
 
     pub mod ledger {
         pub struct Ledger;
         impl Ledger {
+            /// Returns the current fixture ledger sequence.
             pub fn sequence(&self) -> u32 { 0 }
         }
     }
 
+    // These types are returned by `Env`'s accessors. Their names must continue
+    // to match SOROBAN_HOST_TYPES so host-call lints see the same shape as the
+    // real SDK without pulling the SDK into every UI fixture.
     pub mod crypto {
         pub struct Crypto;
         impl Crypto {
+            /// Computes a fixture SHA-256 digest.
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            /// Computes a fixture Keccak-256 digest.
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            /// Verifies a fixture Ed25519 signature.
+            pub fn ed25519_verify(&self, _key: &[u8], _msg: &[u8], _sig: &[u8]) {}
         }
     }
 
     pub mod prng {
         pub struct Prng;
         impl Prng {
-            pub fn u64_in_range(&self, _lo: u64, _hi: u64) -> u64 { 0 }
+            /// Returns a fixture pseudo-random value in the requested range.
+            pub fn u64_in_range(&self, _low: u64, _high: u64) -> u64 { 0 }
         }
     }
 
     pub mod events {
         pub struct Events;
         impl Events {
+            /// Publishes a fixture event with the supplied topics and data.
             pub fn publish<T, D>(&self, _topics: T, _data: D) {}
         }
     }
@@ -94,6 +165,9 @@ pub mod soroban_sdk {
     pub mod deploy {
         pub struct Deployer;
         impl Deployer {
+            /// Selects the current contract as the deployment target.
+            pub fn with_current_contract(&self, _salt: [u8; 32]) -> Deployer { Deployer }
+            /// Returns the uploaded WASM hash used by the fixture.
             pub fn uploaded_wasm_hash(&self) -> [u8; 32] { [0; 32] }
         }
     }
@@ -101,19 +175,141 @@ pub mod soroban_sdk {
     pub mod host {
         pub struct Host;
         impl Host {
+            /// Represents a dynamic contract invocation.
             pub fn invoke_contract(&self) {}
+            /// Represents a static host invocation.
             pub fn invoke_static(&self) {}
+            /// Represents a cloned host budget handle.
             pub fn budget_cloned(&self) {}
         }
     }
 
+    // One tuple struct supports both concatenation fixtures and the
+    // bytes-append fixtures. Keeping one representation prevents the test
+    // harness from drifting into incompatible mock definitions.
+    pub struct Bytes(pub std::vec::Vec<u8>);
+    impl Bytes {
+        /// Creates fixture bytes from a string literal.
+        pub fn from(_s: &str) -> Bytes { Bytes(vec![]) }
+        /// Appends another byte buffer in the fixture API.
+        pub fn append(&mut self, _other: &Bytes) {}
+        /// Appends one byte in the fixture API.
+        pub fn push_back(&mut self, _val: u8) {}
+    }
+    impl std::ops::Add for Bytes {
+        type Output = Bytes;
+        fn add(self, _rhs: Bytes) -> Bytes { Bytes(vec![]) }
+    }
+
+    // The mock Vec intentionally exposes only the operations used by the UI
+    // fixtures; it is not intended to model collection semantics.
+    pub struct Vec;
+    impl Vec {
+        /// Creates an empty fixture vector.
+        pub fn new() -> Vec { Vec }
+        /// Creates a fixture vector with reserved capacity.
+        pub fn with_capacity(_n: u32) -> Vec { Vec }
+        /// Appends one value to the fixture vector.
+        pub fn push_back(&mut self, _v: i32) {}
+        /// Reserves additional fixture vector capacity.
+        pub fn reserve(&mut self, _additional: u32) {}
+    }
+
+    // Generic arguments let map fixtures use the same mock for different key
+    // and value types without adding behavior irrelevant to lint diagnostics.
+    pub struct Map;
+    impl Map {
+        /// Inserts a key-value pair into the fixture map.
+        pub fn insert<K, V>(&mut self, _k: K, _v: V) {}
+        /// Looks up a value in the fixture map.
+        pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
+    }
+
     pub struct Symbol;
     impl Symbol {
+        /// Creates a fixture symbol from a string.
         pub fn new(_env: &Env, _s: &str) -> Symbol { Symbol }
+    }
+
+    pub mod vec {
+        pub struct Vec<T>(std::marker::PhantomData<T>);
+        impl<T> Vec<T> {
+            /// Reports whether the fixture vector contains an item.
+            pub fn contains(&self, _item: &T) -> bool { false }
+            /// Finds the position of the first matching fixture item.
+            pub fn position(&self, _f: impl FnMut(&T) -> bool) -> Option<usize> { None }
+            /// Finds the first matching fixture item.
+            pub fn find(&self, _f: impl FnMut(&T) -> bool) -> Option<&T> { None }
+        }
+    }
+
+    pub mod map {
+        pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
+        impl<K, V> Map<K, V> {
+            /// Reports whether the fixture map contains a key.
+            pub fn contains_key(&self, _k: &K) -> bool { false }
+            /// Returns a reference to a fixture map value.
+            pub fn get(&self, _k: &K) -> Option<&V> { None }
+        }
     }
 }
 
-use soroban_sdk::{Env, Symbol};
+use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
+
+// Stub contract client for token_transfer_in_loop fixtures.
+// Generated Soroban clients produce types like this — the key is that the
+// receiver is an ADT whose def-path does NOT match any known soroban_sdk type.
+struct TokenClient(Env);
+impl TokenClient {
+    /// Sends a fixture token transfer.
+    pub fn transfer(&self, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
+    /// Sends a fixture delegated token transfer.
+    pub fn transfer_from(&self, _spender: &soroban_sdk::Address, _from: &soroban_sdk::Address, _to: &soroban_sdk::Address, _amount: &i128) {}
+}
+
+
+// Realistic false-positive scenario: batch-writing different keys per iteration
+#[allow(soroban_storage_in_loop)]
+fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
+    for (key, val) in pairs {
+        env.storage().instance().set(key, val); // Good (allowed) — different key each iteration
+    }
+}
+
+// =======================================================================
+// soroban_storage_in_loop — Inter-procedural Fixtures
+// =======================================================================
+
+fn persist(env: &Env) {
+    env.storage().instance().set(&"key", &42);
+}
+
+fn noop(_env: &Env) {
+    // nothing
+}
+
+fn bad_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Should Warn — callee performs storage
+    }
+}
+
+fn good_noop_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        noop(&env); // Good — callee does nothing costly
+    }
+}
+
+fn good_storage_through_call_outside_loop(env: Env) {
+    persist(&env); // Good — not inside a loop
+}
+
+#[allow(soroban_storage_in_loop)]
+fn allowed_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Good (allowed)
+    }
+}
 
 // =======================================================================
 // soroban_storage_in_loop — Fixtures
@@ -152,6 +348,8 @@ fn allowed_storage_in_loop(env: Env) {
     }
 }
 
+// Realistic false-positive scenario: batch-writing different keys per iteration
+#[allow(soroban_storage_in_loop)]
 // =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================
@@ -163,6 +361,44 @@ fn bad_clone_env(env: Env) {
 fn good_no_clone_needed(env: Env) {
     let _ref = &env; // Good — no clone, just a reference
 }
+
+fn bad_clone_env_ufcs_env(env: Env) {
+    let _cloned = Env::clone(&env); // Should Warn
+}
+
+fn bad_clone_env_ufcs_clone(env: Env) {
+    let _cloned = Clone::clone(&env); // Should Warn
+}
+
+struct EnvHolder {
+    env: Env,
+}
+
+fn bad_clone_env_field(holder: EnvHolder) {
+    let _cloned = holder.env.clone(); // Should Warn — Env reached through a field
+}
+
+fn good_env_ref_clone(env: &Env) {
+    let _cloned = env.clone(); // Good — &Env, clone produces owned Env
+}
+
+fn good_bound_ref_clone(env: Env) {
+    let r = &env;
+    let _cloned = r.clone(); // Good — bound &Env receiver, produces an owned Env
+}
+
+fn good_env_used_after_clone(env: Env) {
+    let _cloned = env.clone(); // Good — env used after on next line
+    let _also_env = env;
+}
+
+fn good_fn_takes_env_by_value(env: Env) {
+    let cloned = env.clone(); // Good — env used after the clone
+    takes_env(cloned);
+    let _still_here = env;
+}
+
+fn takes_env(_e: Env) {}
 
 #[allow(redundant_env_clone)]
 fn allowed_clone_env(env: Env) {
@@ -228,6 +464,13 @@ fn bad_current_contract_address_in_loop(env: Env) {
     }
 }
 
+fn bad_host_call_in_iterator_closure(env: Env) {
+    let items = [1u32, 2, 3];
+    items.iter().for_each(|_| {
+        let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
+    });
+}
+
 fn good_events_publish_of_loop_value(env: Env) {
     for i in 0..10 {
         env.events().publish((i,), i); // Good — publishes the value of this iteration
@@ -281,6 +524,343 @@ fn good_symbol_new_empty(env: Env) {
 #[allow(symbol_new_for_short_literal)]
 fn allowed_symbol_new_short_literal(env: Env) {
     let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
+
+// =======================================================================
+// storage_write_without_read — Fixtures
+// =======================================================================
+
+fn bad_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
+}
+
+fn good_storage_write_with_read(env: Env) {
+    let _: Option<i32> = env.storage().instance().get(&"key1"); // Read first
+    env.storage().instance().set(&"key1", &1); // Good — read before write
+}
+
+fn good_storage_write_with_has(env: Env) {
+    let _exists = env.storage().instance().has(&"key1"); // Check first
+    env.storage().instance().set(&"key1", &1); // Good — has before write
+}
+
+#[allow(storage_write_without_read)]
+fn allowed_storage_write_without_read(env: Env) {
+    env.storage().instance().set(&"key1", &1); // Good (allowed)
+}
+
+// =======================================================================
+// inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Should Warn
+    }
+}
+
+fn good_efficient_bytes_concat(env: Env) {
+    let mut buf: std::vec::Vec<u8> = std::vec::Vec::new();
+    for _ in 0..10 {
+        buf.extend_from_slice(b"x"); // Good — aggregate in Vec first
+    }
+    let _result = Bytes(buf);
+}
+
+#[allow(inefficient_bytes_concat)]
+fn allowed_inefficient_bytes_concat(env: Env) {
+    let mut result = Bytes::from("");
+    for _ in 0..10 {
+        result = result + Bytes::from("x"); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// map_insert_in_loop — Fixtures
+// =======================================================================
+
+fn bad_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Should Warn
+    }
+}
+
+fn good_map_insert_outside_loop(env: Env) {
+    let mut map = Map;
+    map.insert(&1, &1); // Good — outside the loop
+    for i in 0..10 {
+        let _: Option<i32> = map.get(&i);
+    }
+}
+
+#[allow(map_insert_in_loop)]
+fn allowed_map_insert_in_loop(env: Env) {
+    let mut map = Map;
+    for i in 0..10 {
+        map.insert(&i, &1); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// contract_call_in_loop — Fixtures
+// =======================================================================
+
+fn bad_invoke_contract_in_for_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    for _ in 0..10 {
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+    }
+}
+
+fn bad_invoke_contract_in_while_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    let mut i = 0;
+    while i < 10 {
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        i += 1;
+    }
+}
+
+fn good_single_append_outside_loop() {
+    let mut bytes = Bytes(vec![]);
+    bytes.append(&Bytes(vec![])); // Good - single append outside loop
+}
+
+// =======================================================================
+// token_transfer_in_loop — Fixtures
+// =======================================================================
+
+fn bad_transfer_in_for_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer(&from, &to, &100); // Should Warn
+    }
+}
+
+fn bad_transfer_in_while_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    let mut i = 0;
+    while i < 10 {
+        client.transfer(&from, &to, &100); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_transfer_in_loop_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    loop {
+        client.transfer(&from, &to, &100); // Should Warn
+        break;
+    }
+}
+
+fn bad_transfer_from_in_for_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let spender = soroban_sdk::Address;
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer_from(&spender, &from, &to, &50); // Should Warn
+    }
+}
+
+fn bad_transfer_in_closure(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    (0..10).for_each(|_| {
+        client.transfer(&from, &to, &100); // Should Warn — closure in loop
+    });
+}
+
+fn good_transfer_outside_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    client.transfer(&from, &to, &100); // Good — single call, not in a loop
+}
+
+fn good_transfer_from_outside_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let spender = soroban_sdk::Address;
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    client.transfer_from(&spender, &from, &to, &50); // Good — outside loop
+}
+
+#[allow(token_transfer_in_loop)]
+fn allowed_transfer_in_loop(env: Env) {
+    let client = TokenClient(env.clone());
+    let from = soroban_sdk::Address;
+    let to = soroban_sdk::Address;
+    for _ in 0..10 {
+        client.transfer(&from, &to, &100); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// signature_verification_in_loop — Fixtures
+// =======================================================================
+
+fn bad_signature_verification_in_for_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    for _ in 0..10 {
+        env.crypto().ed25519_verify(&key, &msg, &sig); // Should Warn
+    }
+}
+
+fn good_signature_verification_outside_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    env.crypto().ed25519_verify(&key, &msg, &sig); // Good — called once
+}
+
+#[allow(signature_verification_in_loop)]
+fn allowed_signature_verification_in_loop(env: Env) {
+    let key = [0u8; 32];
+    let msg = [0u8; 32];
+    let sig = [0u8; 64];
+    for _ in 0..10 {
+        env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// excessive_vec_capacity — Fixtures
+// =======================================================================
+// Positive (bad): calling Vec::with_capacity with a far larger capacity than
+// the container will actually use wastes host memory and inflates the metered
+// cost of the allocation.
+// Negative (good): request no / little capacity up front and let growth
+// happen naturally, or use Vec::new() for an empty container.
+
+// Should Warn — wildly excessive capacity
+fn bad_excessive_vec_capacity() {
+    let _v = Vec::with_capacity(1_000_000); // above threshold
+}
+
+// Should Warn — excessive reserve
+fn bad_excessive_reserve() {
+    let mut v = Vec::new();
+    v.reserve(500_000); // above threshold
+}
+
+// Good — below threshold, no warning
+fn good_small_capacity() {
+    let _v = Vec::with_capacity(100); // below threshold
+}
+
+// Good — runtime-derived capacity, no warning
+fn good_runtime_capacity(n: u32) {
+    let _v = Vec::with_capacity(n); // runtime value, ignored
+}
+fn bad_invoke_contract_in_loop_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    loop {
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+        break;
+    }
+}
+
+fn good_invoke_contract_outside_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good — single call, not in a loop
+}
+
+#[allow(contract_call_in_loop)]
+fn allowed_invoke_contract_in_loop(env: Env, addr: soroban_sdk::Address, func: Symbol) {
+    for _ in 0..10 {
+        let _result: i32 = env.invoke_contract(&addr, &func, ()); // Good (allowed)
+    }
+}
+
+// =======================================================================
+// unnecessary_string_to_bytes — Fixtures
+// =======================================================================
+
+fn bad_persistent_read_no_ttl_extension(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+}
+
+fn bad_persistent_has_no_ttl_extension(env: Env) {
+    if env.storage().persistent().has(&1) { // Should Warn
+    }
+}
+
+fn good_persistent_read_with_ttl_extension(env: Env) {
+    env.storage().persistent().extend_ttl(&1, &());
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good
+}
+
+fn good_instance_read(env: Env) {
+    let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
+}
+
+fn good_temporary_read(env: Env) {
+    let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
+}
+
+#[allow(persistent_read_without_ttl_extension)]
+fn allowed_persistent_read(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
+}
+
+
+// =======================================================================
+// soroban_redundant_storage_read — Fixtures
+// =======================================================================
+
+fn bad_sequential_get_same_key(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_get(env: Env, key: i32) {
+    let exists = env.storage().instance().has(&key);
+    let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
+}
+
+fn bad_sequential_has_then_has(env: Env, key: i32) {
+    let _a = env.storage().instance().has(&key);
+    let _b = env.storage().instance().has(&key); // Should Warn
+}
+
+fn bad_sequential_persistent_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().persistent().get(&key);
+    let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
+}
+
+fn bad_sequential_temporary_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().temporary().get(&key);
+    let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
+}
+
+fn good_set_resets_tracking(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    env.storage().instance().set(&key, &1);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
+}
+
+fn good_different_keys(env: Env, key1: i32, key2: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key1);
+    let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+}
+
+fn good_single_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
+}
+
+#[allow(soroban_redundant_storage_read)]
+fn allowed_sequential_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
 }
 
 fn main() {}

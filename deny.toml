@@ -1,0 +1,110 @@
+# deny.toml — cargo-deny configuration for soroban-cost-linter
+#
+# This configuration audits dependencies for:
+#  - Security vulnerabilities via the RustSec advisory database
+#  - License compliance (MIT OR Apache-2.0 ecosystem standard)
+#  - Unmaintained or banned crates
+#
+# Run locally with: cargo deny check
+# CI uses EmbarkStudios/cargo-deny-action@v2 in .github/workflows/security.yml
+
+[graph]
+# Scan all workspace members with all features enabled to ensure local runs
+# match CI dependency auditing.
+all-features = true
+no-default-features = false
+
+# ------------------------------------ Advisories ------------------------------------
+# Security and maintenance checks via the RustSec Advisory Database
+# https://rustsec.org
+[advisories]
+# Vulnerability, unsound and notice advisories no longer have configurable lint
+# levels — cargo-deny always errors on them, and the only way to accept one is
+# to list its ID in `ignore` below with a justification. The former
+# `vulnerability`/`unsound`/`notice` keys were removed from the schema, which is
+# why they are absent here.
+#
+# Which unmaintained crates to flag. "workspace" covers direct dependencies;
+# "all" additionally covers transitive ones, which pulls in advisories this
+# project cannot act on directly.
+unmaintained = "workspace"
+# A yanked crate is a supply-chain risk.
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 is pinned by elliptic-curve 0.13 -> k256/p256/ecdsa inside soroban-env-host 29, which the test corpus fixtures depend on; the fixed 0.6 line is semver-incompatible with that tree (`crypto-bigint = '^0.5'`), so only an upstream soroban-sdk change can clear it. The advisory concerns secret-dependent timing, and the linter only compiles toy corpus contracts and lint definitions — it never performs secret integer arithmetic. Re-review when soroban-env-host moves to elliptic-curve 0.14 / crypto-bigint 0.6. Review by 2027-01-15." },
+]
+
+# ------------------------------------ Licenses ------------------------------------
+# Audit dependency licenses for compliance with ecosystem policies.
+# The Rust ecosystem standard is MIT OR Apache-2.0 — copyleft licenses like
+# GPL/AGPL are rejected to avoid encumbering downstream users.
+[licenses]
+# The `allow` list is now exhaustive: anything not listed here is denied, and a
+# crate with no detectable license is denied too. That subsumes the former
+# `unlicensed` and `copyleft` keys, which were removed from the schema — GPL,
+# AGPL, LGPL and MPL-2.0 are rejected by virtue of not appearing below.
+#
+# Allow MIT and Apache-2.0 as well as permissive licenses that are
+# broadly compatible with the ecosystem standard.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # Unicode-3.0 — required by unicode-ident (transitive dep of syn/proc-macro2)
+    # This can be removed if the dependency on unicode-ident is dropped.
+    "Unicode-3.0",
+    # Apache-2.0 WITH LLVM-exception — the license the Rust project itself uses,
+    # reached here through rustc_apfloat (transitive dep of the rustc/clippy
+    # internals). The LLVM exception only removes a restriction, so this is
+    # strictly more permissive than the plain Apache-2.0 already allowed above.
+    # This can be removed if the dependency on rustc_apfloat is dropped.
+    "Apache-2.0 WITH LLVM-exception",
+    # BSD-3-Clause — permissive license pulled in by the crypto dependencies
+    # of soroban-sdk (curve25519-dalek, ed25519-dalek, subtle), which the
+    # corpus contract fixtures require as workspace members.
+    "BSD-3-Clause",
+]
+# The precedence for determining which license applies when multiple are detected.
+confidence-threshold = 0.8
+exceptions = [
+    # clippy_utils — from a pinned git rev of rust-clippy; it follows the same
+    # dual MIT/Apache-2.0 license as the Rust project, but the license file may
+    # not be detectable by cargo-deny from a git source.
+    # This can be removed if clippy_utils is published to crates.io and consumed
+    # from there instead of a git repo, or if we stop depending on it.
+    { name = "clippy_utils", allow = ["MIT", "Apache-2.0"] },
+]
+
+# ------------------------------------ Sources ------------------------------------
+# Restrict where crates can be sourced from.
+[sources]
+# Allow crates from crates.io — the primary Rust package registry.
+unknown-registry = "deny"
+# Deny git repositories that are not explicitly allowed below.
+unknown-git = "deny"
+# LFS sources are not used.
+allow-git = [
+    # clippy_utils pinned from rust-clippy repository
+    # This can be removed if clippy_utils is published to crates.io and consumed
+    # from there instead of a git repo, or if we stop depending on it.
+    "https://github.com/rust-lang/rust-clippy",
+]
+
+# ------------------------------------ Bans ------------------------------------
+# Block specific crates or versions known to be problematic.
+[bans]
+# Deny multiple versions of the same crate (encourages deduplication).
+multiple-versions = "warn"
+# Highlight crates that are widely duplicated — useful for keeping the
+# dependency graph lean.
+highlight = "all"
+# Wildcards are acceptable for dev/build dependencies, but production deps
+# should use precise versions.
+wildcards = "allow"
+
+# Crates denied outright. None currently, but add entries like:
+# { name = "some-crate", reason = "Explains why this crate is blocked" }
+deny = []
+
+# Specific version skips — use when one version of a crate is broken but
+# upgrading isn't immediately feasible.
+skip = []

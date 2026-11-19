@@ -3,6 +3,335 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
+fn test_help_exits_zero() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--help")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --help");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --help must exit with status 0"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(stdout_str.contains("Usage"), "help text should show usage");
+    assert!(
+        stdout_str.contains("cargo-cost-lint"),
+        "help text should mention the binary name"
+    );
+}
+
+#[test]
+fn test_list_lints_json() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&stdout_str).expect("Output is not valid JSON");
+
+    assert_eq!(inventory["version"], "1.0");
+    assert!(inventory["schema"].is_string());
+
+    let lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+    assert!(!lints.is_empty(), "lints array should not be empty");
+
+    let names: Vec<&str> = lints
+        .iter()
+        .map(|lint| lint["name"].as_str().expect("name is not a string"))
+        .collect();
+
+    let expected = [
+        "soroban_storage_in_loop",
+        "loop_invariant_storage_access",
+        "unbounded_input_loop",
+        "redundant_env_clone",
+        "unnecessary_host_function_call",
+        "host_in_loop",
+        "symbol_new_for_short_literal",
+        "unnecessary_string_to_bytes",
+        "storage_write_without_read",
+        "inefficient_bytes_concat",
+        "map_insert_in_loop",
+        "bytes_append_in_loop",
+        "string_concat_in_loop",
+        "signature_verification_in_loop",
+        "storage_key_construction_in_loop",
+        "vec_where_slice_could_be_used",
+    ];
+    for name in &expected {
+        assert!(
+            names.contains(name),
+            "Expected lint '{}' to be in inventory",
+            name
+        );
+    }
+
+    for lint in lints {
+        assert!(lint.get("name").is_some(), "lint entry missing 'name'");
+        assert!(
+            lint.get("default_level").is_some(),
+            "lint entry missing 'default_level'"
+        );
+        assert!(
+            lint.get("description").is_some(),
+            "lint entry missing 'description'"
+        );
+        assert!(
+            lint.get("category").is_some(),
+            "lint entry missing 'category'"
+        );
+        assert!(
+            lint.get("documentation_url").is_some(),
+            "lint entry missing 'documentation_url'"
+        );
+    }
+}
+
+/// `build.rs` derives each inventory entry's `category` by textually parsing
+/// `lib.rs`'s `LINT_METADATA` registry. This test parses the same registry
+/// independently and requires the CLI to agree with it, so a change to the
+/// registry's shape that build.rs no longer understands fails here instead of
+/// silently reporting every category as `Unknown`.
+#[test]
+fn test_list_lints_categories_match_lint_metadata() {
+    let lib_rs = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("soroban_cost_lints")
+        .join("src")
+        .join("lib.rs");
+    let content = match std::fs::read_to_string(&lib_rs) {
+        Ok(content) => content,
+        // Packaged crate: the workspace sources are not part of the package.
+        Err(_) if !lib_rs.exists() => return,
+        Err(e) => panic!("Failed to read {}: {}", lib_rs.display(), e),
+    };
+
+    let registry_start = content
+        .find("pub const LINT_METADATA")
+        .expect("lib.rs must declare LINT_METADATA");
+    let registry = &content[registry_start..];
+    let registry = &registry[..registry
+        .find("];")
+        .expect("LINT_METADATA must be a closed slice literal")];
+
+    let mut expected: Vec<(String, String)> = Vec::new();
+    for entry in registry.split("LintMeta {").skip(1) {
+        let name = entry
+            .split("name: \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| panic!("LINT_METADATA entry has no name: {}", entry.trim()))
+            .to_string();
+        let category = entry
+            .split("category: LintCategory::")
+            .nth(1)
+            .and_then(|rest| rest.split(',').next())
+            .unwrap_or_else(|| panic!("LINT_METADATA entry has no category: {}", entry.trim()))
+            .to_string();
+        expected.push((name, category));
+    }
+    assert!(
+        !expected.is_empty(),
+        "LINT_METADATA should declare at least one lint"
+    );
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output is not valid JSON");
+    let lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+
+    for (name, category) in &expected {
+        let entry = lints
+            .iter()
+            .find(|lint| lint["name"].as_str() == Some(name.as_str()))
+            .unwrap_or_else(|| panic!("lint '{}' is missing from the inventory", name));
+        assert_eq!(
+            entry["category"].as_str(),
+            Some(category.as_str()),
+            "lint '{}' category drifted from its LINT_METADATA row",
+            name
+        );
+    }
+
+    assert_eq!(
+        lints.len(),
+        expected.len(),
+        "inventory and LINT_METADATA describe different numbers of lints"
+    );
+}
+
+#[test]
+fn test_list_lints_text() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --list-lints failed"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(stdout_str.contains("Lint inventory (version 1.0):"));
+    assert!(stdout_str.contains("soroban_storage_in_loop"));
+    assert!(stdout_str.contains("redundant_env_clone"));
+    assert!(stdout_str.contains("unnecessary_host_function_call"));
+    assert!(stdout_str.contains("host_in_loop"));
+}
+
+#[test]
+fn test_explain_json() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // `--explain` must respect `--format json` consistently with
+    // `--list-lints --format json`: a JSON object with the lint's name and
+    // its raw markdown documentation, and no GitBook hint tags in the raw doc.
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("soroban_storage_in_loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint --explain --format json failed"
+    );
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_str).expect("Output is not valid JSON");
+
+    assert_eq!(value["name"], "soroban_storage_in_loop");
+    let markdown = value["markdown"]
+        .as_str()
+        .expect("markdown is not a string");
+    assert!(!markdown.is_empty(), "markdown should not be empty");
+}
+
+#[test]
+fn test_explain_text() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Default (text) format keeps the terminal-clean markdown rendering.
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("soroban_storage_in_loop")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert!(output.status.success(), "cargo-cost-lint --explain failed");
+
+    let stdout_str = String::from_utf8(output.stdout).expect("Stdout is not valid UTF-8");
+    assert!(
+        !stdout_str.contains("{% hint"),
+        "terminal output should not contain GitBook hint tags"
+    );
+    assert!(
+        stdout_str.to_lowercase().contains("storage"),
+        "output should contain relevant documentation content"
+    );
+}
+
+#[test]
+fn test_explain_kebab_case_name_matches_snake_case() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let kebab = Command::new(bin_path)
+        .arg("--explain")
+        .arg("ledger-context-read-in-loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+    assert!(
+        kebab.status.success(),
+        "kebab-case lint name should resolve successfully"
+    );
+
+    let snake = Command::new(bin_path)
+        .arg("--explain")
+        .arg("ledger_context_read_in_loop")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain --format json");
+    assert!(
+        snake.status.success(),
+        "snake_case lint name should resolve successfully"
+    );
+
+    let kebab_json: serde_json::Value =
+        serde_json::from_slice(&kebab.stdout).expect("kebab-case output is not valid JSON");
+    let snake_json: serde_json::Value =
+        serde_json::from_slice(&snake.stdout).expect("snake_case output is not valid JSON");
+    assert_eq!(kebab_json["name"], snake_json["name"]);
+    assert_eq!(kebab_json["markdown"], snake_json["markdown"]);
+}
+
+#[test]
+fn test_explain_unknown_lint() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let output = Command::new(bin_path)
+        .arg("--explain")
+        .arg("definitely_not_a_real_lint_name")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --explain");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unknown lint should exit with code 1"
+    );
+
+    let stderr_str = String::from_utf8(output.stderr).expect("Stderr is not valid UTF-8");
+    assert!(
+        stderr_str.contains("Error: unknown lint"),
+        "stderr should report the unknown lint"
+    );
+    assert!(
+        stderr_str.contains("Valid lints:"),
+        "stderr should list valid lints"
+    );
+}
+
+#[test]
 fn test_json_output() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 
@@ -19,10 +348,6 @@ fn test_json_output() {
         fixture_dir
     );
 
-    // Find the workspace target directory dynamically based on the binary path
-    let mut target_dir = PathBuf::from(env!("CARGO_BIN_EXE_cargo-cost-lint"));
-    target_dir.pop(); // Remove the binary name, leaving the profile directory (e.g., target/debug)
-
     // Build the soroban_cost_lints cdylib first from its own directory so it picks up .cargo/config.toml
     let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     lint_dir.pop();
@@ -35,12 +360,28 @@ fn test_json_output() {
         .expect("Failed to build soroban_cost_lints");
     assert!(status.success(), "Failed to build soroban_cost_lints");
 
+    // Determine where the lint cdylib was built.  `cargo build` above
+    // honours CARGO_TARGET_DIR when set (e.g. by cargo-llvm-cov) and
+    // falls back to the workspace default `<root>/target/` otherwise.
+    // We must point DYLINT_LIBRARY_PATH to the same profile directory
+    // so cargo-dylint can find the library.
+    let lib_dir = match std::env::var("CARGO_TARGET_DIR") {
+        Ok(dir) => PathBuf::from(dir).join("debug"),
+        Err(_) => {
+            let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            d.pop(); // workspace root
+            d.push("target");
+            d.push("debug");
+            d
+        }
+    };
+
     // Run the built wrapper binary in the fixture directory with --format json
     let output = Command::new(bin_path)
         .arg("--format")
         .arg("json")
         .current_dir(fixture_dir)
-        .env("DYLINT_LIBRARY_PATH", target_dir)
+        .env("DYLINT_LIBRARY_PATH", &lib_dir)
         .output()
         .expect("Failed to execute cargo-cost-lint");
 
@@ -59,6 +400,7 @@ fn test_json_output() {
     );
 
     let mut found_storage_in_loop = false;
+    let mut found_redundant_storage_read = false;
     for line in lines {
         // Assert that the line is valid JSON conforming to our schema
         let json: serde_json::Value =
@@ -76,10 +418,507 @@ fn test_json_output() {
         if json["name"] == "soroban_storage_in_loop" {
             found_storage_in_loop = true;
         }
+        if json["name"] == "soroban_redundant_storage_read" {
+            found_redundant_storage_read = true;
+        }
     }
 
     assert!(
         found_storage_in_loop,
         "Expected to find 'soroban_storage_in_loop' lint, but it was not present"
     );
+    assert!(
+        found_redundant_storage_read,
+        "Expected to find 'soroban_redundant_storage_read' lint, but it was not present"
+    );
+}
+
+#[test]
+fn test_shared_budget_toml_parsing() {
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // 1. Both sections
+    let dir = tempdir().unwrap();
+    let budget_path = dir.path().join("budget.toml");
+    let mut f = File::create(&budget_path).unwrap();
+    f.write_all(b"network = \"testnet\"\n[margin]\ncpu_margin = 1.50\n[lints]\nsoroban_storage_in_loop = \"warn\"\n").unwrap();
+
+    let output = Command::new(bin_path)
+        .arg("--list-lints")
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output.status.success(),
+        "cargo-cost-lint failed with mixed budget.toml"
+    );
+    let stderr_str = String::from_utf8(output.stderr).unwrap();
+    // It should ignore unknown sections without warning or error about them
+    assert!(
+        !stderr_str.contains("Error: Failed to parse"),
+        "Should not fail to parse"
+    );
+
+    // 2. Only budget-assert sections
+    let dir2 = tempdir().unwrap();
+    let budget_path2 = dir2.path().join("budget.toml");
+    let mut f2 = File::create(&budget_path2).unwrap();
+    f2.write_all(b"network = \"testnet\"\n[margin]\ncpu_margin = 1.50\n[scenarios.workflow]\npackage=\"pkg\"\n").unwrap();
+
+    let output2 = Command::new(bin_path)
+        .arg("--list-lints")
+        .current_dir(dir2.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        output2.status.success(),
+        "cargo-cost-lint failed with only budget-assert sections"
+    );
+    let stderr_str2 = String::from_utf8(output2.stderr).unwrap();
+    assert!(
+        !stderr_str2.contains("Error: Failed to parse"),
+        "Should not fail to parse without lints section"
+    );
+}
+
+#[test]
+fn forbid_level_in_budget_toml_is_rejected() {
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let dir = tempdir().unwrap();
+    let budget_path = dir.path().join("budget.toml");
+    let mut f = File::create(&budget_path).unwrap();
+    f.write_all(b"[lints]\nsoroban_storage_in_loop = \"forbid\"\n")
+        .unwrap();
+    drop(f);
+
+    let output = Command::new(bin_path)
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    assert!(
+        !output.status.success(),
+        "budget.toml with level \"forbid\" must be rejected"
+    );
+    let stderr_str = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr_str.contains("Unknown lint level 'forbid'"),
+        "stderr was: {stderr_str}"
+    );
+    assert!(
+        stderr_str.contains("for 'soroban_storage_in_loop'"),
+        "stderr was: {stderr_str}"
+    );
+}
+
+#[test]
+fn test_list_lints_json_and_text_consistency_and_descriptions() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    let text_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints");
+    assert!(text_output.status.success());
+    let text_str = String::from_utf8(text_output.stdout).expect("Stdout is not UTF-8");
+
+    let text_lint_lines: Vec<&str> = text_str.lines().filter(|l| l.contains('|')).collect();
+
+    let json_output = Command::new(bin_path)
+        .arg("--list-lints")
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute cargo-cost-lint --list-lints --format json");
+    assert!(json_output.status.success());
+    let json_str = String::from_utf8(json_output.stdout).expect("Stdout is not UTF-8");
+    let inventory: serde_json::Value =
+        serde_json::from_str(&json_str).expect("Output is not valid JSON");
+
+    let json_lints = inventory["lints"]
+        .as_array()
+        .expect("lints is not an array");
+
+    // Both text and JSON must report the exact same number of lints
+    assert_eq!(
+        text_lint_lines.len(),
+        json_lints.len(),
+        "Text and JSON list-lints count mismatch: text={}, json={}",
+        text_lint_lines.len(),
+        json_lints.len()
+    );
+
+    // Verify all lints have complete descriptions (not truncated at commas)
+    let formatted_panic = json_lints
+        .iter()
+        .find(|l| l["name"] == "formatted_panic_payload")
+        .expect("formatted_panic_payload not found in JSON inventory");
+    let desc = formatted_panic["description"].as_str().unwrap();
+    assert!(
+        desc.contains("string-formatting machinery"),
+        "formatted_panic_payload description was truncated at comma: got {:?}",
+        desc
+    );
+
+    for lint in json_lints {
+        let name = lint["name"].as_str().unwrap();
+        let level = lint["default_level"].as_str().unwrap();
+        let desc = lint["description"].as_str().unwrap();
+        let cat = lint["category"].as_str().unwrap();
+        let _url = lint["documentation_url"].as_str().unwrap();
+
+        assert!(!name.is_empty(), "Empty name in lint entry");
+        assert!(!level.is_empty(), "Empty level in lint entry: {}", name);
+        assert!(
+            !desc.is_empty(),
+            "Empty description in lint entry: {}",
+            name
+        );
+        assert!(!cat.is_empty(), "Empty category in lint entry: {}", name);
+    }
+}
+
+/// Every `--format` value documented in README.md's "Output format" table
+/// must be accepted by the CLI. Clap rejects unknown values with an
+/// `invalid value ... for '--format'` usage error before any linting
+/// happens, so a documented format that stops being a valid `OutputFormat`
+/// variant fails this test immediately.
+///
+/// The negative control at the end proves the detection mechanism works:
+/// a value that is neither documented nor implemented must be rejected.
+#[test]
+fn documented_formats_are_accepted() {
+    let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
+
+    // Keep in sync with the "Output format" table in README.md.
+    let documented_formats = ["text", "json", "sarif", "github"];
+
+    // Run outside any cargo workspace so the check is cheap: the point is
+    // clap argument validation, not linting. The spawned `cargo dylint` may
+    // fail here (missing tool or no workspace), but never with a clap
+    // parse rejection for the format value itself.
+    let run_dir = env::temp_dir();
+
+    for format in documented_formats {
+        let output = Command::new(bin_path)
+            .arg("--format")
+            .arg(format)
+            .current_dir(&run_dir)
+            .output()
+            .expect("Failed to execute cargo-cost-lint");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("invalid value"),
+            "--format {format} was rejected by clap:\n{stderr}"
+        );
+    }
+
+    // Negative control: a format that is neither documented nor implemented
+    // must be rejected by clap with an `invalid value` usage error.
+    let rejected = Command::new(bin_path)
+        .arg("--format")
+        .arg("xml")
+        .current_dir(&run_dir)
+        .output()
+        .expect("Failed to execute cargo-cost-lint");
+
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
+    assert!(
+        stderr.contains("invalid value") && stderr.contains("xml"),
+        "Expected '--format xml' to be rejected by clap, but it was not:\n{stderr}"
+    );
+}
+/// End-to-end coverage for the flags no test launched the binary for before:
+/// `--no-cache`, `--clear-cache`, `.lintignore`, `--diff-only` and `--quiet`.
+///
+/// Every case lints a copy of `tests/flag_fixture_workspace` in a temporary
+/// directory, so the repository's own cache path and sources are untouched and
+/// the run needs no network access. Assertions are on stdout, stderr and exit
+/// codes — never on log wording.
+mod flag_e2e {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Output};
+    use std::sync::OnceLock;
+
+    /// Absolute path of the fixture workspace shipped next to this test file.
+    fn fixture_source() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("flag_fixture_workspace")
+    }
+
+    /// A fresh copy of the fixture in a temporary directory.
+    fn fixture_copy() -> tempfile::TempDir {
+        let source = fixture_source();
+        let dir = tempfile::tempdir().expect("failed to create fixture temp dir");
+        fs::create_dir_all(dir.path().join("src")).expect("failed to create fixture src dir");
+        fs::copy(source.join("Cargo.toml"), dir.path().join("Cargo.toml"))
+            .expect("failed to copy fixture Cargo.toml");
+        for file in ["lib.rs", "other.rs"] {
+            fs::copy(
+                source.join("src").join(file),
+                dir.path().join("src").join(file),
+            )
+            .expect("failed to copy fixture source");
+        }
+        dir
+    }
+
+    /// Directory holding the built `soroban_cost_lints` library, building it
+    /// once per test binary.
+    fn lint_library_dir() -> &'static Path {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            lint_dir.pop();
+            lint_dir.push("soroban_cost_lints");
+            let status = Command::new(env!("CARGO"))
+                .arg("build")
+                .current_dir(&lint_dir)
+                .status()
+                .expect("failed to build soroban_cost_lints");
+            assert!(status.success(), "failed to build soroban_cost_lints");
+            match std::env::var("CARGO_TARGET_DIR") {
+                Ok(dir) => PathBuf::from(dir).join("debug"),
+                Err(_) => {
+                    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                    dir.pop();
+                    dir.join("target").join("debug")
+                }
+            }
+        })
+    }
+
+    /// Runs the real binary in `cwd` with the lint library on its search path.
+    fn run_lint(cwd: &Path, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_cargo-cost-lint"))
+            .args(args)
+            .current_dir(cwd)
+            .env("DYLINT_LIBRARY_PATH", lint_library_dir())
+            .env_remove("DYLINT_RUSTFLAGS")
+            .output()
+            .expect("failed to execute cargo-cost-lint")
+    }
+
+    /// Files named by the JSON findings on `stdout`.
+    fn finding_files(stdout: &[u8]) -> Vec<String> {
+        String::from_utf8_lossy(stdout)
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let finding: serde_json::Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("stdout line is not a JSON finding: {e}: {line}"));
+                finding["file"]
+                    .as_str()
+                    .expect("finding must name a file")
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// Number of cached lint results written under the run directory.
+    fn cache_entries(cwd: &Path) -> usize {
+        let cache = cwd.join("target").join("cost-lint-cache");
+        match fs::read_dir(cache) {
+            Ok(entries) => entries
+                .flatten()
+                .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+                .count(),
+            Err(_) => 0,
+        }
+    }
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .status()
+            .expect("failed to run git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    /// `--no-cache` must not write a result that a later run could replay, and
+    /// the next run must reflect an edit to the source.
+    #[test]
+    fn no_cache_re_lints_instead_of_replaying() {
+        let fixture = fixture_copy();
+
+        let first = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(first.status.success(), "first --no-cache run failed");
+        let files = finding_files(&first.stdout);
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            "expected a finding in src/lib.rs, got {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/other.rs")),
+            "expected a finding in src/other.rs, got {files:?}"
+        );
+        assert_eq!(
+            cache_entries(fixture.path()),
+            0,
+            "--no-cache must not write a cache entry"
+        );
+
+        // Remove one finding; a replayed result would still report it.
+        fs::write(
+            fixture.path().join("src/other.rs"),
+            "//! No finding left in this file.\n",
+        )
+        .unwrap();
+
+        let second = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(second.status.success(), "second --no-cache run failed");
+        let files = finding_files(&second.stdout);
+        assert!(
+            !files.iter().any(|f| f.ends_with("src/other.rs")),
+            "--no-cache replayed a stale finding: {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            "the untouched file must still be reported: {files:?}"
+        );
+        assert_eq!(cache_entries(fixture.path()), 0);
+    }
+
+    /// A normal run populates the cache; `--clear-cache` empties it.
+    #[test]
+    fn clear_cache_empties_the_cache_directory() {
+        let fixture = fixture_copy();
+
+        let first = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(first.status.success(), "cached run failed");
+        assert!(
+            cache_entries(fixture.path()) > 0,
+            "a normal run should leave at least one cache entry"
+        );
+
+        let cleared = run_lint(fixture.path(), &["--clear-cache"]);
+        assert!(cleared.status.success(), "--clear-cache failed");
+        assert_eq!(
+            cache_entries(fixture.path()),
+            0,
+            "--clear-cache must remove every cached result"
+        );
+    }
+
+    /// A `.lintignore` entry removes exactly the finding in the matching file.
+    #[test]
+    fn lintignore_removes_the_matching_finding() {
+        let fixture = fixture_copy();
+
+        let before = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(before.status.success());
+        let files = finding_files(&before.stdout);
+        assert!(files.iter().any(|f| f.ends_with("src/other.rs")));
+
+        fs::write(fixture.path().join(".lintignore"), "src/other.rs\n").unwrap();
+
+        let after = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(after.status.success());
+        let files = finding_files(&after.stdout);
+        assert!(
+            !files.iter().any(|f| f.ends_with("src/other.rs")),
+            ".lintignore did not suppress src/other.rs: {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f.ends_with("src/lib.rs")),
+            ".lintignore suppressed a file it does not match: {files:?}"
+        );
+    }
+
+    /// `--diff-only` restricts findings to files changed since the merge base
+    /// with the default branch.
+    #[test]
+    fn diff_only_restricts_findings_to_changed_files() {
+        let fixture = fixture_copy();
+        let dir = fixture.path();
+
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "flag-tests@example.invalid"]);
+        git(dir, &["config", "user.name", "flag tests"]);
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "baseline"]);
+        git(dir, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+        // Change only `src/other.rs`, so only its finding may survive.
+        let other = dir.join("src").join("other.rs");
+        let original = fs::read_to_string(&other).unwrap();
+        fs::write(&other, format!("// changed\n{original}")).unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "touch other.rs"]);
+
+        let output = run_lint(dir, &["--format", "json", "--diff-only"]);
+        assert!(output.status.success(), "--diff-only run failed");
+        let files = finding_files(&output.stdout);
+        assert!(
+            !files.is_empty(),
+            "expected the changed file's finding, got none"
+        );
+        assert!(
+            files.iter().all(|f| f.ends_with("src/other.rs")),
+            "--diff-only leaked an unchanged file's finding: {files:?}"
+        );
+    }
+
+    /// `--quiet` leaves findings (and only findings) on stdout, with nothing on
+    /// stderr — including the missing-`budget.toml` notice the default run
+    /// prints.
+    ///
+    /// The measured run is a cache hit: the informational notices are emitted
+    /// before the cache lookup, so `--quiet` is still exercised, while the
+    /// `cargo dylint` child (whose inherited cargo progress lines this flag
+    /// does not own) is not spawned. The cold-run stream contract, including
+    /// the `--diff-only` notices, is issue #802's.
+    #[test]
+    fn quiet_prints_findings_only() {
+        let fixture = fixture_copy();
+
+        // Cargo writes `Cargo.lock` on the first build, and the lockfile is
+        // part of the cache key: prime it so the warm run records an entry the
+        // measured run can actually hit.
+        let primer = run_lint(fixture.path(), &["--format", "json", "--no-cache"]);
+        assert!(primer.status.success(), "primer run failed");
+
+        // Populate the result cache for the measured run.
+        let warm = run_lint(fixture.path(), &["--format", "json"]);
+        assert!(warm.status.success(), "warm-up run failed");
+        assert!(
+            cache_entries(fixture.path()) > 0,
+            "warm-up run left no cache entry for the measured run"
+        );
+
+        let quiet = run_lint(fixture.path(), &["--format", "json", "--quiet"]);
+        assert!(quiet.status.success(), "--quiet run failed");
+        assert!(
+            quiet.stderr.is_empty(),
+            "--quiet wrote to stderr: {}",
+            String::from_utf8_lossy(&quiet.stderr)
+        );
+
+        let stdout = String::from_utf8(quiet.stdout).expect("stdout is not UTF-8");
+        let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert!(!lines.is_empty(), "--quiet printed no findings");
+        for line in lines {
+            let finding: serde_json::Value = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("--quiet printed a non-finding line: {e}: {line}"));
+            assert!(
+                finding.get("name").is_some(),
+                "--quiet printed a line that is not a finding: {line}"
+            );
+        }
+    }
 }

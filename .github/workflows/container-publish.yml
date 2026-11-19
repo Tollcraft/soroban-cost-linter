@@ -1,0 +1,81 @@
+# Container Publish
+#
+# Publishes the Docker image for this repository.
+#
+# Triggers:
+#   - Push: on main when Dockerfile, rust-toolchain, or this workflow is modified.
+#   - workflow_dispatch: manually from the Actions tab when a re-publish is needed
+#     (e.g. after a previous publish failed, or after a dependency-only image rebuild
+#     that does not touch any of the watched paths). A manual run produces the same
+#     image name and tag scheme as a push-triggered run.
+#
+# When to use a manual run:
+#   Use workflow_dispatch when you need to republish the image without making a
+#   content-changing commit to the watched paths (Dockerfile, rust-toolchain, or
+#   this workflow). This is the intended escape hatch after a failed publish or
+#   after a dependency-only rebuild.
+
+name: Publish Container Image
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "Dockerfile"
+      - "rust-toolchain"
+      - ".github/workflows/container-publish.yml"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata for container image
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}-dev
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+      - name: Build and push container image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Pull and smoke test published container image
+        run: |
+          # Docker rejects uppercase repository names, and GHCR stores the
+          # image under the lowercased path. `metadata-action` sanitises its
+          # `images:` input, but this step builds the reference itself, so
+          # lowercase it here (a no-op on already-lowercase owners).
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}-dev:latest"
+          echo "Pulling published image: $IMAGE"
+          docker pull "$IMAGE"
+          
+          echo "Running smoke test against test_fixtures/smoke_test/ inside container"
+          # The image runs as the unprivileged `dev` user, and a bind mount keeps
+          # the host's ownership, so cargo cannot write Cargo.lock or target/
+          # into the mounted directory. Mount it read-only and copy it into the
+          # container's writable /tmp before linting.
+          OUTPUT=$(docker run --rm \
+            -v "$(pwd)/test_fixtures/smoke_test:/opt/smoke_test:ro" \
+            "$IMAGE" \
+            bash -c 'cp -r /opt/smoke_test /tmp/smoke_test && cd /tmp/smoke_test && cargo cost-lint --format json' 2>&1 || true)
+          echo "Container output:"
+          echo "$OUTPUT"
+          
+          echo "Asserting expected findings are present..."
+          echo "$OUTPUT" | grep -q "soroban_storage_in_loop"

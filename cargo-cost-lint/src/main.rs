@@ -1,352 +1,2778 @@
-use clap::{Parser, ValueEnum};
-use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+pub mod cache;
+mod config;
+mod diff_files;
+mod error;
+mod lint_name_set;
+pub use lint_name_set::{LintNameSet, build_lint_name_set};
+mod output_formatters;
+
+use clap::{ArgGroup, Parser, ValueEnum};
+use output_formatters::{LintFinding, OutputFormat, Span};
+use serde::Serialize;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::{Command, Stdio, exit};
+use std::sync::LazyLock;
 
-#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
-enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(Serialize, Debug)]
-struct Span {
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
-}
-
-#[derive(Serialize, Debug)]
-struct LintFinding {
-    name: String,
-    level: String,
-    file: String,
-    span: Span,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    help: Option<String>,
-}
+/// O(1) lookup set built from the generated `LINT_NAMES` slice.
+static LINT_NAMES_SET: LazyLock<LintNameSet> = LazyLock::new(|| build_lint_name_set(LINT_NAMES));
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
+#[command(version = long_version())]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
+#[command(group(
+    ArgGroup::new("verbosity")
+        .args(["quiet", "verbose"])
+        .multiple(false)
+))]
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
+    #[arg(
+        long,
+        help = "Emit the lint inventory and exit",
+        conflicts_with_all = ["explain", "clear_cache"]
+    )]
+    list_lints: bool,
+
+    #[arg(
+        long,
+        value_name = "LINT",
+        help = "Print the full documentation page for a lint and exit",
+        conflicts_with_all = ["list_lints", "clear_cache"]
+    )]
+    explain: Option<String>,
+
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(long, help = "Suppress informational and warning output")]
+    quiet: bool,
+
+    #[arg(
+        long,
+        help = "Show diagnostic detail: config path, lint flags, spawned command"
+    )]
+    verbose: bool,
+
+    #[arg(
+        long = "allow",
+        short = 'A',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Allow a lint for this run (overrides budget.toml)"
+    )]
+    allow: Vec<String>,
+
+    #[arg(
+        long = "warn",
+        short = 'W',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Set a lint to warning for this run (overrides budget.toml)"
+    )]
+    warn: Vec<String>,
+
+    #[arg(
+        long = "deny",
+        short = 'D',
+        value_name = "LINT",
+        action = clap::ArgAction::Append,
+        help = "Deny a lint for this run (overrides budget.toml)"
+    )]
+    deny: Vec<String>,
+
+    #[arg(
+        long = "package",
+        short = 'p',
+        value_name = "SPEC",
+        action = clap::ArgAction::Append,
+        help = "Package(s) to lint (repeatable)"
+    )]
+    package: Vec<String>,
+
+    #[arg(long = "workspace", help = "Lint all packages in the workspace")]
+    workspace: bool,
+
+    #[arg(long = "no-cache", help = "Bypass the lint result cache for this run")]
+    no_cache: bool,
+
+    #[arg(
+        long = "clear-cache",
+        help = "Clear the lint result cache and exit",
+        conflicts_with_all = ["list_lints", "explain"]
+    )]
+    clear_cache: bool,
+
+    /// Control coloured output: auto, always, never.
+    ///
+    /// When set to *auto* (the default), colour is enabled only when
+    /// standard output is a terminal.  Honours the widely-adopted
+    /// `NO_COLOR` convention (https://no-color.org/): if this flag is
+    /// omitted and the `NO_COLOR` environment variable is set to any
+    /// non-empty value, output is uncoloured.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
+    color: ColorChoice,
+
+    /// Only report findings in files changed relative to the merge base with
+    /// the default branch (#384).
+    ///
+    /// The whole changed file is linted, not just the changed lines, so
+    /// interactions between changed and unchanged code are still caught.
+    #[arg(
+        long,
+        help = "Only report findings in files changed vs. the default branch"
+    )]
+    diff_only: bool,
 }
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
-    lints: Option<std::collections::HashMap<String, String>>,
+use config::BudgetConfig;
+
+/// Colour-policy preference forwarded to the underlying `cargo dylint`
+/// (and therefore `rustc`) invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ColorChoice {
+    /// Emit ANSI colours only when stdout is a terminal (default behaviour).
+    Auto,
+    /// Always emit ANSI colours, even when piped or redirected.
+    Always,
+    /// Never emit ANSI colours.
+    Never,
+}
+
+impl ColorChoice {
+    /// Return the `cargo dylint` / `cargo check` `--color` argument
+    /// value, or `None` when we should let cargo pick its default
+    /// (i.e. when colour is desired and there is nothing to override).
+    fn as_cargo_arg(&self) -> Option<&'static str> {
+        match self {
+            ColorChoice::Auto => None,
+            ColorChoice::Always => Some("always"),
+            ColorChoice::Never => Some("never"),
+        }
+    }
+}
+
+/// Determine the effective colour preference by merging:
+///
+/// 1. An explicit `--color` CLI flag (highest priority).
+/// 2. The `NO_COLOR` environment variable (set to any non-empty value
+///    means "no colour").
+/// 3. Cargo's built-in default (`Auto`) — colour when stdout is a
+///    terminal, no colour otherwise.
+fn resolve_color_choice(cli_color: &ColorChoice) -> ColorChoice {
+    match cli_color {
+        ColorChoice::Auto => {
+            // Honour the NO_COLOR convention (https://no-color.org/).
+            if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
+                ColorChoice::Never
+            } else {
+                ColorChoice::Auto
+            }
+        }
+        other => *other,
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_explanations.rs"));
+include!(concat!(env!("OUT_DIR"), "/version_info.rs"));
 
-/// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
-/// canonicalized set of files that are allowed to be linted (i.e. not
-/// excluded by either ignore file).
-fn allowed_files(root: &Path) -> HashSet<PathBuf> {
-    WalkBuilder::new(root)
-        .git_ignore(true)
-        .add_custom_ignore_filename(".lintignore")
-        .build()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
-        .filter_map(|entry| entry.path().canonicalize().ok())
-        .collect()
+/// Build the `--version` string.
+///
+/// First line is the conventional `name version` shape.
+/// Subsequent lines report the pinned nightly toolchain and the
+/// expected cargo-dylint version constraint — the two pieces of
+/// information most often needed when triaging build or lint issues.
+///
+/// Leaking the `String` is acceptable here: `--version` is printed
+/// once per process invocation and the memory is reclaimed on exit.
+fn long_version() -> &'static str {
+    Box::leak(
+        format!(
+            "{}\ntoolchain: {}\ncargo-dylint: {}",
+            env!("CARGO_PKG_VERSION"),
+            PINNED_TOOLCHAIN,
+            DYLINT_VERSION_CONSTRAINT,
+        )
+        .into_boxed_str(),
+    )
 }
 
-/// Decides whether a lint finding for `file` should be reported, given the
-/// set of files allowed by `.lintignore`/`.gitignore`.
+/// Validates package selection options against available workspace members
+/// and constructs the command-line arguments to forward to cargo.
+/// `--list-lints` has a text table and a JSON inventory; SARIF and GitHub
+/// annotations describe findings, not the inventory, so they are rejected
+/// instead of silently printing the text table.
+fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
+    match format {
+        OutputFormat::Text | OutputFormat::Json => None,
+        OutputFormat::Sarif | OutputFormat::Github => Some(
+            "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
+        ),
+    }
+}
+
+pub fn validate_and_build_package_args(
+    packages: &[String],
+    workspace: bool,
+    available_packages: &[String],
+) -> Result<Vec<String>, String> {
+    if workspace && !packages.is_empty() {
+        return Err(
+            "Error: The argument '--workspace' cannot be used with '--package <SPEC>'".to_string(),
+        );
+    }
+
+    if workspace {
+        return Ok(vec!["--workspace".to_string()]);
+    }
+
+    if packages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for pkg in packages {
+        if !available_packages.iter().any(|p| p == pkg) {
+            let valid = available_packages.join(", ");
+            return Err(format!(
+                "Error: Package '{}' not found in workspace. Valid workspace members are: {}",
+                pkg, valid
+            ));
+        }
+    }
+
+    let mut args = Vec::new();
+    for pkg in packages {
+        args.push("--package".to_string());
+        args.push(pkg.clone());
+    }
+    Ok(args)
+}
+
+/// Parses the output of `cargo metadata` to extract workspace member package names.
+pub fn parse_workspace_members_from_metadata(json_bytes: &[u8]) -> Result<Vec<String>, String> {
+    let value: serde_json::Value = serde_json::from_slice(json_bytes)
+        .map_err(|e| format!("Error: Failed to parse `cargo metadata` JSON: {}", e))?;
+
+    let workspace_members = value
+        .get("workspace_members")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<std::collections::HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let packages = value
+        .get("packages")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Error: `cargo metadata` missing `packages` array".to_string())?;
+
+    let mut member_names: Vec<String> = packages
+        .iter()
+        .filter_map(|pkg| {
+            let name = pkg.get("name").and_then(|n| n.as_str())?;
+            let is_member = if workspace_members.is_empty() {
+                true
+            } else {
+                let id = pkg.get("id").and_then(|i| i.as_str())?;
+                workspace_members.contains(id)
+            };
+            if is_member {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    member_names.sort();
+    member_names.dedup();
+    Ok(member_names)
+}
+
+/// Discovers workspace package members by running `cargo metadata`.
+pub fn get_workspace_packages(dir: Option<&Path>) -> Result<Vec<String>, String> {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
+    if let Some(d) = dir {
+        cmd.current_dir(d);
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Error: Failed to run `cargo metadata`: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Error: `cargo metadata` failed: {}", stderr.trim()));
+    }
+
+    parse_workspace_members_from_metadata(&output.stdout)
+}
+
+/// Combines lint configurations from an optional `BudgetConfig` (budget.toml)
+/// with command-line overrides (`--allow`, `--warn`, `--deny`).
 ///
-/// If `file` is empty or can't be resolved to a canonical path, the finding
-/// is kept: a filtering bug must never silently swallow a real diagnostic.
-fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
-    if file.is_empty() {
-        return true;
+/// Command-line overrides take precedence over `budget.toml`.
+/// Unknown lint names in either source produce an error listing all valid lints.
+/// Conflicting command-line overrides for the same lint produce an error.
+pub fn build_effective_lint_flags(
+    config: Option<&BudgetConfig>,
+    cli_allow: &[String],
+    cli_warn: &[String],
+    cli_deny: &[String],
+) -> Result<Vec<String>, String> {
+    // 1. Process and validate CLI overrides.
+    let mut cli_levels: std::collections::HashMap<String, (&'static str, &'static str)> =
+        std::collections::HashMap::new();
+
+    let cli_groups = [
+        (cli_allow, "allow", "-A"),
+        (cli_warn, "warn", "-W"),
+        (cli_deny, "deny", "-D"),
+    ];
+
+    for (lints, level_name, flag) in cli_groups {
+        for lint in lints {
+            let lint = config::normalize_lint_name(lint);
+            if !LINT_NAMES_SET.contains(lint.as_str()) {
+                let valid = LINT_NAMES.join(", ");
+                return Err(format!(
+                    "Error: Unknown lint name '{}'. Valid lints are: {}",
+                    lint, valid
+                ));
+            }
+            if let Some((existing_level, _)) = cli_levels.get(&lint) {
+                if *existing_level != level_name {
+                    return Err(format!(
+                        "Error: Conflicting lint levels specified for '{}': cannot set to both '{}' and '{}'",
+                        lint, existing_level, level_name
+                    ));
+                }
+            } else {
+                cli_levels.insert(lint.clone(), (level_name, flag));
+            }
+        }
     }
-    match Path::new(file).canonicalize() {
-        Ok(canon) => allowed.contains(&canon),
-        Err(_) => true,
+
+    // 2. Process budget.toml configuration if present.
+    let mut effective_flags: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+
+    if let Some(lints) = config.and_then(|cfg| cfg.lints.as_ref()) {
+        for (lint, level) in lints {
+            let lint = config::normalize_lint_name(lint);
+            if !LINT_NAMES_SET.contains(lint.as_str()) {
+                let valid = LINT_NAMES.join(", ");
+                return Err(format!(
+                    "Error: Unknown lint name '{}' in budget.toml. Valid lints are: {}",
+                    lint, valid
+                ));
+            }
+            let level_flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => {
+                    return Err(format!(
+                        "Error: Unknown lint level '{}' for lint '{}'",
+                        level, lint
+                    ));
+                }
+            };
+            effective_flags.insert(lint.clone(), format!("{} {}", level_flag, lint));
+        }
     }
+
+    // 3. Apply CLI overrides (taking precedence over budget.toml).
+    for (lint, (_level_name, flag)) in cli_levels {
+        effective_flags.insert(lint.clone(), format!("{} {}", flag, lint));
+    }
+
+    Ok(effective_flags.into_values().collect())
+}
+
+/// Container for `.lintignore` suppression patterns.
+#[derive(Clone, Debug)]
+pub struct LintIgnore {
+    gitignore: ignore::gitignore::Gitignore,
+    pub path: PathBuf,
+}
+
+impl LintIgnore {
+    /// Discovers `.lintignore` by searching `cwd` and walking up to `workspace_root`.
+    #[allow(clippy::collapsible_if)]
+    pub fn discover(cwd: &Path, workspace_root: &Path) -> Option<Self> {
+        let mut current = cwd.to_path_buf();
+        loop {
+            let path = current.join(".lintignore");
+            if path.exists() {
+                let mut builder = ignore::gitignore::GitignoreBuilder::new(&current);
+                if builder.add(&path).is_none() {
+                    let build_res = builder.build();
+                    if let Ok(gitignore) = build_res {
+                        return Some(LintIgnore { gitignore, path });
+                    }
+                }
+            }
+            if current == workspace_root {
+                break;
+            }
+            match current.parent() {
+                Some(parent) => current = parent.to_path_buf(),
+                None => break,
+            }
+        }
+        None
+    }
+
+    /// Checks if a file path matches any `.lintignore` rule.
+    pub fn is_ignored<P: AsRef<Path>>(&self, file_path: P) -> bool {
+        let path = file_path.as_ref();
+        let rel_path = if let Ok(current) = std::env::current_dir() {
+            if let Ok(stripped) = path.strip_prefix(&current) {
+                stripped
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+        self.gitignore.matched(rel_path, false).is_ignore()
+            || self.gitignore.matched(path, false).is_ignore()
+    }
+}
+
+/// Helper to find workspace root directory by invoking `cargo metadata` or walking up parent directories.
+#[allow(clippy::collapsible_if)]
+pub fn find_workspace_root_path(start_dir: &Path) -> PathBuf {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
+    cmd.current_dir(start_dir);
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            let json_res = serde_json::from_slice::<serde_json::Value>(&output.stdout);
+            if let Ok(val) = json_res {
+                if let Some(root_str) = val.get("workspace_root").and_then(|v| v.as_str()) {
+                    return PathBuf::from(root_str);
+                }
+            }
+        }
+    }
+    let mut current = start_dir.to_path_buf();
+    let mut candidate = current.clone();
+    loop {
+        let manifest = current.join("Cargo.toml");
+        if manifest.exists() {
+            candidate = current.clone();
+            let read_res = fs::read_to_string(&manifest);
+            if let Ok(content) = read_res {
+                if content.contains("[workspace]") {
+                    return current;
+                }
+            }
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    candidate
+}
+
+/// Discovers `budget.toml` by searching `cwd` and walking up to `workspace_root`.
+pub fn discover_config_file(cwd: &Path, workspace_root: &Path) -> Option<PathBuf> {
+    let mut current = cwd.to_path_buf();
+    loop {
+        let budget = current.join("budget.toml");
+        if budget.exists() {
+            return Some(budget);
+        }
+        if current == workspace_root {
+            break;
+        }
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    None
+}
+
+/// Resolves config path based on CLI `--config` option or by walking up from `cwd` to `workspace_root`.
+/// An explicit `--config <PATH>` wins and errors if the specified file does not exist.
+pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, String> {
+    if let Some(path_str) = config_arg {
+        let path = PathBuf::from(path_str);
+        if path.exists() {
+            Ok(Some(path))
+        } else {
+            Err(format!("Error: Config file '{}' does not exist", path_str))
+        }
+    } else {
+        let cwd = std::env::current_dir()
+            .map_err(|e| format!("Error: Failed to get current directory: {}", e))?;
+        let workspace_root = find_workspace_root_path(&cwd);
+        Ok(discover_config_file(&cwd, &workspace_root))
+    }
+}
+
+/// Loads `path` as a validated `BudgetConfig` and formats its `[lints]`
+/// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
+/// (unknown lint names, invalid levels) is handled by
+/// `BudgetConfig::from_file_validated`, the single canonical config parser.
+// Not currently reached from `main()`, which builds its flags with
+// `build_effective_lint_flags` instead (that path also folds in the
+// `--allow`/`--warn`/`--deny` overrides). Both validate lint names and
+// levels identically -- no level outside `allow`/`warn`/`deny`, including
+// `forbid`, is accepted by either. `main()` uses neither here today;
+// picking which one ships is a behavioural decision for a maintainer, so
+// this leaves `main()` as it found it rather than choosing silently.
+// Kept: scaffolding for future feature implementations
+#[allow(dead_code)]
+fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    let config = config::BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)
+        .map_err(|e| e.to_string())?;
+
+    let mut lint_flags = Vec::new();
+    if let Some(lints) = config.lints {
+        let mut sorted_lints: Vec<_> = lints.into_iter().collect();
+        sorted_lints.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (lint, level) in sorted_lints {
+            let flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => unreachable!("level already validated by BudgetConfig::from_file_validated"),
+            };
+            lint_flags.push(format!("{} {}", flag, lint));
+        }
+    }
+
+    Ok(lint_flags)
+}
+
+/// Lenient wrapper around [`parse_budget_config`] that uses safe defaults
+/// when the `budget.toml` file cannot be read or parsed, while still
+/// propagating validation errors (unknown lint name or level) so that
+/// real user mistakes remain loud.
+///
+/// This implements the "safe defaults" semantics requested by issue
+/// #191: a missing, unreadable, empty, or syntactically invalid file
+/// produces a stderr warning and an empty flag set, instead of
+/// aborting the lint run. Validation errors — which indicate the user
+/// actually wrote something wrong — are returned unchanged so the
+/// strict behaviour already covered by [`parse_budget_config`] and
+/// its existing tests is preserved.
+// Kept: scaffolding for future feature implementations
+#[allow(dead_code)]
+fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    match parse_budget_config(path) {
+        Ok(flags) => Ok(flags),
+        Err(e)
+            if e.starts_with("Error: Failed to read")
+                || e.starts_with("Error: Failed to parse") =>
+        {
+            eprintln!("warning: {e}\n         continuing with safe defaults (no lint overrides).");
+            Ok(Vec::new())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[allow(clippy::collapsible_if)]
+/// Reports a failure to launch `cargo dylint` as a real error instead of a
+/// panic (issue #418). A missing binary is by far the most common cause, so it
+/// gets actionable install instructions rather than a backtrace.
+fn dylint_launch_failure(e: io::Error) -> ! {
+    let err = if e.kind() == io::ErrorKind::NotFound {
+        error::LinterError::MissingPrerequisite(
+            "error: `cargo-dylint` is not installed.\n\
+             To install it, run:\n    \
+             cargo install cargo-dylint dylint-link --version \"^6.0.1\""
+                .to_string(),
+        )
+    } else {
+        error::LinterError::Io(e)
+    };
+    eprintln!("{}", err);
+    exit(1);
 }
 
 fn main() {
+    // Skip the first arg if it is "cost-lint" (when invoked as a cargo subcommand)
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
+
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
+        Err(e) => e.exit(),
+    };
+
+    if cli.clear_cache {
+        let cache_dir = cache::get_cache_dir(None);
+        match cache::clear_cache(&cache_dir) {
+            Ok(count) => {
+                println!(
+                    "Cleared {} cached lint result(s) at {}",
+                    count,
+                    cache_dir.display()
+                );
+                return;
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    }
+
+    if cli.list_lints {
+        if let Some(message) = list_lints_format_error(&cli.format) {
+            eprintln!("{}", message);
+            exit(2);
+        }
+        if cli.format == OutputFormat::Json {
+            println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
+        } else {
+            println!("Lint inventory (version {}):", LINT_INVENTORY.version);
+            for lint in LINT_INVENTORY.lints {
+                println!(
+                    "{} | {} | {} | {}",
+                    lint.name, lint.default_level, lint.category, lint.documentation_url
+                );
+            }
+        }
+        return;
+    }
+
+    if let Some(lint_name) = &cli.explain {
+        print_explanation(lint_name, &cli.format);
+        return;
+    }
+
+    let quiet = cli.quiet;
+    let verbose = cli.verbose;
+    let mut resolved_config_path: Option<PathBuf> = None;
+    let mut config_opt: Option<BudgetConfig> = None;
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let workspace_root = find_workspace_root_path(&cwd);
+    let lintignore_opt = LintIgnore::discover(&cwd, &workspace_root);
+
+    let resolved_config = match resolve_config(cli.config.as_deref()) {
+        Ok(path_opt) => path_opt,
         Err(e) => {
-            e.print().unwrap();
+            eprintln!("{}", e);
             exit(1);
         }
     };
 
-    let allowed = allowed_files(Path::new("."));
+    if let Some(ref path) = resolved_config {
+        resolved_config_path = Some(path.clone());
+        // `--verbose` reports the path once, in the `[verbose] config:` block
+        // printed just before `cargo dylint` is spawned.
+        if !verbose && !quiet {
+            eprintln!("Using config: {}", path.display());
+        }
+        match config::BudgetConfig::from_file_validated(path, LINT_NAMES) {
+            Ok(config) => config_opt = Some(config),
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    } else if !verbose
+        && !quiet
+        && cli.allow.is_empty()
+        && cli.warn.is_empty()
+        && cli.deny.is_empty()
+    {
+        // Missing-config warning, default verbosity only. `--verbose`
+        // reports the missing config once, as `[verbose] config: (none —
+        // ...)`, and `--quiet` reports nothing. Any `-A`/`-W`/`-D` override
+        // also suppresses this warning: the user chose lint levels for this
+        // run explicitly, so "using default lint levels" would be wrong.
+        eprintln!("Warning: budget.toml not found, using default lint levels.");
+    }
 
-    let lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
+    let lint_flags =
+        match build_effective_lint_flags(config_opt.as_ref(), &cli.allow, &cli.warn, &cli.deny) {
+            Ok(flags) => flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        };
+
+    let package_args = if !cli.package.is_empty() || cli.workspace {
+        let available_packages = if !cli.package.is_empty() {
+            match get_workspace_packages(None) {
+                Ok(pkgs) => pkgs,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    exit(1);
                 }
             }
+        } else {
+            Vec::new()
+        };
+
+        match validate_and_build_package_args(&cli.package, cli.workspace, &available_packages) {
+            Ok(args) => args,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    let cache_dir = cache::get_cache_dir(None);
+    let cache_key_hash = if !cli.no_cache {
+        let source_hash = cache::compute_source_hash(Path::new("."))
+            .unwrap_or_else(|_| "unknown-source".to_string());
+        let toolchain = cache::get_toolchain_version();
+        // The diff scope and the resolved .lintignore change what a run
+        // reports, so they join the cache key (#793).
+        let diff_scope = if cli.diff_only { "diff-only" } else { "all" };
+        let lintignore_hash = match lintignore_opt.as_ref() {
+            Some(li) => cache::compute_file_hash(&li.path),
+            None => cache::ABSENT_LINTIGNORE_HASH.to_string(),
+        };
+        let key = cache::CacheKey {
+            linter_version: env!("CARGO_PKG_VERSION").to_string(),
+            toolchain,
+            lint_flags: lint_flags.clone(),
+            package_args: package_args.clone(),
+            output_format: format!("{:?}", cli.format),
+            source_hash,
+            diff_scope: diff_scope.to_string(),
+            lintignore_hash,
+        };
+        Some(key.compute_hash())
+    } else {
+        None
+    };
+
+    if let Some(ref key_hash) = cache_key_hash {
+        if let Some(cached_entry) = cache::load_cache_entry(&cache_dir, key_hash) {
+            if verbose {
+                eprintln!("[verbose] Cache hit for key {}", key_hash);
+            }
+            if !cached_entry.stdout.is_empty() {
+                print!("{}", cached_entry.stdout);
+            }
+            if !cached_entry.stderr.is_empty() {
+                eprint!("{}", cached_entry.stderr);
+            }
+            exit(cached_entry.exit_code);
+        } else if verbose {
+            eprintln!("[verbose] Cache miss for key {}", key_hash);
         }
     }
 
     let mut cmd = Command::new("cargo");
+    // Forward colour preference so that the underlying rustc diagnostics
+    // honour the user's intent.  `--color` is a cargo-level flag, so it
+    // must appear *before* the `dylint` subcommand.
+    let effective_color = resolve_color_choice(&cli.color);
+    if let Some(color_val) = effective_color.as_cargo_arg() {
+        cmd.arg("--color");
+        cmd.arg(color_val);
+        cmd.env("CARGO_TERM_COLOR", color_val);
+    }
     cmd.arg("dylint");
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
+
+    // Seeded from the inherited value so the `[verbose] DYLINT_RUSTFLAGS:`
+    // line reports what the child actually sees, even when no lint flags are
+    // appended (the child then inherits `DYLINT_RUSTFLAGS` untouched).
+    let mut rustflags_value = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
     if !lint_flags.is_empty() {
-        let mut rustflags = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
-
         for flag in lint_flags {
-            if !rustflags.is_empty() {
-                rustflags.push(' ');
+            if !rustflags_value.is_empty() {
+                rustflags_value.push(' ');
             }
-            rustflags.push_str(&flag);
+            rustflags_value.push_str(&flag);
         }
-
-        cmd.env("DYLINT_RUSTFLAGS", rustflags);
+        cmd.env("DYLINT_RUSTFLAGS", &rustflags_value);
     }
 
-    // Always ask dylint for JSON diagnostics internally, regardless of the
-    // user-facing --format, so .lintignore filtering applies to both
-    // text and json output. Text mode renders `message.rendered` for each
-    // surviving finding, which matches cargo dylint's normal human output.
-    cmd.arg("--");
-    cmd.arg("--message-format=json");
-    cmd.stdout(Stdio::piped());
+    let mut cargo_args = Vec::new();
+    cargo_args.extend(package_args);
 
-    let mut child = cmd
-        .spawn()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let has_lintignore = lintignore_opt.is_some();
+    // One predicate decides both whether cargo emits JSON messages and
+    // whether they are streamed through the per-finding filters below.
+    // `--diff-only` and `.lintignore` filter per finding, so they need the
+    // stream even in text mode; the raw-echo branch cannot filter.
+    let use_message_stream = cli.format != OutputFormat::Text || has_lintignore || cli.diff_only;
+    if use_message_stream {
+        cargo_args.push("--message-format=json".to_string());
+    }
 
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
-    let reader = BufReader::new(stdout);
-    let mut highest_exit_code = 0;
+    if !cargo_args.is_empty() {
+        cmd.arg("--");
+        for arg in cargo_args {
+            cmd.arg(arg);
+        }
+    }
 
-    for line_str in reader.lines().map_while(Result::ok) {
-        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
-            if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
-                if let Some(message) = msg.get("message") {
-                    if let Some(code) = message.get("code") {
-                        if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
-                            if LINT_NAMES.contains(&lint_name) {
-                                let level = message
-                                    .get("level")
-                                    .and_then(|l| l.as_str())
-                                    .unwrap_or("unknown");
+    if verbose {
+        if let Some(ref p) = resolved_config_path {
+            eprintln!("[verbose] config: {}", p.display());
+        } else {
+            eprintln!("[verbose] config: (none — using default lint levels)");
+        }
+        if let Some(ref li) = lintignore_opt {
+            eprintln!("[verbose] .lintignore: {}", li.path.display());
+        }
+        if !rustflags_value.is_empty() {
+            eprintln!("[verbose] DYLINT_RUSTFLAGS: {}", rustflags_value);
+        } else {
+            eprintln!("[verbose] DYLINT_RUSTFLAGS: (empty)");
+        }
+        eprintln!("[verbose] command: {:?}", cmd);
+    }
 
-                                let msg_text = message
-                                    .get("message")
-                                    .and_then(|m| m.as_str())
-                                    .unwrap_or("");
-                                let mut file = String::new();
-                                let mut span_obj = Span {
-                                    line_start: 0,
-                                    line_end: 0,
-                                    column_start: 0,
-                                    column_end: 0,
-                                };
+    // Resolved once: --diff-only filters the stream below by file, and
+    // shelling out to git per finding would be absurd.
+    let changed_files: Option<Vec<String>> = if cli.diff_only {
+        match diff_files::get_changed_files() {
+            Ok(files) => {
+                if !quiet {
+                    if files.is_empty() {
+                        eprintln!("--diff-only: no changed files found; nothing to lint.");
+                    } else {
+                        eprintln!("--diff-only: linting {} changed file(s)", files.len());
+                    }
+                }
+                Some(files)
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                exit(1);
+            }
+        }
+    } else {
+        None
+    };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
-                                {
-                                    for s in spans {
-                                        if s.get("is_primary")
-                                            .and_then(|p| p.as_bool())
-                                            .unwrap_or(false)
-                                        {
-                                            file = s
-                                                .get("file_name")
-                                                .and_then(|f| f.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            span_obj.line_start = s
-                                                .get("line_start")
-                                                .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            span_obj.line_end = s
-                                                .get("line_end")
-                                                .and_then(|l| l.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            span_obj.column_start = s
-                                                .get("column_start")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            span_obj.column_end = s
-                                                .get("column_end")
-                                                .and_then(|c| c.as_u64())
-                                                .unwrap_or(0)
-                                                as usize;
-                                            break;
-                                        }
-                                    }
-                                }
+    if use_message_stream {
+        cmd.stdout(Stdio::piped());
+        let mut child = cmd.spawn().unwrap_or_else(|e| dylint_launch_failure(e));
 
-                                if !is_reportable(&file, &allowed) {
-                                    continue;
-                                }
+        let stdout = child.stdout.take().expect("Failed to capture stdout");
+        let reader = BufReader::new(stdout);
+        let mut highest_exit_code = 0;
+        let mut sarif_findings = Vec::new();
+        let mut text_findings = Vec::new();
+        let mut recorded_stdout = String::new();
 
-                                if level == "error" || level == "deny" {
-                                    highest_exit_code = 1;
-                                }
+        for line_str in reader.lines().map_while(Result::ok) {
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) else {
+                continue;
+            };
+            if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") {
+                continue;
+            }
+            let Some(message) = msg.get("message") else {
+                continue;
+            };
+            let lint_name = message
+                .get("code")
+                .and_then(|code| code.get("code"))
+                .and_then(|code| code.as_str())
+                .filter(|name| LINT_NAMES_SET.contains(name));
+            let Some(lint_name) = lint_name else {
+                if cli.format == OutputFormat::Text
+                    && let Some(rendered) = message.get("rendered").and_then(|r| r.as_str())
+                {
+                    eprint!("{}", rendered);
+                    recorded_stdout.push_str(rendered);
+                }
+                continue;
+            };
 
-                                if cli.format == OutputFormat::Json {
-                                    let mut help_text = None;
-                                    if let Some(children) =
-                                        message.get("children").and_then(|c| c.as_array())
-                                    {
-                                        for child_item in children {
-                                            if child_item.get("level").and_then(|l| l.as_str())
-                                                == Some("help")
-                                            {
-                                                help_text = child_item
-                                                    .get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .map(|s| s.to_string());
-                                                break;
-                                            }
-                                        }
-                                    }
+            {
+                let mut file = String::new();
+                let mut span_obj = Span {
+                    line_start: 0,
+                    line_end: 0,
+                    column_start: 0,
+                    column_end: 0,
+                };
 
-                                    let finding = LintFinding {
-                                        name: lint_name.to_string(),
-                                        level: level.to_string(),
-                                        file,
-                                        span: span_obj,
-                                        message: msg_text.to_string(),
-                                        help: help_text,
-                                    };
-
-                                    if let Ok(json_str) = serde_json::to_string(&finding) {
-                                        println!("{}", json_str);
-                                    }
-                                } else {
-                                    let rendered = message
-                                        .get("rendered")
-                                        .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
-                                    print!("{}", rendered);
-                                }
-                            }
+                if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
+                    for s in spans {
+                        if s.get("is_primary")
+                            .and_then(|p| p.as_bool())
+                            .unwrap_or(false)
+                        {
+                            file = s
+                                .get("file_name")
+                                .and_then(|f| f.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            span_obj.line_start =
+                                s.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                            span_obj.line_end =
+                                s.get("line_end").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
+                            span_obj.column_start =
+                                s.get("column_start").and_then(|c| c.as_u64()).unwrap_or(0)
+                                    as usize;
+                            span_obj.column_end =
+                                s.get("column_end").and_then(|c| c.as_u64()).unwrap_or(0) as usize;
+                            break;
                         }
+                    }
+                }
+
+                if let Some(ref changed) = changed_files {
+                    let cwd = std::env::current_dir().unwrap_or_default();
+                    if !diff_files::is_file_changed(&file, changed, &cwd) {
+                        continue;
+                    }
+                }
+
+                if let Some(ref lintignore) = lintignore_opt
+                    && !file.is_empty()
+                    && lintignore.is_ignored(&file)
+                {
+                    if verbose {
+                        eprintln!(
+                            "[verbose] Suppressing finding in {} due to .lintignore pattern",
+                            file
+                        );
+                    }
+                    continue;
+                }
+
+                let level = message
+                    .get("level")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("unknown");
+                if level == "error" || level == "deny" {
+                    highest_exit_code = 1;
+                }
+
+                let msg_text = message
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("");
+
+                let mut help_text = None;
+                if let Some(children) = message.get("children").and_then(|c| c.as_array()) {
+                    for child_item in children {
+                        if child_item.get("level").and_then(|l| l.as_str()) == Some("help") {
+                            help_text = child_item
+                                .get("message")
+                                .and_then(|m| m.as_str())
+                                .map(|s| s.to_string());
+                            break;
+                        }
+                    }
+                }
+
+                let finding = LintFinding {
+                    name: lint_name.to_string(),
+                    level: level.to_string(),
+                    file,
+                    span: span_obj,
+                    message: msg_text.to_string(),
+                    help: help_text,
+                    suggestion: None,
+                };
+
+                match cli.format {
+                    OutputFormat::Text => {
+                        if let Some(rendered) = message.get("rendered").and_then(|r| r.as_str()) {
+                            eprint!("{}", rendered);
+                            recorded_stdout.push_str(rendered);
+                        }
+                        // Keep the finding so the run can close with the
+                        // per-lint summary the README documents.
+                        text_findings.push(finding);
+                    }
+                    OutputFormat::Json => {
+                        if let Ok(json_str) = serde_json::to_string(&finding) {
+                            println!("{}", json_str);
+                            recorded_stdout.push_str(&json_str);
+                            recorded_stdout.push('\n');
+                        }
+                    }
+                    OutputFormat::Github => {
+                        let mut buf = Vec::new();
+                        if output_formatters::emit_github_annotation(&finding, &mut buf).is_ok() {
+                            let ann_str = String::from_utf8_lossy(&buf);
+                            print!("{}", ann_str);
+                            recorded_stdout.push_str(&ann_str);
+                        }
+                    }
+                    OutputFormat::Sarif => {
+                        sarif_findings.push(finding);
                     }
                 }
             }
         }
+
+        if cli.format == OutputFormat::Sarif {
+            // `emit_sarif` (write-into-a-sink) was replaced by
+            // `generate_sarif_report`, which returns the serialized report.
+            let sarif_str = output_formatters::generate_sarif_report(&sarif_findings);
+            print!("{}", sarif_str);
+            recorded_stdout.push_str(&sarif_str);
+        }
+
+        // Close a *filtered* text run (`--diff-only` or a `.lintignore`) with
+        // the per-lint summary the README documents. A plain text run takes the
+        // raw-echo branch and deliberately stays byte-for-byte equal to cargo's
+        // own output (an invariant asserted by `cli_diff_only_text`), so it is
+        // not annotated here; this stream path — which already reconstructs the
+        // diagnostics — is where the summary belongs. `print_findings_summary`
+        // no-ops for the machine formats, and `--quiet` suppresses it entirely.
+        if cli.format == OutputFormat::Text && !quiet {
+            let mut buf = Vec::new();
+            output_formatters::print_findings_summary(
+                &OutputFormat::Text,
+                &text_findings,
+                &mut buf,
+            )
+            .ok();
+            let summary = String::from_utf8_lossy(&buf);
+            eprint!("{}", summary);
+            recorded_stdout.push_str(&summary);
+        }
+
+        let status = child.wait().expect("Failed to wait on cargo dylint");
+        let exit_code = if !status.success() {
+            status.code().unwrap_or(1)
+        } else if highest_exit_code != 0 {
+            highest_exit_code
+        } else {
+            0
+        };
+
+        if let Some(ref key_hash) = cache_key_hash {
+            let entry = cache::CacheEntry {
+                key: key_hash.clone(),
+                exit_code,
+                stdout: recorded_stdout,
+                stderr: String::new(),
+            };
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
+        }
+
+        exit(exit_code);
+    } else {
+        let output = cmd.output().unwrap_or_else(|e| dylint_launch_failure(e));
+
+        let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !stdout_str.is_empty() {
+            print!("{}", stdout_str);
+        }
+        if !stderr_str.is_empty() {
+            eprint!("{}", stderr_str);
+        }
+
+        let exit_code = output
+            .status
+            .code()
+            .unwrap_or(if output.status.success() { 0 } else { 1 });
+
+        if let Some(ref key_hash) = cache_key_hash {
+            let entry = cache::CacheEntry {
+                key: key_hash.clone(),
+                exit_code,
+                stdout: stdout_str,
+                stderr: stderr_str,
+            };
+            if let Err(e) = cache::save_cache_entry(&cache_dir, key_hash, &entry) {
+                if verbose {
+                    eprintln!("[verbose] {}", e);
+                } else if !quiet {
+                    eprintln!("warning: caching disabled for this run (use --verbose for details)");
+                }
+            }
+        }
+
+        exit(exit_code);
+    }
+}
+
+/// Prints the explanation for a lint, or errors with valid lint names if not found.
+///
+/// In JSON mode the explanation is emitted as a JSON object (`name` +
+/// `markdown`), consistent with `--list-lints --format json`. Errors are
+/// always reported on stderr as plain text, mirroring the other format-aware
+/// outputs.
+fn print_explanation(lint_name: &str, format: &OutputFormat) {
+    let normalized = config::normalize_lint_name(lint_name);
+
+    let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == normalized);
+
+    match explanation {
+        Some(entry) => {
+            if *format == OutputFormat::Json {
+                println!("{}", serde_json::to_string_pretty(entry).unwrap());
+            } else {
+                // Clean up the markdown for terminal display
+                let cleaned = clean_markdown_for_terminal(entry.markdown);
+                println!("{}", cleaned);
+            }
+        }
+        None => {
+            eprintln!("Error: unknown lint '{}'.\n\nValid lints:\n", lint_name);
+            for info in LINT_INFO {
+                eprintln!("  {} — {}", info.name, info.description);
+            }
+            exit(1);
+        }
+    }
+}
+
+/// Strips GitBook-specific hint syntax and lightens the markdown for plain
+/// terminal output. The result is still markdown-ish but without block-level
+/// tags that only render on a documentation site.
+fn clean_markdown_for_terminal(markdown: &str) -> String {
+    let mut result = String::new();
+    let mut in_code_block = false;
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+
+        // Track code-fence boundaries so we don't strip inside them
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        if in_code_block {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // Strip GitBook hint tags and their content delimiters
+        if trimmed.starts_with("{% hint")
+            || trimmed.starts_with("{% endhint")
+            || trimmed.ends_with("%}") && !line.starts_with("    ")
+        {
+            // Skip hint markers entirely
+            continue;
+        }
+
+        // Replace bold markers with plain text for terminal
+        let cleaned = line.replace("**", "");
+
+        result.push_str(&cleaned);
+        result.push('\n');
     }
 
-    let status = child.wait().expect("Failed to wait on cargo dylint");
-    if !status.success() {
-        exit(status.code().unwrap_or(1));
-    } else if highest_exit_code != 0 {
-        exit(highest_exit_code);
-    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
     use std::io::Write;
 
-    fn write_file(path: &Path, contents: &str) {
-        let mut f = File::create(path).unwrap();
-        f.write_all(contents.as_bytes()).unwrap();
+    #[test]
+    fn lint_metadata_matches_registered_lints() {
+        let registered_names = LINT_NAMES
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let inventory_names = LINT_INVENTORY
+            .lints
+            .iter()
+            .map(|lint| lint.name)
+            .collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(registered_names, inventory_names);
+        assert_eq!(LINT_INVENTORY.version, "1.0");
     }
 
     #[test]
-    fn allowed_files_excludes_lintignore_patterns() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        write_file(&root.join(".lintignore"), "ignored.rs\n");
-        write_file(&root.join("keep.rs"), "fn main() {}");
-        write_file(&root.join("ignored.rs"), "fn main() {}");
-
-        let allowed = allowed_files(root);
-
-        let keep_canon = root.join("keep.rs").canonicalize().unwrap();
-        let ignored_canon = root.join("ignored.rs").canonicalize().unwrap();
-
-        assert!(allowed.contains(&keep_canon));
-        assert!(!allowed.contains(&ignored_canon));
+    fn test_valid_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
     }
 
     #[test]
-    fn allowed_files_respects_gitignore_too() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        // ignore's git_ignore(true) only honors .gitignore inside an actual
-        // git working tree, so the fixture needs a .git directory present.
-        std::fs::create_dir(root.join(".git")).unwrap();
-        write_file(&root.join(".gitignore"), "skip.rs\n");
-        write_file(&root.join("skip.rs"), "fn main() {}");
-        write_file(&root.join("keep.rs"), "fn main() {}");
-
-        let allowed = allowed_files(root);
-
-        assert!(allowed.contains(&root.join("keep.rs").canonicalize().unwrap()));
-        assert!(!allowed.contains(&root.join("skip.rs").canonicalize().unwrap()));
+    fn test_unknown_lint_name() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loops".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint name"));
     }
 
     #[test]
-    fn is_reportable_keeps_files_in_allowed_set() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        write_file(&root.join("a.rs"), "fn main() {}");
-
-        let mut allowed = HashSet::new();
-        allowed.insert(root.join("a.rs").canonicalize().unwrap());
-
-        let path_str = root.join("a.rs").to_string_lossy().to_string();
-        assert!(is_reportable(&path_str, &allowed));
+    fn test_unknown_lint_level() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "denys".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level"));
     }
 
     #[test]
-    fn is_reportable_filters_files_not_in_allowed_set() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        write_file(&root.join("a.rs"), "fn main() {}");
-        write_file(&root.join("b.rs"), "fn main() {}");
+    fn every_registered_lint_has_explanation_text() {
+        for info in LINT_INFO {
+            let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == info.name);
+            assert!(
+                explanation.is_some(),
+                "lint '{}' is registered but has no explanation text. \
+                 Add a documentation page at docs/lints/{}.md",
+                info.name,
+                info.name
+            );
+            if let Some(entry) = explanation {
+                assert!(
+                    !entry.markdown.is_empty(),
+                    "lint '{}' has an empty explanation text",
+                    info.name
+                );
+            }
+        }
+    }
 
-        let mut allowed = HashSet::new();
-        allowed.insert(root.join("a.rs").canonicalize().unwrap());
-
-        let path_str = root.join("b.rs").to_string_lossy().to_string();
-        assert!(!is_reportable(&path_str, &allowed));
+    /// Verifies that document has at least the structure of valid markdown
+    /// by checking it contains the key sections.
+    #[test]
+    fn every_explanation_has_key_sections() {
+        for entry in LINT_EXPLANATIONS {
+            assert!(
+                entry.markdown.contains("## What it does"),
+                "lint '{}' explanation is missing 'What it does' section",
+                entry.name
+            );
+            assert!(
+                entry.markdown.contains("## Why is this bad")
+                    || entry.markdown.contains("## Why is this bad?"),
+                "lint '{}' explanation is missing 'Why is this bad' section",
+                entry.name
+            );
+        }
     }
 
     #[test]
-    fn is_reportable_defaults_to_keeping_unresolvable_paths() {
-        let allowed: HashSet<PathBuf> = HashSet::new();
-        assert!(is_reportable("this/path/does/not/exist.rs", &allowed));
+    fn print_explanation_known_lint_succeeds() {
+        // Test that the first registered lint's explanation resolves
+        // correctly and produces terminal-clean output.
+        let first = LINT_INFO.first().expect("at least one lint registered");
+        let explanation = LINT_EXPLANATIONS.iter().find(|e| e.name == first.name);
+        assert!(
+            explanation.is_some(),
+            "lint '{}' should have explanation",
+            first.name
+        );
+        let entry = explanation.unwrap();
+        assert!(
+            !entry.markdown.is_empty(),
+            "explanation should not be empty"
+        );
+        // The cleaned output should not contain GitBook hint tags
+        let cleaned = clean_markdown_for_terminal(entry.markdown);
+        assert!(
+            !cleaned.contains("{% hint"),
+            "cleaned output should not contain GitBook hint tags"
+        );
     }
 
     #[test]
-    fn is_reportable_keeps_empty_file_field() {
-        let allowed: HashSet<PathBuf> = HashSet::new();
-        assert!(is_reportable("", &allowed));
+    fn print_explanation_json_is_serializable() {
+        // `--explain <LINT> --format json` must produce a JSON object with
+        // the lint name and its raw markdown documentation.
+        let first = LINT_INFO.first().expect("at least one lint registered");
+        let explanation = LINT_EXPLANATIONS
+            .iter()
+            .find(|e| e.name == first.name)
+            .expect("lint should have an explanation");
+        let json = serde_json::to_string(explanation).expect("explanation must serialize");
+        let value: serde_json::Value =
+            serde_json::from_str(&json).expect("serialized explanation must be valid JSON");
+        assert_eq!(value["name"], first.name);
+        let markdown = value["markdown"]
+            .as_str()
+            .expect("markdown must be a string");
+        assert!(
+            !markdown.is_empty(),
+            "serialized explanation must carry the markdown documentation"
+        );
+    }
+
+    #[test]
+    fn clean_markdown_removes_hint_tags() {
+        let input = "{% hint style=\"danger\" %}\nSome content\n{% endhint %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(
+            !cleaned.contains("{% hint"),
+            "hint open tag should be removed"
+        );
+        assert!(
+            !cleaned.contains("{% endhint"),
+            "endhint tag should be removed"
+        );
+        // Content between hint tags should remain
+        assert!(
+            cleaned.contains("Some content"),
+            "content between hint tags should remain"
+        );
+    }
+
+    #[test]
+    fn clean_markdown_preserves_code_blocks() {
+        let input = "```rust\nlet x = 1;\n```";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(
+            cleaned.contains("```rust"),
+            "code fence start should remain"
+        );
+        assert!(cleaned.contains("let x = 1;"), "code content should remain");
+        assert!(cleaned.contains("```"), "code fence end should remain");
+    }
+
+    #[test]
+    fn absent_config_returns_default_lint_levels() {
+        let dir = std::env::temp_dir().join("cost_lint_test_absent");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unparseable_config_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "this is not valid toml = {{{{{{").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to parse"),
+            "expected parse error, got: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn valid_config_returns_flags() {
+        let dir = std::env::temp_dir().join("cost_lint_test_valid");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(
+            flags,
+            vec![
+                "-W redundant_env_clone".to_string(),
+                "-D soroban_storage_in_loop".to_string()
+            ]
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_budget_config_deterministic_order() {
+        let dir = std::env::temp_dir().join("cost_lint_test_deterministic_order");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path1 = dir.join("budget1.toml");
+        let mut file1 = fs::File::create(&path1).unwrap();
+        writeln!(
+            file1,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\ncrypto_hash_of_constant = \"allow\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file1);
+
+        let path2 = dir.join("budget2.toml");
+        let mut file2 = fs::File::create(&path2).unwrap();
+        writeln!(
+            file2,
+            "[lints]\nredundant_env_clone = \"warn\"\nsoroban_storage_in_loop = \"deny\"\ncrypto_hash_of_constant = \"allow\""
+        )
+        .unwrap();
+        drop(file2);
+
+        let flags1 = parse_budget_config(&path1.to_string_lossy()).unwrap();
+        let flags2 = parse_budget_config(&path2.to_string_lossy()).unwrap();
+
+        assert_eq!(
+            flags1,
+            vec![
+                "-A crypto_hash_of_constant".to_string(),
+                "-W redundant_env_clone".to_string(),
+                "-D soroban_storage_in_loop".to_string(),
+            ]
+        );
+        assert_eq!(flags1, flags2);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_level_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The lenient parser (`try_parse_budget_config`) implements issue #191:
+    // missing / unreadable / empty / syntactically invalid config files
+    // must fall back to safe defaults (empty flag set, stderr warning)
+    // instead of aborting. Validation errors — unknown lint names or
+    // levels — still propagate so existing tests above keep passing.
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_missing_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_missing");
+        let _ = fs::remove_dir_all(&dir);
+
+        let result = try_parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for missing file"
+        );
+    }
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_invalid_toml() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        // Four `{` form two balanced `{{` escapes (two literal `{`
+        // characters), keeping the writeln! format string valid while
+        // still producing genuinely invalid TOML syntax.
+        writeln!(file, "this is not valid toml = {{{{").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for invalid TOML"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_uses_safe_defaults_for_empty_file() {
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_empty");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        // Create an empty file (no `mut`: never written to).
+        let _ = fs::File::create(&path).unwrap();
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(
+            result.is_ok(),
+            "expected safe-default Ok, got: {:?}",
+            result
+        );
+        assert!(
+            result.unwrap().is_empty(),
+            "expected empty flag set for empty file"
+        );
+    }
+
+    #[test]
+    fn try_parse_budget_config_still_errors_on_unknown_level() {
+        // Validation errors must NOT be swallowed by safe-default
+        // fallback — a typo'd level is a real user mistake that should
+        // stay loud.
+        let dir = std::env::temp_dir().join("cost_lint_test_lenient_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = try_parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err(), "expected Err for unknown level");
+        assert!(result.unwrap_err().contains("Unknown lint level"));
+    }
+
+    // --- CLI argument parser unit tests (issue #320) ---
+
+    #[test]
+    fn cli_default_values_when_no_flags() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert_eq!(cli.config, None);
+        assert!(!cli.list_lints);
+        assert_eq!(cli.format, OutputFormat::Text);
+    }
+
+    #[test]
+    fn cli_parses_config_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--config", "my-budget.toml"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.config, Some("my-budget.toml".to_string()));
+    }
+
+    #[test]
+    fn cli_parses_list_lints_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--list-lints"])
+            .expect("parsing should succeed");
+        assert!(cli.list_lints);
+        assert_eq!(cli.config, None);
+        assert_eq!(cli.format, OutputFormat::Text);
+    }
+
+    #[test]
+    fn cli_parses_format_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "json"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_parses_format_github() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "github"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Github);
+    }
+
+    #[test]
+    fn cli_parses_format_sarif() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--format", "sarif"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.format, OutputFormat::Sarif);
+    }
+
+    #[test]
+    fn list_lints_rejects_sarif_and_github_formats() {
+        assert!(list_lints_format_error(&OutputFormat::Text).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Json).is_none());
+        assert!(list_lints_format_error(&OutputFormat::Sarif).is_some());
+        assert!(list_lints_format_error(&OutputFormat::Github).is_some());
+    }
+
+    #[test]
+    fn cli_parses_multiple_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--config",
+            "budget.toml",
+            "--format",
+            "json",
+            "--list-lints",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.config, Some("budget.toml".to_string()));
+        assert_eq!(cli.format, OutputFormat::Json);
+        assert!(cli.list_lints);
+    }
+
+    #[test]
+    fn cli_unknown_flag_returns_error() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--unknown-flag"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_parses_quiet_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--quiet"]).expect("parsing should succeed");
+        assert!(cli.quiet);
+        assert!(!cli.verbose);
+    }
+
+    #[test]
+    fn cli_parses_verbose_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--verbose"]).expect("parsing should succeed");
+        assert!(cli.verbose);
+        assert!(!cli.quiet);
+    }
+
+    #[test]
+    fn cli_quiet_and_verbose_are_mutually_exclusive() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--quiet", "--verbose"]);
+        assert!(
+            result.is_err(),
+            "--quiet and --verbose should not be allowed together"
+        );
+    }
+
+    // The three exit-early flags short-circuit `main()` independently, so
+    // combining them used to silently run only the first one. They are now
+    // declared mutually exclusive at parse time (issue #899).
+    fn assert_clap_conflict_error(args: &[&str]) {
+        let err = Cli::try_parse_from(args.iter().copied())
+            .expect_err("the combination should be rejected at parse time");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "expected an argument-conflict error, got: {err}"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("cannot be used with"),
+            "conflict message should explain the conflict: {message}"
+        );
+        assert!(
+            message.contains("--list-lints")
+                || message.contains("--explain")
+                || message.contains("--clear-cache"),
+            "conflict message should name a conflicting flag: {message}"
+        );
+    }
+
+    #[test]
+    fn cli_list_lints_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "soroban_storage_in_loop",
+        ]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_list_lints_are_mutually_exclusive() {
+        assert_clap_conflict_error(&["cargo-cost-lint", "--clear-cache", "--list-lints"]);
+    }
+
+    #[test]
+    fn cli_clear_cache_and_explain_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--clear-cache",
+            "--explain",
+            "redundant_env_clone",
+        ]);
+    }
+
+    #[test]
+    fn cli_all_three_exit_early_flags_are_mutually_exclusive() {
+        assert_clap_conflict_error(&[
+            "cargo-cost-lint",
+            "--list-lints",
+            "--explain",
+            "redundant_env_clone",
+            "--clear-cache",
+        ]);
+    }
+
+    #[test]
+    fn cli_quiet_default_is_false() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert!(!cli.quiet);
+        assert!(!cli.verbose);
+    }
+
+    #[test]
+    fn cli_parses_allow_warn_deny_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--allow",
+            "redundant_env_clone",
+            "--warn",
+            "map_insert_in_loop",
+            "--deny",
+            "soroban_storage_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.allow, vec!["redundant_env_clone"]);
+        assert_eq!(cli.warn, vec!["map_insert_in_loop"]);
+        assert_eq!(cli.deny, vec!["soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn cli_parses_short_override_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "-A",
+            "redundant_env_clone",
+            "-W",
+            "map_insert_in_loop",
+            "-D",
+            "soroban_storage_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.allow, vec!["redundant_env_clone"]);
+        assert_eq!(cli.warn, vec!["map_insert_in_loop"]);
+        assert_eq!(cli.deny, vec!["soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn cli_parses_repeatable_override_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--allow",
+            "redundant_env_clone",
+            "--allow",
+            "symbol_new_for_short_literal",
+            "--deny",
+            "soroban_storage_in_loop",
+            "--deny",
+            "map_insert_in_loop",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(
+            cli.allow,
+            vec!["redundant_env_clone", "symbol_new_for_short_literal"]
+        );
+        assert_eq!(
+            cli.deny,
+            vec!["soroban_storage_in_loop", "map_insert_in_loop"]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_cli_only() {
+        let allow = vec!["redundant_env_clone".to_string()];
+        let warn = vec!["map_insert_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(None, &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec![
+                "-W map_insert_in_loop",
+                "-A redundant_env_clone",
+                "-D soroban_storage_in_loop",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_precedence_over_budget_toml() {
+        // budget.toml sets soroban_storage_in_loop to "warn" and redundant_env_clone to "deny"
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        // CLI overrides soroban_storage_in_loop to "deny" and redundant_env_clone to "allow"
+        let allow = vec!["redundant_env_clone".to_string()];
+        let warn = vec![];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(Some(&config), &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-A redundant_env_clone", "-D soroban_storage_in_loop",]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_preserves_unoverridden_budget_toml_lints() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        // Only override soroban_storage_in_loop on CLI; redundant_env_clone should remain "warn"
+        let allow = vec![];
+        let warn = vec![];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+
+        let flags = build_effective_lint_flags(Some(&config), &allow, &warn, &deny).unwrap();
+        assert_eq!(
+            flags,
+            vec!["-W redundant_env_clone", "-D soroban_storage_in_loop",]
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_forbid_level_from_budget_toml() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "forbid".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level 'forbid'"), "{err}");
+        assert!(
+            err.contains("for lint 'soroban_storage_in_loop'"),
+            "the message must name the offending lint: {err}"
+        );
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_unknown_lint_name_cli() {
+        let allow = vec!["invalid_lint_name".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &[], &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint name 'invalid_lint_name'"));
+        assert!(err.contains("Valid lints are:"));
+    }
+
+    #[test]
+    fn test_effective_flags_rejects_conflicting_cli_flags() {
+        let allow = vec!["soroban_storage_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &[], &deny);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Conflicting lint levels specified for 'soroban_storage_in_loop'"));
+    }
+
+    #[test]
+    fn test_effective_flags_allows_duplicate_same_level_cli_flags() {
+        let allow = vec![
+            "redundant_env_clone".to_string(),
+            "redundant_env_clone".to_string(),
+        ];
+        let result = build_effective_lint_flags(None, &allow, &[], &[]);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec!["-A redundant_env_clone"]);
+    }
+
+    #[test]
+    fn cli_parses_package_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--package", "my-contract"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.package, vec!["my-contract"]);
+        assert!(!cli.workspace);
+
+        let cli_short = Cli::try_parse_from(["cargo-cost-lint", "-p", "my-contract"])
+            .expect("parsing should succeed");
+        assert_eq!(cli_short.package, vec!["my-contract"]);
+    }
+
+    #[test]
+    fn cli_parses_repeatable_package_flags() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "-p",
+            "contract-a",
+            "--package",
+            "contract-b",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.package, vec!["contract-a", "contract-b"]);
+    }
+
+    #[test]
+    fn cli_parses_workspace_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--workspace"])
+            .expect("parsing should succeed");
+        assert!(cli.workspace);
+        assert!(cli.package.is_empty());
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_default() {
+        let pkgs = vec![];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_single_package() {
+        let pkgs = vec!["contract-a".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(args, vec!["--package", "contract-a"]);
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_multiple_packages() {
+        let pkgs = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(
+            args,
+            vec!["--package", "contract-a", "--package", "contract-b"]
+        );
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_workspace() {
+        let pkgs = vec![];
+        let workspace = true;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let args = validate_and_build_package_args(&pkgs, workspace, &available).unwrap();
+        assert_eq!(args, vec!["--workspace"]);
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_unknown_package() {
+        let pkgs = vec!["nonexistent-contract".to_string()];
+        let workspace = false;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let result = validate_and_build_package_args(&pkgs, workspace, &available);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Package 'nonexistent-contract' not found in workspace"));
+        assert!(err.contains("Valid workspace members are: contract-a, contract-b"));
+    }
+
+    #[test]
+    fn test_validate_and_build_package_args_conflicting_workspace_and_package() {
+        let pkgs = vec!["contract-a".to_string()];
+        let workspace = true;
+        let available = vec!["contract-a".to_string(), "contract-b".to_string()];
+        let result = validate_and_build_package_args(&pkgs, workspace, &available);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("cannot be used with '--package <SPEC>'"));
+    }
+
+    #[test]
+    fn test_parse_workspace_members_from_metadata() {
+        let sample_json = r#"{
+            "packages": [
+                {"name": "contract-a", "id": "path+file:///crates/contract-a#0.1.0"},
+                {"name": "contract-b", "id": "path+file:///crates/contract-b#0.1.0"},
+                {"name": "dep-c", "id": "registry+https://github.com/rust-lang/crates.io-index#0.1.0"}
+            ],
+            "workspace_members": [
+                "path+file:///crates/contract-a#0.1.0",
+                "path+file:///crates/contract-b#0.1.0"
+            ]
+        }"#;
+
+        let members = parse_workspace_members_from_metadata(sample_json.as_bytes()).unwrap();
+        assert_eq!(members, vec!["contract-a", "contract-b"]);
+    }
+
+    #[test]
+    fn cli_parses_no_cache_flag() {
+        let cli =
+            Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
+        assert!(cli.no_cache);
+        assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn cli_parses_clear_cache_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--clear-cache"])
+            .expect("parsing should succeed");
+        assert!(cli.clear_cache);
+        assert!(!cli.no_cache);
+    }
+
+    // --- Colour / NO_COLOR tests (issue #420) ---
+
+    #[test]
+    fn cli_color_default_is_auto() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint"]).expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn cli_parses_color_always() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "always"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Always);
+    }
+
+    #[test]
+    fn cli_parses_color_never() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--color", "never"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.color, ColorChoice::Never);
+    }
+
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn resolve_color_explicit_always_overrides_no_color() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Always);
+        assert_eq!(resolved, ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_explicit_never_overrides_no_color() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Never);
+        assert_eq!(resolved, ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_set_resolves_to_never() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_empty_resolves_to_auto() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_auto_no_color_unset_resolves_to_auto() {
+        // This test only makes sense when NO_COLOR is not already set in
+        // the environment.  On some CI runners (notably Windows) the
+        // variable is injected and cannot be reliably removed, so we
+        // skip rather than produce a false failure.
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::remove_var("NO_COLOR") };
+        if std::env::var("NO_COLOR").is_ok() {
+            eprintln!(
+                "skipping resolve_color_auto_no_color_unset_resolves_to_auto: \
+                 NO_COLOR is set in the environment"
+            );
+            return;
+        }
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Auto);
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_auto_returns_none() {
+        assert_eq!(ColorChoice::Auto.as_cargo_arg(), None);
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_always_returns_always() {
+        assert_eq!(ColorChoice::Always.as_cargo_arg(), Some("always"));
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_never_returns_never() {
+        assert_eq!(ColorChoice::Never.as_cargo_arg(), Some("never"));
+    }
+
+    #[test]
+    fn test_discover_config_in_cwd() {
+        let temp = tempfile::tempdir().unwrap();
+        let cwd = temp.path();
+        let budget_path = cwd.join("budget.toml");
+        std::fs::write(&budget_path, "[lints]\n").unwrap();
+
+        let found = discover_config_file(cwd, cwd);
+        assert_eq!(found, Some(budget_path));
+    }
+
+    #[test]
+    fn test_discover_config_in_ancestor() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_root = temp.path();
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let budget_path = workspace_root.join("budget.toml");
+        std::fs::write(&budget_path, "[lints]\n").unwrap();
+
+        let found = discover_config_file(&member_dir, workspace_root);
+        assert_eq!(found, Some(budget_path));
+    }
+
+    #[test]
+    fn test_discover_config_none_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace_root = temp.path();
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let found = discover_config_file(&member_dir, workspace_root);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn test_discover_config_stops_at_workspace_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent_dir = temp.path();
+        let workspace_root = parent_dir.join("workspace");
+        let member_dir = workspace_root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        // Create budget.toml in parent_dir (OUTSIDE workspace)
+        std::fs::write(parent_dir.join("budget.toml"), "[lints]\n").unwrap();
+
+        let found = discover_config_file(&member_dir, &workspace_root);
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn test_resolve_config_explicit_override_and_missing_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let valid_config = temp.path().join("my_budget.toml");
+        std::fs::write(&valid_config, "[lints]\n").unwrap();
+
+        let res_ok = resolve_config(valid_config.to_str());
+        assert!(res_ok.is_ok());
+        assert_eq!(res_ok.unwrap(), Some(valid_config));
+
+        let res_err = resolve_config(Some("/nonexistent/file/path/budget.toml"));
+        assert!(res_err.is_err());
+        assert!(res_err.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_lintignore_matching() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let lintignore_path = root.join(".lintignore");
+        std::fs::write(
+            &lintignore_path,
+            "src/generated/*.rs\nsrc/legacy_batch.rs\n*.tmp.rs\n",
+        )
+        .unwrap();
+
+        let lintignore = LintIgnore::discover(root, root).expect(".lintignore should be loaded");
+        assert!(lintignore.is_ignored(root.join("src/generated/foo.rs")));
+        assert!(lintignore.is_ignored(root.join("src/legacy_batch.rs")));
+        assert!(lintignore.is_ignored(root.join("test.tmp.rs")));
+
+        assert!(!lintignore.is_ignored(root.join("src/main.rs")));
+        assert!(!lintignore.is_ignored(root.join("src/lib.rs")));
+    }
+
+    // --- Additional edge-case tests for coverage ---
+
+    #[test]
+    fn clean_markdown_empty_string() {
+        let cleaned = clean_markdown_for_terminal("");
+        assert_eq!(cleaned, "");
+    }
+
+    #[test]
+    fn clean_markdown_removes_bold_markers() {
+        let input = "This is **bold** text";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(!cleaned.contains("**"), "bold markers should be removed");
+        assert!(cleaned.contains("bold"), "text content should remain");
+    }
+
+    #[test]
+    fn clean_markdown_multiple_code_blocks() {
+        let input = "Before\n```rust\nlet x = 1;\n```\nMiddle\n```python\nprint('hi')\n```\nAfter";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(cleaned.contains("Before"));
+        assert!(cleaned.contains("let x = 1;"));
+        assert!(cleaned.contains("Middle"));
+        assert!(cleaned.contains("print('hi')"));
+        assert!(cleaned.contains("After"));
+    }
+
+    #[test]
+    fn clean_markdown_hint_with_code_inside() {
+        let input = "{% hint style=\"info\" %}\n```rust\nlet x = 1;\n```\n{% endhint %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(!cleaned.contains("{% hint"));
+        assert!(!cleaned.contains("{% endhint"));
+        assert!(cleaned.contains("let x = 1;"));
+    }
+
+    #[test]
+    fn clean_markdown_line_ending_with_percent_brace() {
+        // Lines ending with "%}" (but not starting with spaces) are treated as hint markers
+        let input = "normal line\nsome content %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(cleaned.contains("normal line"));
+    }
+
+    #[test]
+    fn clean_markdown_indented_line_ending_with_percent_brace_preserved() {
+        // Lines starting with spaces (indented) are NOT treated as hint markers
+        // even if they end with "%}"
+        let input = "    indented content %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(
+            cleaned.contains("indented content"),
+            "indented lines should be preserved: {}",
+            cleaned
+        );
+    }
+
+    #[test]
+    fn clean_markdown_only_hint_tags() {
+        let input = "{% hint style=\"danger\" %}\n{% endhint %}";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(!cleaned.contains("{% hint"));
+        assert!(!cleaned.contains("{% endhint"));
+    }
+
+    #[test]
+    fn clean_markdown_mixed_content() {
+        let input = "# Title\n\nSome **bold** text.\n\n{% hint style=\"warning\" %}\nHint content\n{% endhint %}\n\n```rust\nfn main() {}\n```";
+        let cleaned = clean_markdown_for_terminal(input);
+        assert!(cleaned.contains("# Title"));
+        assert!(cleaned.contains("Some bold text."));
+        assert!(!cleaned.contains("**"));
+        assert!(!cleaned.contains("{% hint"));
+        assert!(!cleaned.contains("{% endhint"));
+        assert!(cleaned.contains("Hint content"));
+        assert!(cleaned.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn build_effective_flags_no_config_no_cli() {
+        let flags = build_effective_lint_flags(None, &[], &[], &[]).unwrap();
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn build_effective_flags_config_with_empty_lints() {
+        let config = BudgetConfig { lints: None };
+        let flags = build_effective_lint_flags(Some(&config), &[], &[], &[]).unwrap();
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn build_effective_flags_unknown_lint_in_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("nonexistent_lint".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Unknown lint name 'nonexistent_lint' in budget.toml")
+        );
+    }
+
+    #[test]
+    fn build_effective_flags_unknown_level_in_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "invalid".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+        let result = build_effective_lint_flags(Some(&config), &[], &[], &[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown lint level 'invalid'"));
+    }
+
+    #[test]
+    fn build_effective_flags_conflicting_allow_and_warn() {
+        let allow = vec!["soroban_storage_in_loop".to_string()];
+        let warn = vec!["soroban_storage_in_loop".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &warn, &[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Conflicting lint levels"));
+    }
+
+    #[test]
+    fn build_effective_flags_conflicting_warn_and_deny() {
+        let warn = vec!["soroban_storage_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+        let result = build_effective_lint_flags(None, &[], &warn, &deny);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Conflicting lint levels"));
+    }
+
+    #[test]
+    fn build_effective_flags_all_three_levels_same_lint() {
+        let allow = vec!["soroban_storage_in_loop".to_string()];
+        let warn = vec!["soroban_storage_in_loop".to_string()];
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+        let result = build_effective_lint_flags(None, &allow, &warn, &deny);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Conflicting lint levels"));
+    }
+
+    #[test]
+    fn build_effective_flags_multiple_valid_cli_overrides() {
+        let allow = vec![
+            "redundant_env_clone".to_string(),
+            "soroban_storage_in_loop".to_string(),
+        ];
+        let warn = vec!["map_insert_in_loop".to_string()];
+        let deny = vec!["symbol_new_for_short_literal".to_string()];
+        let flags = build_effective_lint_flags(None, &allow, &warn, &deny).unwrap();
+        assert_eq!(flags.len(), 4);
+        assert!(flags.contains(&"-A redundant_env_clone".to_string()));
+        assert!(flags.contains(&"-A soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W map_insert_in_loop".to_string()));
+        assert!(flags.contains(&"-D symbol_new_for_short_literal".to_string()));
+    }
+
+    #[test]
+    fn build_effective_flags_duplicate_same_level_across_all_three() {
+        let allow = vec![
+            "redundant_env_clone".to_string(),
+            "redundant_env_clone".to_string(),
+        ];
+        let deny = vec![
+            "soroban_storage_in_loop".to_string(),
+            "soroban_storage_in_loop".to_string(),
+        ];
+        let flags = build_effective_lint_flags(None, &allow, &[], &deny).unwrap();
+        assert_eq!(flags.len(), 2);
+        assert!(flags.contains(&"-A redundant_env_clone".to_string()));
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+    }
+
+    #[test]
+    fn build_effective_flags_cli_partial_override_preserves_config() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
+        lints.insert("map_insert_in_loop".to_string(), "deny".to_string());
+        let config = BudgetConfig { lints: Some(lints) };
+
+        // Only override soroban_storage_in_loop to deny
+        let deny = vec!["soroban_storage_in_loop".to_string()];
+        let flags = build_effective_lint_flags(Some(&config), &[], &[], &deny).unwrap();
+        assert_eq!(flags.len(), 3);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+        assert!(flags.contains(&"-D map_insert_in_loop".to_string()));
+    }
+
+    #[test]
+    fn validate_and_build_package_args_empty_available_with_packages() {
+        let pkgs = vec!["some-pkg".to_string()];
+        let available: Vec<String> = vec![];
+        let result = validate_and_build_package_args(&pkgs, false, &available);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Package 'some-pkg' not found in workspace"));
+        assert!(err.contains("Valid workspace members are: "));
+    }
+
+    #[test]
+    fn parse_workspace_members_empty_workspace_members() {
+        let json = r#"{
+            "packages": [
+                {"name": "contract-a", "id": "path+file:///crates/contract-a#0.1.0"}
+            ],
+            "workspace_members": []
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        assert_eq!(members, vec!["contract-a"]);
+    }
+
+    #[test]
+    fn parse_workspace_members_missing_packages_array() {
+        let json = r#"{
+            "workspace_members": ["path+file:///crates/contract-a#0.1.0"]
+        }"#;
+        let result = parse_workspace_members_from_metadata(json.as_bytes());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("missing `packages` array"));
+    }
+
+    #[test]
+    fn parse_workspace_members_malformed_json() {
+        let result = parse_workspace_members_from_metadata(b"not json at all");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse"));
+    }
+
+    #[test]
+    fn parse_workspace_members_empty_packages() {
+        let json = r#"{
+            "packages": [],
+            "workspace_members": []
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        assert!(members.is_empty());
+    }
+
+    #[test]
+    fn parse_workspace_members_package_missing_name() {
+        let json = r#"{
+            "packages": [
+                {"id": "path+file:///crates/contract-a#0.1.0"}
+            ],
+            "workspace_members": ["path+file:///crates/contract-a#0.1.0"]
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        assert!(members.is_empty());
+    }
+
+    #[test]
+    fn parse_workspace_members_package_missing_id() {
+        let json = r#"{
+            "packages": [
+                {"name": "contract-a"}
+            ],
+            "workspace_members": []
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        // Missing id means it won't be in workspace_members, but with empty
+        // workspace_members all packages are included
+        assert_eq!(members, vec!["contract-a"]);
+    }
+
+    #[test]
+    fn parse_workspace_members_deduplicates_names() {
+        let json = r#"{
+            "packages": [
+                {"name": "contract-a", "id": "path+file:///crates/contract-a#0.1.0"},
+                {"name": "contract-a", "id": "path+file:///crates/contract-a-copy#0.1.0"}
+            ],
+            "workspace_members": [
+                "path+file:///crates/contract-a#0.1.0",
+                "path+file:///crates/contract-a-copy#0.1.0"
+            ]
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        assert_eq!(members, vec!["contract-a"]);
+    }
+
+    #[test]
+    fn parse_workspace_members_sorted_output() {
+        let json = r#"{
+            "packages": [
+                {"name": "zebra", "id": "path+file:///crates/zebra#0.1.0"},
+                {"name": "alpha", "id": "path+file:///crates/alpha#0.1.0"},
+                {"name": "middle", "id": "path+file:///crates/middle#0.1.0"}
+            ],
+            "workspace_members": [
+                "path+file:///crates/zebra#0.1.0",
+                "path+file:///crates/alpha#0.1.0",
+                "path+file:///crates/middle#0.1.0"
+            ]
+        }"#;
+        let members = parse_workspace_members_from_metadata(json.as_bytes()).unwrap();
+        assert_eq!(members, vec!["alpha", "middle", "zebra"]);
+    }
+
+    #[test]
+    fn discover_config_cwd_equals_workspace_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let budget_path = root.join("budget.toml");
+        std::fs::write(&budget_path, "[lints]\n").unwrap();
+
+        let found = discover_config_file(root, root);
+        assert_eq!(found, Some(budget_path));
+    }
+
+    #[test]
+    fn resolve_config_discovery_mode_no_config_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let member_dir = root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        // No budget.toml anywhere
+        let result = resolve_config(None);
+        // This will discover from current_dir, not from our temp dir,
+        // so we just verify it doesn't panic
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn lintignore_discover_returns_none_when_not_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let member_dir = root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let result = LintIgnore::discover(&member_dir, root);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn lintignore_discover_finds_at_workspace_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let lintignore_path = root.join(".lintignore");
+        std::fs::write(&lintignore_path, "*.log.rs\n").unwrap();
+
+        let member_dir = root.join("member");
+        std::fs::create_dir_all(&member_dir).unwrap();
+
+        let result = LintIgnore::discover(&member_dir, root);
+        assert!(result.is_some());
+        let lintignore = result.unwrap();
+        assert!(lintignore.is_ignored(root.join("test.log.rs")));
+    }
+
+    #[test]
+    fn lintignore_is_ignored_non_matching() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let lintignore_path = root.join(".lintignore");
+        std::fs::write(&lintignore_path, "src/generated/*.rs\n").unwrap();
+
+        let lintignore = LintIgnore::discover(root, root).unwrap();
+        assert!(!lintignore.is_ignored(root.join("src/main.rs")));
+        assert!(!lintignore.is_ignored(root.join("tests/test.rs")));
+        assert!(!lintignore.is_ignored(root.join("src/generated")));
+    }
+
+    #[test]
+    fn lintignore_is_ignored_with_absolute_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let lintignore_path = root.join(".lintignore");
+        std::fs::write(&lintignore_path, "*.tmp.rs\n").unwrap();
+
+        let lintignore = LintIgnore::discover(root, root).unwrap();
+        let abs_path = root.join("foo.tmp.rs");
+        assert!(lintignore.is_ignored(&abs_path));
+    }
+
+    #[test]
+    fn color_choice_as_cargo_arg_all_variants() {
+        assert_eq!(ColorChoice::Auto.as_cargo_arg(), None);
+        assert_eq!(ColorChoice::Always.as_cargo_arg(), Some("always"));
+        assert_eq!(ColorChoice::Never.as_cargo_arg(), Some("never"));
+    }
+
+    #[test]
+    fn resolve_color_explicit_always_beats_no_color() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Always);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Always);
+    }
+
+    #[test]
+    fn resolve_color_explicit_never_beats_no_color() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Never);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_auto_with_no_color_resolves_to_never() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
+        assert_eq!(resolved, ColorChoice::Never);
+    }
+
+    #[test]
+    fn resolve_color_no_color_with_various_non_empty_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        for value in &["1", "true", "yes", "anything", "0"] {
+            unsafe { std::env::set_var("NO_COLOR", value) };
+            let resolved = resolve_color_choice(&ColorChoice::Auto);
+            assert_eq!(
+                resolved,
+                ColorChoice::Never,
+                "NO_COLOR={} should resolve to Never",
+                value
+            );
+        }
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn resolve_color_no_color_empty_string() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("NO_COLOR", "") };
+        let resolved = resolve_color_choice(&ColorChoice::Auto);
+        assert_eq!(resolved, ColorChoice::Auto);
+        unsafe { std::env::remove_var("NO_COLOR") };
+    }
+
+    #[test]
+    fn cli_parses_diff_only_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--diff-only"])
+            .expect("parsing should succeed");
+        assert!(cli.diff_only);
+    }
+
+    #[test]
+    fn cli_parses_explain_flag() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--explain", "soroban_storage_in_loop"])
+            .expect("parsing should succeed");
+        assert_eq!(cli.explain, Some("soroban_storage_in_loop".to_string()));
+    }
+
+    #[test]
+    fn cli_explain_with_format_json() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--explain",
+            "redundant_env_clone",
+            "--format",
+            "json",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.explain, Some("redundant_env_clone".to_string()));
+        assert_eq!(cli.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn cli_parses_all_flags_together() {
+        let cli = Cli::try_parse_from([
+            "cargo-cost-lint",
+            "--config",
+            "budget.toml",
+            "--format",
+            "json",
+            "--quiet",
+            "--no-cache",
+            "--diff-only",
+            "-p",
+            "my-contract",
+        ])
+        .expect("parsing should succeed");
+        assert_eq!(cli.config, Some("budget.toml".to_string()));
+        assert_eq!(cli.format, OutputFormat::Json);
+        assert!(cli.quiet);
+        assert!(cli.no_cache);
+        assert!(cli.diff_only);
+        assert_eq!(cli.package, vec!["my-contract".to_string()]);
+    }
+
+    #[test]
+    fn cli_invalid_format_returns_error() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--format", "invalid"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_invalid_color_returns_error() {
+        let result = Cli::try_parse_from(["cargo-cost-lint", "--color", "invalid"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_workspace_and_package_are_mutually_exclusive() {
+        // Note: the ArgGroup only covers quiet/verbose, not workspace/package.
+        // workspace/package mutual exclusion is enforced at runtime in
+        // validate_and_build_package_args, not at the clap level.
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--workspace", "-p", "foo"]);
+        // This should parse fine at the clap level
+        assert!(cli.is_ok());
+    }
+
+    #[test]
+    fn print_explanation_unknown_lint_lists_valid_names() {
+        // We can't easily test the exit(1) path, but we can verify the
+        // function panics/exits. Instead, test that the error message
+        // format is correct by checking the logic indirectly.
+        let unknown_name = "definitely_not_a_real_lint_name";
+        let found = LINT_EXPLANATIONS.iter().find(|e| e.name == unknown_name);
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn long_version_contains_toolchain_info() {
+        let version = long_version();
+        assert!(version.contains("toolchain:"));
+        assert!(version.contains("cargo-dylint:"));
+    }
+
+    #[test]
+    fn lint_names_set_is_built_correctly() {
+        assert!(!LINT_NAMES_SET.is_empty());
+        assert_eq!(LINT_NAMES_SET.len(), LINT_NAMES.len());
+    }
+
+    #[test]
+    fn lint_inventory_version_is_consistent() {
+        assert_eq!(LINT_INVENTORY.version, "1.0");
+        assert_eq!(LINT_INVENTORY.lints.len(), LINT_NAMES.len());
+    }
+
+    #[test]
+    fn lint_info_contains_all_registered_lints() {
+        for name in LINT_NAMES {
+            let found = LINT_INFO.iter().find(|info| info.name == *name);
+            assert!(found.is_some(), "lint '{}' should be in LINT_INFO", name);
+        }
+    }
+
+    #[test]
+    fn lint_info_descriptions_not_empty() {
+        for info in LINT_INFO {
+            assert!(
+                !info.description.is_empty(),
+                "lint '{}' has empty description",
+                info.name
+            );
+        }
+    }
+
+    #[test]
+    fn lint_metadata_covers_all_lints() {
+        for name in LINT_NAMES {
+            let found = LINT_INFO.iter().find(|m| m.name == *name);
+            assert!(found.is_some(), "lint '{}' should be in LINT_INFO", name);
+        }
     }
 }

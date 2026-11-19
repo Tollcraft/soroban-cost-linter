@@ -4,6 +4,9 @@
   <p>
     <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
+    <a href="https://scorecard.dev/viewer/?uri=github.com/Tollcraft/soroban-cost-linter">
+      <img src="https://api.scorecard.dev/projects/github.com/Tollcraft/soroban-cost-linter/badge" alt="OpenSSF Scorecard" />
+    </a>
   </p>
   <p>
     <a href="https://tollcraft.gitbook.io/docs"><strong>Documentation</strong></a> ·
@@ -21,15 +24,30 @@ This tool acts as the preventative shield in the Tollcraft two-tiered cost pipel
 
 Soroban charges for CPU instructions, memory allocations, and storage operations. While testing your contract against the network is the only way to measure *input-dependent* costs (like unbounded loops or dynamic vector sizing), many expensive mistakes are structurally obvious without ever running the code. 
 
-Writing `env.storage().instance().set()` inside a `for` loop is mathematically guaranteed to be expensive. `soroban-cost-linter` catches these structural anti-patterns directly in your IDE or CI/CD pipeline before they make it to testnet.
+Writing `env.storage().instance().set()` inside a `for` loop is mathematically guaranteed to be expensive. `soroban-cost-linter` catches these structural anti-patterns directly in your [editor](docs/integration.md#editor--ide-integration) or [CI/CD pipeline](docs/integration.md#github-actions) before they make it to testnet.
 
 ## Features
 
-The linter hooks into the Rust compiler's AST to catch specific Soroban anti-patterns. Three lints ship in `v0.1.1`:
+The linter runs as a Dylint library against the Rust compiler's HIR to catch specific Soroban anti-patterns (with a single early AST pass for the `format_args!` nodes the HIR no longer exposes). 46 lints ship in `v0.1.1`:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
 *   **[`unnecessary_host_function_call`](docs/lints/unnecessary_host_function_call.md):** Identifies host accessor calls (`Ledger`, `Crypto`, `Prng`, `Events`, `Deployer`, `Env::current_contract_address`) repeated inside a loop with unchanged inputs, which should be called once and bound to a local variable.
+*   **[`storage_write_without_read`](docs/lints/storage_write_without_read.md):** Flags storage writes where the same key is never subsequently read.
+*   **[`inefficient_bytes_concat`](docs/lints/inefficient_bytes_concat.md):** Detects repeated `Bytes` concatenation inside loops using `+`, which creates unnecessary per-iteration allocations.
+*   **[`map_insert_in_loop`](docs/lints/map_insert_in_loop.md):** Flags `Map::insert` calls inside loop bodies.
+*   **[`symbol_new_for_short_literal`](docs/lints/symbol_new_for_short_literal.md):** Flags `Symbol::new` calls with short literal arguments that could use `symbol_short!()`.
+ *   **[`bytes_append_in_loop`](docs/lints/bytes_append_in_loop.md):** Flags repeatedly growing SDK containers (`Bytes::append`, `Vec::push_back`, `Map::insert`) inside loops, suggesting native accumulation first.
+ *   **[`string_concat_in_loop`](docs/lints/string_concat_in_loop.md):** Flags `String::append`/`String + String` on a `soroban_sdk::String` inside loops, since each concatenation reallocates and copies the whole accumulated string (O(n²)).
+*   **[`signature_verification_in_loop`](docs/lints/signature_verification_in_loop.md):** Flags `env.crypto().ed25519_verify`/`secp256k1_recover`/`secp256r1_verify` calls made inside loop bodies, suggesting batch/aggregate verification instead.
+*   **[`crypto_hash_of_constant`](docs/lints/crypto_hash_of_constant.md):** Flags `env.crypto().sha256`/`keccak256` calls whose input is a literal or `const` item, since re-hashing a compile-time constant at runtime is pure wasted host cost — precompute and embed the digest instead.
+*   **[`vec_where_slice_could_be_used`](docs/lints/vec_where_slice_could_be_used.md):** Flags `soroban_sdk::Vec` passed by value where a native Rust `&[T]` slice would be sufficient for read-only access.
+*   **[`extend_ttl_in_loop`](docs/lints/extend_ttl_in_loop.md):** Flags `extend_ttl` calls on instance/persistent/temporary storage made inside loop bodies, suggesting batching the TTL extension instead of refreshing per-entry per-iteration.
+*   **[`instance_storage_for_unbounded_data`](docs/lints/instance_storage_for_unbounded_data.md):** Flags `env.storage().instance().set(...)` calls where the value is an unbounded `Vec`/`Map`/`Bytes`, since instance storage is re-read and rewritten in full on every contract invocation.
+*   **[`formatted_panic_payload`](docs/lints/formatted_panic_payload.md):** Flags `format!`, a formatted `panic!`, or `.expect(&format!(..))`, all of which pull `core::fmt` into the contract in place of a cheap `panic_with_error!` + `#[contracterror]`.
+*   **[`float_arithmetic_in_contract`](docs/lints/float_arithmetic_in_contract.md):** Flags floating-point arithmetic (`f32`/`f64`) in contract code, where fixed-point integer arithmetic is preferred for cost and determinism.
+*   **[`duplicate_storage_key_construction`](docs/lints/duplicate_storage_key_construction.md):** Detects when the same storage key expression is constructed in two or more distinct function bodies, suggesting hoisting to a const or key enum.
+*   **[`val_conversion_chain`](docs/lints/val_conversion_chain.md):** Flags a chain of three or more `soroban_sdk` conversions (`into_val`/`try_into_val`/`from_val`/`try_from_val`) that bounce the same local value through `Val` across a `let` sequence, where converting directly to the needed shape would cost a single host call.
 
 ## How it Fits into Tollcraft
 
@@ -42,34 +60,173 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ## Getting Started
 
-### Prerequisites
+### Recommended: Dev Container
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
+The fastest way to get a working environment is the pre-built container image, which ships with
+the exact nightly toolchain, compiler components, and Dylint binaries installed — no manual setup required.
 
 ```bash
-cargo install cargo-dylint dylint-link --version "^6.0.1"
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
+docker run --rm -it -v "$(pwd)":/workspace ghcr.io/tollcraft/soroban-cost-linter-dev:latest bash
+# Inside the container:
+cargo test --workspace
 ```
+
+VS Code / GitHub Codespaces users can open the repo and choose **"Reopen in Container"** — the
+`.devcontainer/devcontainer.json` handles everything automatically.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manual local setup path.
+
+### Prerequisites
+
+> **Windows users:** the project CI runs on Ubuntu. For the smoothest setup,
+> prefer **WSL2 with Ubuntu** — see
+> [docs/windows_setup.md](docs/windows_setup.md). Native-PowerShell install is
+> covered in the same page; **Visual Studio Build Tools is required** because
+> the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
+
+Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library pins Dylint `=6.3.0`: 6.4.0 raised its MSRV to rustc 1.98 and cannot install on the pinned nightly.
+
+1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
+
+   ```bash
+   rustup toolchain install <channel-from-rust-toolchain>
+   ```
+
+2. **Install Dylint** — the linter relies on [Dylint](https://github.com/trailofbits/dylint) version `=6.3.0` to run dynamic library lints:
+
+   ```bash
+   cargo install cargo-dylint dylint-link --version "=6.3.0" --locked
+   ```
+
+> **Windows:** Install via PowerShell after setting up Rust through [rustup](https://rustup.rs/). The command is identical. Make sure the nightly toolchain with `rustc-dev` and `llvm-tools-preview` components is installed (`rustup toolchain install nightly --component rustc-dev llvm-tools-preview`).
 
 ### Installation
 
-Add the linter to your Soroban workspace:
+Add the linter to your Soroban workspace. **Ensure you are using the pinned nightly toolchain** (see [Prerequisites](#prerequisites)) when building:
 
 ```bash
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
-
+cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
 ```
+
+> **Why is the nightly required?** The lint library links against `rustc_private`, which is only available on nightly compilers. A different nightly version may produce linker errors due to ABI mismatches.
+
+### Verifying a downloaded binary
+
+Each release includes a `SHA256SUMS` file. After downloading both the binary and the checksums file, run:
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+If the binary was not tampered with the output will say `cargo-cost-lint: OK`.
 
 ## Quick Start
 
-```bash
-# Install the tool
-cargo install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+1. Complete the [Prerequisites](#prerequisites) (nightly toolchain + Dylint).
+2. Install the linter using the pinned nightly:
 
-# Run it on your Soroban project
-cargo cost-lint
-```
+   ```bash
+   cargo +<channel-from-rust-toolchain> install --git https://github.com/Tollcraft/soroban-cost-linter.git cargo-cost-lint
+   ```
+3. Run it on your Soroban project:
+
+   ```bash
+   cargo cost-lint
+   ```
 
 ## Usage
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <PATH>` | Path to `budget.toml` for lint-level overrides |
+| `--allow <LINT>`, `-A <LINT>` | Set a lint to `allow` for this run (repeatable, overrides `budget.toml`) |
+| `--warn <LINT>`, `-W <LINT>` | Set a lint to `warn` for this run (repeatable, overrides `budget.toml`) |
+| `--deny <LINT>`, `-D <LINT>` | Set a lint to `deny` for this run (repeatable, overrides `budget.toml`) |
+| `--package <SPEC>`, `-p <SPEC>` | Package(s) to lint (repeatable, restricts linting to specified packages) |
+| `--workspace` | Lint all packages in the workspace |
+| `--no-cache` | Bypass the lint result cache for this run |
+| `--clear-cache` | Clear all cached lint results and exit |
+| `--color <WHEN>` | Control coloured output: `auto` (default), `always`, or `never`. Honours the `NO_COLOR` convention when unset |
+| `--diff-only` | Lint only files changed relative to the merge base with the default branch |
+| `--format <text\|json\|sarif\|github>` | Output format (default: `text`) |
+| `--list-lints` | Print every registered lint with its default level, category and documentation URL, then exit (`--format text` or `json` only; `sarif` and `github` are rejected with exit code 2) |
+| `--explain <LINT>` | Print the full documentation for a specific lint (what it does, why it's expensive, suggested fix) and exit |
+| `--quiet` | Suppress informational and warning output (lint findings and errors are never suppressed) |
+| `--verbose` | Show diagnostic detail: resolved config path, lint flags, and the spawned command |
+| `--version` | Print the crate version and exit |
+| `--color <auto\|always\|never>` | Control coloured output (default: `auto`); honours the `NO_COLOR` convention when the flag is omitted, and an explicit `--color` value overrides it |
+| `--diff-only` | Only report findings in files changed against the merge base with the default branch (whole files are linted, not just changed lines) |
+
+`--quiet` and `--verbose` are mutually exclusive. In JSON mode (`--format json`), both flags keep stdout as clean NDJSON; all diagnostic output goes to stderr.
+
+### Result Caching
+
+`cargo cost-lint` automatically caches lint results between runs to make repeat runs on unchanged code near-instant.
+
+#### Cache Invalidation
+The cache key is computed deterministically from:
+- **Source Content:** Hash of all source code files, `Cargo.toml`, and `Cargo.lock` files.
+- **Resolved Lint Levels:** Effective `-A`/`-W`/`-D` lint flags.
+- **Linter Version:** The version of `cargo-cost-lint`.
+- **Toolchain:** Active `rustc` compiler version and commit.
+- **Package Selection & Output Format:** Requested `--package`/`--workspace` args and `--format`.
+- **Diff Scope:** Whether the run is a full run or `--diff-only`; a cached full-run result is never replayed for a filtered run or the reverse.
+- **`.lintignore`:** Content hash of the resolved `.lintignore`; its absence counts as a distinct input, so adding one invalidates earlier entries.
+
+Modifying any of these inputs automatically invalidates the cache entry and triggers a fresh lint pass.
+
+#### Bypassing and Clearing the Cache
+- Run with `--no-cache` to force a fresh run without using cached results.
+- Run with `--clear-cache` to delete all cached entries.
+- The cache files are stored in `target/cost-lint-cache/`, which is ignored by Git and cleaned automatically with `cargo clean`.
+
+### Package Selection
+
+In multi-crate workspaces, you can restrict linting to specific packages or explicitly lint the entire workspace:
+
+```bash
+# Lint a single package
+cargo cost-lint -p my-contract
+
+# Lint multiple packages
+cargo cost-lint -p contract-a --package contract-b
+
+# Explicitly lint all packages in the workspace
+cargo cost-lint --workspace
+```
+
+#### Default Behavior
+When neither `--package` nor `--workspace` is specified, `cargo cost-lint` follows standard Cargo semantics: it lints the package in the current working directory, or all default workspace members if invoked from the root of a virtual workspace.
+
+Passing an unknown package name with `--package` will be rejected with an error listing the available workspace members.
+
+### Command-Line Level Overrides
+
+You can temporarily override lint levels without editing `budget.toml` using `--allow` (`-A`), `--warn` (`-W`), and `--deny` (`-D`):
+
+```bash
+# Deny storage operations in loops and allow redundant env clones for this run
+cargo cost-lint --deny soroban_storage_in_loop --allow redundant_env_clone
+```
+
+#### Precedence
+1. **Command-line flags** (`--allow`, `--warn`, `--deny`) take the highest precedence.
+2. **`budget.toml`** defines project-wide defaults for unoverridden lints.
+3. **Built-in lint defaults** apply when neither the command line nor `budget.toml` specifies a level.
+
+#### Configuration Discovery Order
+When resolving `budget.toml`, `cargo cost-lint` uses the following order:
+1. **Explicit `--config <PATH>` CLI option**: Loads the specified configuration file. Fails with an error if the path does not exist.
+2. **Current working directory**: Checks for `budget.toml` in the current working directory.
+3. **Walk-up discovery**: If not found in the current directory, walks up parent directories until it finds the workspace root.
+4. **Safe defaults**: If no `budget.toml` is found up to the workspace root, safe default lint levels are used.
+
+You can inspect the resolved configuration path by running with `--verbose`.
+
+Passing conflicting levels for the same lint (e.g. `--allow <LINT> --deny <LINT>`) or an unknown lint name will be rejected with an error before execution.
 
 ### Running the linter
 
@@ -79,7 +236,45 @@ From the root of your Soroban contract workspace:
 cargo cost-lint
 ```
 
+To inspect the machine-readable lint inventory that the CLI emits, run:
+
+```bash
+cargo cost-lint --list-lints --format json
+```
+
+The output is a versioned JSON object with the lint name, default level, description, category, and documentation URL for every registered lint.
+
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
+
+```text
+error: storage operation inside a loop
+  --> src/lib.rs:12:9
+   |
+LL |         env.storage().instance().set(&i, &1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = note: `#[warn(soroban_storage_in_loop)]` on by default
+```
+
+#### Output format
+
+Use `--format` to choose the output format:
+
+| Format   | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `text`   | Human-readable console output (default)                      |
+| `json`   | One JSON object per line, suitable for programmatic parsing  |
+| `sarif`  | SARIF v2.1.0 output, compatible with GitHub Code Scanning   |
+| `github` | GitHub Actions workflow command annotations                  |
+
+Example — generate SARIF output for GitHub Advanced Security:
+
+```bash
+cargo cost-lint --format sarif > results.sarif
+```
+
+The SARIF file can then be uploaded to GitHub or integrated into your CI pipeline to annotate PR diffs with line-specific warnings.
 
 ```text
 warning: storage operation inside a loop
@@ -104,111 +299,30 @@ warning: redundant clone on Env object
    |
 LL |     let _cloned = env.clone();
    |                   ^^^^^^^^^^^
-   = help: pass Env by reference or value instead of cloning
+   |
+   = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
+
+Found 3 cost lint findings:
+  By lint name:
+    - redundant_env_clone: 1
+    - soroban_storage_in_loop: 1
+    - unnecessary_host_function_call: 1
+  By severity:
+    - warning: 3
 ```
 
-### Example: storage in a loop
+The text-mode run above closes with a per-lint findings summary. That roll-up
+is printed whenever a text run applies a filter — either `--diff-only` or a
+discovered `.lintignore`. A plain `cargo cost-lint` passes rustc's own
+diagnostics through verbatim and omits the summary, and `--quiet` suppresses it
+too; `--format json`, `sarif` and `github` never emit it, so their output stays
+machine-parseable.
 
-**Bad** &mdash; a storage write inside a `for` loop writes on every iteration, driving up fees:
+For detailed examples of each lint and instructions on suppressing false positives, see the [`docs/lints/`](docs/lints) directory.
 
-```rust
-// ❌ Triggers: soroban_storage_in_loop
-for item in items {
-    env.storage().instance().set(&item, &1);
-}
-```
+For instructions on CI/CD integration and configuring the `budget.toml` file, see the [Integration Guide](docs/integration.md).
 
-The linter flags this as:
-
-```text
-warning: storage operation inside a loop
- --> src/lib.rs:4:9
-  |
-LL |         env.storage().instance().set(&item, &1);
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = help: move storage operations out of the loop or accumulate mutations in memory first
-```
-
-**Fix** &mdash; accumulate in memory, then write once:
-
-```rust
-// ✅ Fixed: single storage write after the loop
-let mut aggregated = Vec::new();
-for item in items {
-    aggregated.push((item, 1u32));
-}
-for (key, val) in aggregated {
-    env.storage().instance().set(&key, &val);
-}
-```
-
-This works for all three storage types (`instance`, `persistent`, `temporary`) and all loop forms (`for`, `while`, `loop`).
-
-### Example: redundant `Env` clone
-
-**Bad:**
-
-```rust
-// ❌ Triggers: redundant_env_clone
-let cloned = env.clone();
-```
-
-**Fix** &mdash; `Env` is cheap to copy by reference; just pass it through:
-
-```rust
-// ✅ Fixed
-fn my_function(env: &Env) {
-    // use &env
-}
-```
-
-### Example: host function call in a loop
-
-**Bad** &mdash; calling `env.ledger().sequence()` on every iteration is wasteful:
-
-```rust
-// ❌ Triggers: unnecessary_host_function_call
-for _ in 0..10 {
-    let _seq = env.ledger().sequence();
-}
-```
-
-**Fix** &mdash; call once, bind to a local, reuse:
-
-```rust
-// ✅ Fixed
-let seq = env.ledger().sequence();
-for _ in 0..10 {
-    // use seq
-}
-```
-
-### Suppressing false positives
-
-If a flagged pattern is intentional, suppress it with a standard Rust attribute:
-
-```rust
-#[allow(soroban_storage_in_loop)]
-fn deliberate_storage_loop(env: Env) {
-    for item in items {
-        env.storage().instance().set(&item, &1);
-    }
-}
-```
-
-### Configuration (`budget.toml`)
-
-You can define project-wide linting rules and severity levels in the same `budget.toml` file used by `soroban-budget-assert`. Place this in your workspace root:
-
-```toml
-[lints]
-# Set to "warn", "deny", or "allow"
-soroban_storage_in_loop = "deny"
-redundant_env_clone = "warn"
-unnecessary_host_function_call = "warn"
-
-```
 
 ## Contributing
 
@@ -220,6 +334,23 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 4. Pass all local tests before submitting.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+**Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
+
+### Performance Benchmarking & Regression Gate
+
+The performance benchmark suite measures linter execution duration across all corpus contracts:
+
+```bash
+# Run the benchmark and compare against the recorded baseline
+cargo bench --bench linter_performance --package cargo-cost-lint
+
+# Deliberately update/bless the baseline when a performance slowdown is accepted
+BLESS_BENCH=1 cargo bench --bench linter_performance --package cargo-cost-lint
+```
+
+The CI pipeline runs this gate automatically. Regressions exceeding the 25% threshold fail the build.
+
+Release history is documented in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
@@ -235,3 +366,17 @@ Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=Tollcraft/soroban-cost-linter)](https://github.com/Tollcraft/soroban-cost-linter/graphs/contributors)
+
+
+<!-- [`soroban-budget-assert`](https://github.com/Tollcraft/soroban-budget-assert). -->
+Fixing issue 463
+
+Fixing issue 463
+
+## Development Container Image
+A pre-built development container image containing the pinned nightly Rust toolchain, `cargo-dylint`, and `dylint-link` is published automatically for this project.
+You can pull it from the GitHub Container Registry:
+```bash
+docker pull ghcr.io/tollcraft/soroban-cost-linter-dev:latest
+```
+This image does NOT contain the linter itself; it is an environment for building and testing the linter. Mount your source code into `/workspace` to use it.

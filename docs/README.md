@@ -36,3 +36,4 @@ New here? Start with the [**Integration Guide**](integration.md) to wire the lin
   * [`unnecessary_host_function_call`](lints/unnecessary_host_function_call.md)
 * 🔌 [**Integration Guide**](integration.md) — `budget.toml` configuration and GitHub Actions setup
 * 📏 [**Scope: Clippy vs. soroban-cost-linter**](scope_boundary.md) — which patterns belong here and which belong to Clippy
+* 🧭 [**Troubleshooting**](troubleshooting.md) — the linter runs but nothing is reported, library-not-found, missing components, and other silent failures

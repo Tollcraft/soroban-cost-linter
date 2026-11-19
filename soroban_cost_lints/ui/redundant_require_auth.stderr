@@ -1,0 +1,59 @@
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:41:5
+   |
+LL |     addr.req$DIRre_auth(); //~ WARNING req$DIRre_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+   = note: `#[warn(redundant_req$DIRre_auth)]` on by default
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:48:5
+   |
+LL |     addr.req$DIRre_auth_for_args(&[2]); //~ WARNING req$DIRre_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:56:5
+   |
+LL |     addr.req$DIRre_auth_for_args(&[1, 2]); //~ WARNING req$DIRre_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:63:5
+   |
+LL |     addr.req$DIRre_auth(); //~ WARNING req$DIRre_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:73:9
+   |
+LL |         addr.req$DIRre_auth(); //~ WARNING req$DIRre_auth already called on this address
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:84:9
+   |
+LL |         addr.req$DIRre_auth(); //~ WARNING req$DIRre_auth already called on this address
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: req$DIRre_auth already called on this address in this function
+  --> $DIR/redundant_req$DIRre_auth.rs:169:5
+   |
+LL |     addr.req$DIRre_auth(); //~ WARNING req$DIRre_auth already called on this address
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first req$DIRre_auth on an address already establishes authorization for the entire invocation
+
+warning: 7 warnings emitted
+

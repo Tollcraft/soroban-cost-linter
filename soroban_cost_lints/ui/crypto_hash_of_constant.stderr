@@ -1,0 +1,35 @@
+warning: cryptographic hash of a compile-time constant value
+  --> $DIR/crypto_hash_of_constant.rs:28:14
+   |
+LL |     let _h = env.crypto().sha256(b"fixed tag"); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: precompute the digest once and embed it as a constant; the input does not change between invocations, so re-hashing it is pure waste
+   = note: `#[warn(crypto_hash_of_constant)]` on by default
+
+warning: cryptographic hash of a compile-time constant value
+  --> $DIR/crypto_hash_of_constant.rs:33:14
+   |
+LL |     let _h = env.crypto().sha256(&[1u8, 2, 3, 4]); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: precompute the digest once and embed it as a constant; the input does not change between invocations, so re-hashing it is pure waste
+
+warning: cryptographic hash of a compile-time constant value
+  --> $DIR/crypto_hash_of_constant.rs:38:14
+   |
+LL |     let _h = env.crypto().keccak256(DOMAIN_SEP); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: precompute the digest once and embed it as a constant; the input does not change between invocations, so re-hashing it is pure waste
+
+warning: cryptographic hash of a compile-time constant value
+  --> $DIR/crypto_hash_of_constant.rs:43:14
+   |
+LL |     let _h = env.crypto().sha256(&DOMAIN_SEP); // Should Warn
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: precompute the digest once and embed it as a constant; the input does not change between invocations, so re-hashing it is pure waste
+
+warning: 4 warnings emitted
+

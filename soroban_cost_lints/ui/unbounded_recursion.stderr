@@ -1,0 +1,35 @@
+warning: unbounded recursion in contract function
+  --> $DIR/unbounded_recursion.rs:8:5
+   |
+LL |     walk_vec(data[1..].to_vec());
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: recursion depth is driven by caller input (e.g. over a caller-supplied Vec/&[T] length). Bound the depth or rewrite as an iterative loop. Cycle: walk_vec -> walk_vec
+   = note: `#[warn(unbounded_recursion)]` on by default
+
+warning: unbounded recursion in contract function
+  --> $DIR/unbounded_recursion.rs:16:5
+   |
+LL |     walk_slice(&items[1..]);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: recursion depth is driven by caller input (e.g. over a caller-supplied Vec/&[T] length). Bound the depth or rewrite as an iterative loop. Cycle: walk_slice -> walk_slice
+
+warning: unbounded recursion in contract function
+  --> $DIR/unbounded_recursion.rs:24:5
+   |
+LL |     process_child(items);
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: recursion depth is driven by caller input (e.g. over a caller-supplied Vec/&[T] length). Bound the depth or rewrite as an iterative loop. Cycle: process -> process_child -> process
+
+warning: unbounded recursion in contract function
+  --> $DIR/unbounded_recursion.rs:28:5
+   |
+LL |     process(&items[1..]);
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: recursion depth is driven by caller input (e.g. over a caller-supplied Vec/&[T] length). Bound the depth or rewrite as an iterative loop. Cycle: process_child -> process -> process_child
+
+warning: 4 warnings emitted
+

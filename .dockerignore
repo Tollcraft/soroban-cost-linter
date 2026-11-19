@@ -1,0 +1,5 @@
+# Exclude build artifacts and large directories from Docker build context.
+# Only `rust-toolchain` is COPY'd in the Dockerfile, so everything else can
+# be excluded to keep the context small and builds fast.
+target/
+.git/

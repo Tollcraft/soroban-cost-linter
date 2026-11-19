@@ -1,0 +1,240 @@
+name: Dogfood Composite Action
+
+on:
+  push:
+    branches: [ "main" ]
+  # The real corpus under tests/corpus/contracts/ is 15 independent Soroban
+  # workspaces. Running the composite action against each one means a full
+  # Rust toolchain install, a `cargo install` of dylint, and an SDK build per
+  # contract -- too heavy for every-PR execution. It is therefore gated to a
+  # nightly schedule (and manual dispatch) rather than running on every push.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+env:
+  # Must match the `cargo install cargo-dylint dylint-link` pin in action.yml.
+  # It is part of the driver cache key because dylint rebuilds a cached driver
+  # whose version does not match the installed one.
+  DYLINT_VERSION: '6.3.0'
+
+jobs:
+  # Lightweight, zero-findings path. This genuinely different test proves the
+  # action starts, runs, and exits cleanly against code that produces no
+  # findings. It runs on every merge to `main` and on dispatch, but not on pull
+  # requests: `Lint`'s build-and-test is the one check a PR waits on.
+  dogfood-smoke:
+    name: Dogfood action (zero-findings fixture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      # Restores the dylint driver that `prepare-driver` builds on the nightly.
+      # A push to `main` can run before that cache exists, so a miss is not an
+      # error here -- the action builds the driver itself, as it always did.
+      - name: Restore dylint driver
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
+      - name: Run composite action against test fixtures
+        uses: ./
+        with:
+          working-directory: soroban_cost_lints/test_fixtures/real_sdk
+          config: budget.toml
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+  # Building the dylint driver once, up front, is what keeps the corpus job
+  # from failing. `dylint_driver`'s build script fetches the `clippy_utils`
+  # source from github.com, and with ~40 matrix jobs starting together every
+  # night that clone was attempted 40 times at once; the jobs that lost the
+  # race died with "Failed to connect to github.com port 443 after 136168 ms"
+  # even though the linter itself was fine. This job pays that network cost
+  # once, saves the built driver to the Actions cache, and the matrix jobs
+  # restore it instead of rebuilding.
+  prepare-driver:
+    name: Prepare dylint driver
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
+      # The composite action is the supported way to build the driver: the
+      # driver build is a side effect of `cargo dylint --lib` in its
+      # "Register lint library with dylint" step. Skipped when the cache
+      # already holds a driver for this toolchain and dylint version.
+      - name: Build driver via the composite action
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./
+        with:
+          working-directory: soroban_cost_lints/test_fixtures/real_sdk
+          config: budget.toml
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+  # Discover the corpus contracts dynamically so the job stays correct as new
+  # contracts land (they are excluded from the workspace, so they are not
+  # enumerated anywhere else). Other PRs add contracts; this job must not list
+  # them by hand.
+  discover-corpus:
+    name: Discover corpus contracts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    outputs:
+      contracts: ${{ steps.list.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        shell: bash
+        run: |
+          cd tests/corpus/contracts
+          names=()
+          for d in */; do
+            if [ -f "$d/Cargo.toml" ]; then
+              names+=("${d%/}")
+            fi
+          done
+          printf '%s\n' "${names[@]}" \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))' \
+            > contracts.json
+          cat contracts.json
+          echo "contracts=$(cat contracts.json)" >> "$GITHUB_OUTPUT"
+
+  # Heavy, real-findings path. The composite action is exercised against each
+  # corpus contract, and the run is asserted against tests/corpus/baseline.json
+  # (the same source of truth the `real_world_corpus` test reuses) rather than a
+  # second hand-kept list.
+  dogfood-corpus:
+    name: Dogfood action (corpus contract ${{ matrix.contract }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: [discover-corpus, prepare-driver]
+    strategy:
+      fail-fast: false
+      # The driver comes from the cache now, but each job still resolves the
+      # `clippy_utils` Git dependency and installs dylint, so a smaller cap
+      # keeps the jobs from competing for the same egress.
+      max-parallel: 4
+      matrix:
+        contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
+      # `prepare-driver` ran first, so this must hit. Failing on a miss keeps a
+      # broken cache from silently turning this back into 40 concurrent driver
+      # builds.
+      - name: Restore dylint driver
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
+          fail-on-cache-miss: true
+      # The corpus contracts are deliberately bad code, and the default config
+      # sets `soroban_storage_in_loop` to `deny`. Linting them therefore makes
+      # the action's underlying `cargo check` exit non-zero on findings that are
+      # the entire point of the fixture, and the job died at this step before
+      # the baseline assertion below ever ran -- which is why this nightly has
+      # been red on ~30 of its 40 matrix entries for as long as it has existed.
+      # `real_world_corpus.rs` already has the rule for telling that apart from
+      # a broken linter (non-zero *with* findings streamed is the tool working;
+      # non-zero with nothing to show is not), so the step is allowed to fail
+      # and the assertion re-applies that rule with the step's outcome in hand.
+      - name: Run composite action against corpus contract
+        id: action
+        uses: ./
+        continue-on-error: true
+        with:
+          working-directory: tests/corpus/contracts/${{ matrix.contract }}
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+      - name: Assert findings against baseline
+        shell: bash
+        env:
+          CONTRACT: ${{ matrix.contract }}
+          REPO: ${{ github.workspace }}
+          ACTION_OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          set -euo pipefail
+
+          BIN="$REPO/target/release/cargo-cost-lint"
+          export DYLINT_LIBRARY_PATH="$REPO/target/release"
+          # The lint library and CLI are already built by the composite action
+          # above into the default target dir.
+
+          cd "$REPO/tests/corpus/contracts/$CONTRACT"
+
+          # Re-run the same binary the action builds, in JSON so we can assert
+          # on the result. A deny-level finding makes this exit non-zero with
+          # every finding already on stdout, exactly as in the Rust test, so
+          # the exit status is not the signal here -- the findings are.
+          RAW="$("$BIN" --format json 2>/dev/null)" || true
+
+          # The findings are JSON lines, so both counts come straight from jq
+          # rather than a shell array: the mapfile/grep loop this replaces
+          # needed bash 4 and treated a finding message containing a newline as
+          # two findings.
+          CURRENT_TOTAL="$(printf '%s\n' "$RAW" | jq -s 'length')"
+
+          # The same triage list real_world_corpus.rs uses, read from the same
+          # file rather than copied into this workflow. The copy had drifted to
+          # six of its ten names, so every finding from redundant_address_clone,
+          # soroban_inefficient_bytes_concat, vec_index_in_loop,
+          # unwrap_on_storage_get or persistent_read_without_ttl_extension was
+          # counted as a false positive and reported as an FP regression that
+          # had not happened.
+          CURRENT_FP="$(printf '%s\n' "$RAW" | jq -s \
+            --slurpfile tp "$REPO/tests/corpus/always_true_positive.json" \
+            '[.[] | . as $f | select(($tp[0] | index($f.name)) == null)] | length')"
+
+          BASE_TOTAL="$(jq -r --arg c "$CONTRACT" '.contracts[$c].total' "$REPO/tests/corpus/baseline.json")"
+          BASE_FP="$(jq -r --arg c "$CONTRACT" '.contracts[$c].false_positives | length' "$REPO/tests/corpus/baseline.json")"
+
+          echo "Contract $CONTRACT: current total=$CURRENT_TOTAL (baseline $BASE_TOTAL), current FP=$CURRENT_FP (baseline $BASE_FP)"
+
+          if [ "${ACTION_OUTCOME:-success}" != "success" ] && [ "$CURRENT_TOTAL" -eq 0 ]; then
+            echo "::error::cargo-cost-lint failed on $CONTRACT and produced no findings at all -- this is the action or the fixture being broken, not a deny-level finding. See the 'Run composite action' step."
+            exit 1
+          fi
+
+          if [ "$BASE_TOTAL" = "null" ]; then
+            echo "::warning::No baseline entry for $CONTRACT yet; skipping the count checks (add it via BLESS and commit baseline.json)"
+          else
+            # Total drift is reported, not enforced: that is the corpus test's
+            # own documented rule (TP counts are tracked for reporting, only an
+            # FP increase fails). Enforcing equality here would invent a second,
+            # stricter policy than the baseline this repository blesses.
+            if [ "$CURRENT_TOTAL" -ne "$BASE_TOTAL" ]; then
+              echo "::warning::Finding count for $CONTRACT differs from baseline: current $CURRENT_TOTAL, baseline $BASE_TOTAL"
+            fi
+
+            # The zero-baseline entries are deliberately clean fixtures --
+            # lifecycle_basic, memory_clean_processor, cross_contract_call_simple
+            # and five others exist to prove the linter stays silent. The old
+            # unconditional "expected findings, got 0" failed seven of them
+            # every night while saying nothing about the service. A contract
+            # with blessed findings that now reports none is still a failure.
+            if [ "$BASE_TOTAL" -gt 0 ] && [ "$CURRENT_TOTAL" -eq 0 ]; then
+              echo "::error::Corpus contract $CONTRACT stopped producing its baseline findings: current 0, baseline $BASE_TOTAL"
+              exit 1
+            fi
+
+            if [ "$CURRENT_FP" -gt "$BASE_FP" ]; then
+              echo "::error::False-positive count for $CONTRACT increased: $CURRENT_FP (baseline $BASE_FP)"
+              exit 1
+            fi
+          fi
+
+          echo "OK: $CONTRACT findings are consistent with baseline"
