@@ -585,14 +585,17 @@ fn main() {
     };
 
     if cli.clear_cache {
+        let quiet = cli.quiet;
         let cache_dir = cache::get_cache_dir(None);
         match cache::clear_cache(&cache_dir) {
             Ok(count) => {
-                println!(
-                    "Cleared {} cached lint result(s) at {}",
-                    count,
-                    cache_dir.display()
-                );
+                if !quiet {
+                    println!(
+                        "Cleared {} cached lint result(s) at {}",
+                        count,
+                        cache_dir.display()
+                    );
+                }
                 return;
             }
             Err(e) => {
@@ -1984,6 +1987,13 @@ mod tests {
             Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
         assert!(cli.no_cache);
         assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn cli_parses_clear_cache_with_quiet() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--clear-cache", "--quiet"])
+            .expect("parsing should succeed");
+        assert!(cli.clear_cache && cli.quiet);
     }
 
     #[test]
