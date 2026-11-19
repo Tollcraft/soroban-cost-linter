@@ -1,4 +1,4 @@
-# Changelog
+#Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,7 +7,7 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
-### Added
+###Added
 
 - New lint `collection_len_in_loop_condition` detecting `.len()` calls on Soroban `Vec`/`Map` in a `while` loop condition when the collection is not mutated inside the loop, where the length is re-fetched through a metered host call on every iteration.
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.

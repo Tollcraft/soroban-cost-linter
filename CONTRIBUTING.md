@@ -2,7 +2,7 @@
 
 First off, thank you for considering contributing to `soroban-cost-linter`!
 
-## How to Contribute
+##How to Contribute
 
 ### 1. Understanding the Architecture
 
