@@ -1,5 +1,5 @@
 warning: iterating map keys and looking up each key is quadratic
-  --> $DIR/map_iter_then_lookup.rs:25:5
+  --> $DIR/map_iter_then_lookup.rs:28:5
    |
 LL | /     for k in map.keys() {
 LL | |         let _ = map.get(&k);
@@ -10,7 +10,7 @@ LL | |     }
    = note: `#[warn(map_iter_then_lookup)]` on by default
 
 warning: iterating map keys and looking up each key is quadratic
-  --> $DIR/map_iter_then_lookup.rs:32:5
+  --> $DIR/map_iter_then_lookup.rs:35:5
    |
 LL | /     for k in map.keys() {
 LL | |         let _ = map.get_unchecked(&k);
