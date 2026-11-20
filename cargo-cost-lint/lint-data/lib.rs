@@ -129,6 +129,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
+        MAP_ITER_THEN_LOOKUP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -215,6 +216,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
     lint_store.register_late_pass(|_| Box::new(deploy_in_loop::DeployInLoop));
+    lint_store.register_late_pass(|_| Box::new(map_iter_then_lookup::MapIterThenLookup));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -354,6 +356,12 @@ rustc_session::declare_lint! {
     pub DEPLOY_IN_LOOP,
     Warn,
     "contract deployment inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub MAP_ITER_THEN_LOOKUP,
+    Warn,
+    "iterating map keys and looking up each key is quadratic"
 }
 
 rustc_session::declare_lint! {
@@ -827,6 +835,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "contract deployment inside a loop",
         rationale: "Contract deployment and Wasm instantiation are among the most expensive host operations; deploying inside a loop multiplies that overhead per iteration.",
     },
+    LintMeta {
+        name: "map_iter_then_lookup",
+        category: LintCategory::Compute,
+        description: "iterating map keys and looking up each key is quadratic",
+        rationale: "Iterating map.keys() and calling .get() or .get_unchecked() for each key performs repeated O(log n) lookups. Using map.iter() iterates entries directly in O(n).",
+    },
 ];
 
 dylint_lint_impl! {
@@ -879,6 +893,7 @@ dylint_lint_impl! {
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
+        MAP_ITER_THEN_LOOKUP,
     ]
 }
 
