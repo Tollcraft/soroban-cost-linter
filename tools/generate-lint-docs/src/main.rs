@@ -588,6 +588,7 @@ fn validate_args<I: IntoIterator<Item = String>>(args: I) -> Result<(), String> 
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--check" => {}
+            "--allow-empty" => {}
             "--workspace-root" => match it.next() {
                 Some(v) if !v.is_empty() && !v.starts_with("--") => {}
                 _ => return Err("--workspace-root requires a path value".to_string()),
@@ -601,10 +602,11 @@ fn validate_args<I: IntoIterator<Item = String>>(args: I) -> Result<(), String> 
 fn main() {
     if let Err(e) = validate_args(std::env::args()) {
         eprintln!("Error: {e}");
-        eprintln!("Usage: generate-lint-docs [--check] [--workspace-root <PATH>]");
+        eprintln!("Usage: generate-lint-docs [--check] [--allow-empty] [--workspace-root <PATH>]");
         process::exit(2);
     }
     let check_mode = std::env::args().any(|a| a == "--check");
+    let allow_empty = std::env::args().any(|a| a == "--allow-empty");
 
     let lib_path = resolve_path("soroban_cost_lints/src/lib.rs");
     let readme_path = resolve_path("docs/lints/README.md");
@@ -624,6 +626,14 @@ fn main() {
 
     let content = fs::read_to_string(&lib_path).expect("Failed to read lib.rs");
     let entries = parse_lib_rs(&content);
+
+    if entries.is_empty() && !allow_empty {
+        eprintln!(
+            "Error: No lints parsed from {:?}. Refusing to overwrite documentation without --allow-empty.",
+            lib_path
+        );
+        process::exit(1);
+    }
 
     let readme = generate_readme(&entries);
     let catalog = generate_catalog(&entries);
@@ -1124,7 +1134,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_readme(&entries);
+        let generated = generate_readme(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lints/README.md"))
             .expect("Failed to read docs/lints/README.md");
         let actual = actual.replace("\r\n", "\n");
@@ -1140,7 +1150,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_catalog(&entries);
+        let generated = generate_catalog(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lint_catalog.md"))
             .expect("Failed to read docs/lint_catalog.md");
         let actual = actual.replace("\r\n", "\n");
