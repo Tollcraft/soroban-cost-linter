@@ -31,6 +31,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec | [Link](lints/excessive_vec_capacity.md) |
 | `deploy_in_loop` | warn | contract deployment inside a loop | [Link](lints/deploy_in_loop.md) |
 | `auths_read_in_loop` | warn | calling env.auths() inside a loop | [Link](lints/auths_read_in_loop.md) |
+| `repeated_instance_write_same_key` | warn | repeated instance storage write to the same key | [Link](lints/repeated_instance_write_same_key.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |

@@ -53,6 +53,7 @@ mod persistent_storage_for_ephemeral_data;
 mod redundant_address_clone;
 mod redundant_require_auth;
 mod redundant_val_conversion;
+mod repeated_instance_write_same_key;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
 mod storage_read_modify_write;
@@ -130,6 +131,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
         AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -217,6 +219,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
     lint_store.register_late_pass(|_| Box::new(deploy_in_loop::DeployInLoop));
     lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
+    lint_store.register_late_pass(|_| {
+        Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
+    });
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -362,6 +367,12 @@ rustc_session::declare_lint! {
     pub AUTHS_READ_IN_LOOP,
     Warn,
     "calling env.auths() inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub REPEATED_INSTANCE_WRITE_SAME_KEY,
+    Warn,
+    "repeated instance storage write to the same key"
 }
 
 rustc_session::declare_lint! {
@@ -841,6 +852,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "calling env.auths() inside a loop",
         rationale: "env.auths() copies the authorization tree per call even though the authorized set is fixed before execution; calling it inside a loop multiplies host costs unnecessarily.",
     },
+    LintMeta {
+        name: "repeated_instance_write_same_key",
+        category: LintCategory::Storage,
+        description: "repeated instance storage write to the same key",
+        rationale: "Each instance storage write rewrites the entire instance storage map and incurs ledger write costs; writing to the same key multiple times in a single function wastes fees on intermediate values that are overwritten before the invocation finishes.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -894,6 +911,7 @@ dylint_lint_impl! {
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
         AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
     ]
 }
 

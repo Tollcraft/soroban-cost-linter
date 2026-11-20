@@ -68,6 +68,7 @@
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
   * [deploy\_in\_loop](lints/deploy_in_loop.md)
   * [auths\_read\_in\_loop](lints/auths_read_in_loop.md)
+  * [repeated\_instance\_write\_same\_key](lints/repeated_instance_write_same_key.md)
 
 ## Branding
 
