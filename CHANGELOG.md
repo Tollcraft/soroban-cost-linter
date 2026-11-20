@@ -9,6 +9,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
 - `require_auth_in_loop` now detects repeated authorization calls inside iterator closures, including `require_auth_for_args`.
 - `generate-lint-docs` now rejects unknown flags (such as a mistyped `--chek`) and a `--workspace-root` with no value, exiting non-zero instead of rewriting the docs or falling back to the current directory.
 - `cargo-cost-lint --config <DIR>` now errors when the path is a directory instead of silently ignoring it.
