@@ -38,6 +38,7 @@ mod blind_storage_write;
 mod bytes_slice_copy_in_loop;
 mod collection_len_in_loop_condition;
 mod cross_contract_result_discarded;
+mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
@@ -126,6 +127,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BLIND_STORAGE_WRITE,
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
+        DEPLOY_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -211,6 +213,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(blind_storage_write::BlindStorageWrite));
     lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
+    lint_store.register_late_pass(|_| Box::new(deploy_in_loop::DeployInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -344,6 +347,12 @@ rustc_session::declare_lint! {
     pub EXCESSIVE_VEC_CAPACITY,
     Warn,
     "excessive pre-allocation capacity in Soroban Vec"
+}
+
+rustc_session::declare_lint! {
+    pub DEPLOY_IN_LOOP,
+    Warn,
+    "contract deployment inside a loop"
 }
 
 rustc_session::declare_lint! {
@@ -811,6 +820,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "excessive pre-allocation capacity in Soroban Vec",
         rationale: "Pre-allocating host-side Vec capacity far beyond what the contract can fill is billed at allocation time; starting empty and growing on demand keeps the metered footprint proportional to the data actually stored.",
     },
+    LintMeta {
+        name: "deploy_in_loop",
+        category: LintCategory::Host,
+        description: "contract deployment inside a loop",
+        rationale: "Contract deployment and Wasm instantiation are among the most expensive host operations; deploying inside a loop multiplies that overhead per iteration.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -862,6 +877,7 @@ dylint_lint_impl! {
         BLIND_STORAGE_WRITE,
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
+        DEPLOY_IN_LOOP,
     ]
 }
 
