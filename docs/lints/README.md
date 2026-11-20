@@ -41,6 +41,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
+| [`map_iter_then_lookup`](map_iter_then_lookup.md) | `warn` | iterating map keys and looking up each key is quadratic |
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
