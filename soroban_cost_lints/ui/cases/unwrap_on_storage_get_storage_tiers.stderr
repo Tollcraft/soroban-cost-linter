@@ -1,0 +1,44 @@
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get_storage_tiers.rs:60:5
+   |
+LL |     env.storage().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+   = note: `#[warn(unwrap_on_storage_get)]` on by default
+
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get_storage_tiers.rs:64:5
+   |
+LL |     env.storage().instance().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get_storage_tiers.rs:68:5
+   |
+LL |     env.storage().persistent().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+
+warning: unwrap on a storage read traps the contract when the key is missing or expired
+  --> $DIR/unwrap_on_storage_get_storage_tiers.rs:72:5
+   |
+LL |     env.storage().temporary().get::<_, i32>(&1).unwrap() //~ WARNING unwrap on a storage read traps the contract
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: handle the None case explicitly with unwrap_or, unwrap_or_else, or an early return carrying a proper error — work already metered before the trap is charged to the caller while delivering nothing
+
+warning: storage read result is discarded
+  --> $DIR/unwrap_on_storage_get_storage_tiers.rs:77:5
+   |
+LL |     env.storage().instance().has(&1) // Should NOT warn
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
+warning: 5 warnings emitted
+
