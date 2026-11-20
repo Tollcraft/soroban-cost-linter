@@ -68,6 +68,9 @@
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
   * [deploy\_in\_loop](lints/deploy_in_loop.md)
   * [map\_iter\_then\_lookup](lints/map_iter_then_lookup.md)
+  * [storage\_write\_of\_unchanged\_value](lints/storage_write_of_unchanged_value.md)
+  * [large\_value\_decoded\_for\_one\_field](lints/large_value_decoded_for_one_field.md)
+  * [persistent\_write\_without\_ttl\_extension](lints/persistent_write_without_ttl_extension.md)
 
 ## Branding
 
