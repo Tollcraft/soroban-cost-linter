@@ -705,7 +705,7 @@ fn main() {
             Ok(args) => args,
             Err(e) => {
                 eprintln!("{}", e);
-                exit(1);
+                exit(2);
             }
         }
     } else {

@@ -18,6 +18,8 @@ pub enum LinterError {
     Json(serde_json::Error),
     /// A required prerequisite is missing (e.g. `cargo-dylint` not installed).
     MissingPrerequisite(String),
+    /// A command-line usage error (e.g. invalid arguments or package selection).
+    Usage(String),
     /// A generic, human-readable error message for unexpected situations.
     Other(String),
 }
@@ -27,11 +29,22 @@ pub enum LinterError {
 pub type LinterResult<T> = std::result::Result<T, LinterError>;
 
 impl LinterError {
+    /// Returns the recommended exit status code for this error.
+    /// Usage errors exit with 2 (consistent with clap), while general execution errors exit with 1.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::Usage(_) => 2,
+            _ => 1,
+        }
+    }
+
     fn write_display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(error) => write!(f, "I/O error: {}", error),
             Self::Json(error) => write!(f, "JSON error: {}", error),
-            Self::MissingPrerequisite(message) | Self::Other(message) => f.write_str(message),
+            Self::MissingPrerequisite(message) | Self::Usage(message) | Self::Other(message) => {
+                f.write_str(message)
+            }
         }
     }
 
@@ -39,7 +52,7 @@ impl LinterError {
         match self {
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
-            Self::MissingPrerequisite(_) | Self::Other(_) => None,
+            Self::MissingPrerequisite(_) | Self::Usage(_) | Self::Other(_) => None,
         }
     }
 }
@@ -114,6 +127,21 @@ mod tests {
     }
 
     #[test]
+    fn display_usage_error() {
+        let err = LinterError::Usage("invalid arguments".to_string());
+        let msg = format!("{}", err);
+        assert_eq!(msg, "invalid arguments");
+    }
+
+    #[test]
+    fn exit_code_usage_is_two() {
+        let err = LinterError::Usage("invalid arguments".to_string());
+        assert_eq!(err.exit_code(), 2);
+        let err_other = LinterError::Other("fail".to_string());
+        assert_eq!(err_other.exit_code(), 1);
+    }
+
+    #[test]
     fn display_other_error() {
         let err = LinterError::Other("something went wrong".to_string());
         let msg = format!("{}", err);
@@ -143,6 +171,12 @@ mod tests {
     #[test]
     fn source_returns_none_for_missing_prerequisite() {
         let err = LinterError::MissingPrerequisite("test".to_string());
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn source_returns_none_for_usage() {
+        let err = LinterError::Usage("test".to_string());
         assert!(err.source().is_none());
     }
 
@@ -220,6 +254,7 @@ mod tests {
                 LinterError::Io(_) => "io",
                 LinterError::Json(_) => "json",
                 LinterError::MissingPrerequisite(_) => "missing_prerequisite",
+                LinterError::Usage(_) => "usage",
                 LinterError::Other(_) => "other",
             }
         }
@@ -236,6 +271,10 @@ mod tests {
         let prereq_err = LinterError::MissingPrerequisite("cargo-dylint not installed".to_string());
         assert_eq!(variant_name(&prereq_err), "missing_prerequisite");
         assert_eq!(format!("{}", prereq_err), "cargo-dylint not installed");
+
+        let usage_err = LinterError::Usage("invalid package usage".to_string());
+        assert_eq!(variant_name(&usage_err), "usage");
+        assert_eq!(format!("{}", usage_err), "invalid package usage");
 
         let other_err = LinterError::Other("something went wrong".to_string());
         assert_eq!(variant_name(&other_err), "other");
