@@ -1,0 +1,31 @@
+warning: calling env.auths() inside a loop
+  --> $DIR/auths_read_in_loop.rs:19:9
+   |
+LL |         env.auths(); //~ WARNING calling env.auths() inside a loop
+   |         ^^^^^^^^^^^
+   |
+   = help: bind env.auths() once before the loop and reuse it
+note: the lint level is defined here
+  --> $DIR/auths_read_in_loop.rs:1:9
+   |
+LL | #![warn(auths_read_in_loop)]
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: calling env.auths() inside a loop
+  --> $DIR/auths_read_in_loop.rs:26:9
+   |
+LL |         env.auths(); //~ WARNING calling env.auths() inside a loop
+   |         ^^^^^^^^^^^
+   |
+   = help: bind env.auths() once before the loop and reuse it
+
+warning: calling env.auths() inside a loop
+  --> $DIR/auths_read_in_loop.rs:34:9
+   |
+LL |         env.auths(); //~ WARNING calling env.auths() inside a loop
+   |         ^^^^^^^^^^^
+   |
+   = help: bind env.auths() once before the loop and reuse it
+
+warning: 3 warnings emitted
+

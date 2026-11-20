@@ -67,6 +67,7 @@
   * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
   * [deploy\_in\_loop](lints/deploy_in_loop.md)
+  * [auths\_read\_in\_loop](lints/auths_read_in_loop.md)
 
 ## Branding
 

@@ -34,6 +34,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod auths_read_in_loop;
 mod blind_storage_write;
 mod bytes_slice_copy_in_loop;
 mod collection_len_in_loop_condition;
@@ -128,6 +129,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
+        AUTHS_READ_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -214,6 +216,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
     lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
     lint_store.register_late_pass(|_| Box::new(deploy_in_loop::DeployInLoop));
+    lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -353,6 +356,12 @@ rustc_session::declare_lint! {
     pub DEPLOY_IN_LOOP,
     Warn,
     "contract deployment inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub AUTHS_READ_IN_LOOP,
+    Warn,
+    "calling env.auths() inside a loop"
 }
 
 rustc_session::declare_lint! {
@@ -826,6 +835,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "contract deployment inside a loop",
         rationale: "Contract deployment and Wasm instantiation are among the most expensive host operations; deploying inside a loop multiplies that overhead per iteration.",
     },
+    LintMeta {
+        name: "auths_read_in_loop",
+        category: LintCategory::Host,
+        description: "calling env.auths() inside a loop",
+        rationale: "env.auths() copies the authorization tree per call even though the authorized set is fixed before execution; calling it inside a loop multiplies host costs unnecessarily.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -878,6 +893,7 @@ dylint_lint_impl! {
         BYTES_SLICE_COPY_IN_LOOP,
         EXCESSIVE_VEC_CAPACITY,
         DEPLOY_IN_LOOP,
+        AUTHS_READ_IN_LOOP,
     ]
 }
 
