@@ -1,0 +1,27 @@
+warning: reading ledger context `sequence` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop_nested_positions.rs:33:33
+   |
+LL |                 let _sequence = env.ledger().sequence();
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (sequence) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+   = note: `#[warn(ledger_context_read_in_loop)]` on by default
+
+warning: reading ledger context `timestamp` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop_nested_positions.rs:36:34
+   |
+LL |                 let _timestamp = env.ledger().timestamp();
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (timestamp) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: reading ledger context `network_id` inside a loop — the value cannot change during this invocation
+  --> $DIR/ledger_context_read_in_loop_nested_positions.rs:45:31
+   |
+LL |             let _network_id = env.ledger().network_id();
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: ledger context values (network_id) are invariant during a single invocation; hoist this read outside the loop to avoid repeated host calls
+
+warning: 3 warnings emitted
+

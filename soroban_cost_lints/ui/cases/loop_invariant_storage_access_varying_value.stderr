@@ -1,0 +1,43 @@
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_varying_value.rs:81:17
+   |
+LL |         let _ = env.storage();
+   |                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_varying_value.rs:82:17
+   |
+LL |         let _ = storage.instance();
+   |                 ^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_varying_value.rs:90:17
+   |
+LL |         let _ = env.storage();
+   |                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_varying_value.rs:91:17
+   |
+LL |         let _ = storage.instance();
+   |                 ^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_varying_value.rs:92:9
+   |
+LL |         env.storage().instance().set(&1, &2);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: 5 warnings emitted
+
