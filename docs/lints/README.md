@@ -53,6 +53,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
 | [`cross_contract_result_discarded`](cross_contract_result_discarded.md) | `warn` | cross-contract call result discarded |
 | [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | a value converted into the type it already has, or bounced through `Val` and back in one expression |
+| [`bytes_indexed_read_in_loop`](bytes_indexed_read_in_loop.md) | `warn` | per-byte Bytes::get call inside a loop |
+| [`sort_in_loop`](sort_in_loop.md) | `warn` | sorting a Soroban Vec inside a loop |
 
 ## Memory
 
@@ -67,6 +69,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`large_constant_array`](large_constant_array.md) | `warn` | embedding a large constant array in contract code |
+| [`address_equality_via_to_string`](address_equality_via_to_string.md) | `warn` | compares Address values through their string representations |
 
 ## Host
 
@@ -76,6 +79,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`deploy_in_loop`](deploy_in_loop.md) | `warn` | contract deployment inside a loop |
 | [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
+| [`address_from_string_in_loop`](address_from_string_in_loop.md) | `warn` | Address::from_string called inside a loop |
 
 ## Security
 

@@ -1,0 +1,30 @@
+warning: sorting a Soroban Vec inside a loop
+  --> $DIR/sort_in_loop.rs:22:9
+   |
+LL |         values.sort(); //~ WARNING sorting a Soroban Vec inside a loop
+   |         ^^^^^^^^^^^^^
+   |
+   = help: sort once before the loop when the collection contents do not change on each iteration
+note: the lint level is defined here
+  --> $DIR/sort_in_loop.rs:1:9
+   |
+LL | #![warn(sort_in_loop)]
+   |         ^^^^^^^^^^^^
+
+warning: sorting a Soroban Vec inside a loop
+  --> $DIR/sort_in_loop.rs:29:9
+   |
+LL |         values.sort_by(u32::cmp); //~ WARNING sorting a Soroban Vec inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: sort once before the loop when the collection contents do not change on each iteration
+
+warning: sorting a Soroban Vec inside a loop
+  --> $DIR/sort_in_loop.rs:36:9
+   |
+LL |         values.sort(); //~ WARNING sorting a Soroban Vec inside a loop
+   |         ^^^^^^^^^^^^^
+   |
+   = help: sort once before the loop when the collection contents do not change on each iteration
+
+warning: 3 warnings emitted

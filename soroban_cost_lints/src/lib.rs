@@ -34,7 +34,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod address_equality_via_to_string;
+mod address_from_string_in_loop;
 mod blind_storage_write;
+mod bytes_indexed_read_in_loop;
 mod bytes_slice_copy_in_loop;
 mod collection_len_in_loop_condition;
 mod cross_contract_result_discarded;
@@ -57,6 +60,7 @@ mod redundant_require_auth;
 mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
+mod sort_in_loop;
 mod storage_read_modify_write;
 mod storage_write_of_unchanged_value;
 mod storage_write_without_read;
@@ -136,6 +140,10 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -232,6 +240,13 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(persistent_write_without_ttl_extension::PersistentWriteWithoutTtlExtension)
     });
+    lint_store.register_late_pass(|_| {
+        Box::new(address_equality_via_to_string::AddressEqualityViaToString)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(address_from_string_in_loop::AddressFromStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(bytes_indexed_read_in_loop::BytesIndexedReadInLoop));
+    lint_store.register_late_pass(|_| Box::new(sort_in_loop::SortInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -553,6 +568,30 @@ rustc_session::declare_lint! {
     pub REDUNDANT_ADDRESS_CLONE,
     Warn,
     "redundant clone on Address object"
+}
+
+rustc_session::declare_lint! {
+    pub ADDRESS_EQUALITY_VIA_TO_STRING,
+    Warn,
+    "compares Address values through their string representations"
+}
+
+rustc_session::declare_lint! {
+    pub ADDRESS_FROM_STRING_IN_LOOP,
+    Warn,
+    "Address::from_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_INDEXED_READ_IN_LOOP,
+    Warn,
+    "per-byte Bytes::get call inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub SORT_IN_LOOP,
+    Warn,
+    "sorting a Soroban Vec inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -892,6 +931,30 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "persistent storage write without TTL extension — archival cost cliff",
         rationale: "Writing to persistent storage without extending its TTL leaves the entry vulnerable to premature archiving, which forces an expensive restoration transaction.",
     },
+    LintMeta {
+        name: "address_equality_via_to_string",
+        category: LintCategory::Memory,
+        description: "compares Address values through their string representations",
+        rationale: "Converting both addresses to strings allocates values only to compare their contents; Address equality performs a direct host comparison without those allocations.",
+    },
+    LintMeta {
+        name: "address_from_string_in_loop",
+        category: LintCategory::Host,
+        description: "Address::from_string called inside a loop",
+        rationale: "Parsing and validating an unchanged strkey on every iteration repeats host work and constructs the same Address handle; parse it once before the loop.",
+    },
+    LintMeta {
+        name: "bytes_indexed_read_in_loop",
+        category: LintCategory::Compute,
+        description: "per-byte Bytes::get call inside a loop",
+        rationale: "Reading a Soroban Bytes value one index at a time crosses the host boundary and checks bounds per byte; a native bulk copy avoids repeated host reads.",
+    },
+    LintMeta {
+        name: "sort_in_loop",
+        category: LintCategory::Compute,
+        description: "sorting a Soroban Vec inside a loop",
+        rationale: "Sorting a host collection on each iteration repeats metered collection work; sort once outside the loop when its contents are invariant.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -948,6 +1011,10 @@ dylint_lint_impl! {
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
     ]
 }
 
@@ -3064,17 +3131,28 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
         .filter(|l| !l.is_empty() && !l.starts_with("//"))
         .collect();
 
-    for entry in std::fs::read_dir(&ui_dir)
-        .expect("ui dir must exist")
-        .flatten()
-    {
-        let path = entry.path();
+    fn collect_files(directory: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(directory).expect("UI directory must be readable") {
+            let path = entry.expect("UI directory entry must be readable").path();
+            if path.is_dir() {
+                collect_files(&path, files);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    collect_files(&ui_dir, &mut files);
+    let mut fixture_names = std::collections::HashSet::new();
+    for path in files {
         if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
             let stem = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .expect("valid file stem");
             if stem != "main" {
+                fixture_names.insert(stem.to_lowercase());
                 assert!(
                     registered_names.contains(&stem.to_lowercase()),
                     "UI fixture '{:?}' does not match any registered lint in register_lints",
@@ -3107,11 +3185,10 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
     // Every registered lint must have a dedicated UI fixture so a lint can
     // never ship (or regress) without a test that exercises it directly.
     for name in registered_names {
-        let fixture = ui_dir.join(format!("{name}.rs"));
         assert!(
-            fixture.exists(),
-            "registered lint '{name}' has no dedicated UI fixture at {:?}",
-            fixture
+            fixture_names.contains(&name),
+            "registered lint '{name}' has no dedicated UI fixture in {:?}",
+            ui_dir
         );
     }
 }
