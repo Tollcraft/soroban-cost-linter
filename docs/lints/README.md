@@ -73,6 +73,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
+| [`deploy_in_loop`](deploy_in_loop.md) | `warn` | contract deployment inside a loop |
 | [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
 
 ## Security
