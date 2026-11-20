@@ -28,3 +28,4 @@ LL |         values.sort(); //~ WARNING sorting a Soroban Vec inside a loop
    = help: sort once before the loop when the collection contents do not change on each iteration
 
 warning: 3 warnings emitted
+

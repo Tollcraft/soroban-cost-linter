@@ -28,3 +28,4 @@ LL |         let _ = Address::from_string(env, strkey); //~ WARNING Address::fro
    = help: parse the address once outside the loop, the strkey is loop-invariant
 
 warning: 3 warnings emitted
+

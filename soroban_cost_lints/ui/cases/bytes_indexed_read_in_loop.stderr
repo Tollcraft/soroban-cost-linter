@@ -28,3 +28,4 @@ LL |         let _ = bytes.get(i).unwrap(); //~ WARNING per-byte Bytes::get call
    = help: copy the bytes once and index a native buffer, or iterate the payload instead of one host read per element
 
 warning: 3 warnings emitted
+

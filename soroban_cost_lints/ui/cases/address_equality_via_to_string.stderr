@@ -17,3 +17,4 @@ LL |     let _ = a.to_string() != b.to_string(); //~ WARNING comparing Address v
    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: compare the Address values directly: `a != b`
 
 warning: 2 warnings emitted
+
