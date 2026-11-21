@@ -1,13 +1,14 @@
-/// Integration tests for cache key invalidation on config and cargo-config
-/// changes, covering the fix for issue #1097.
-///
-/// Before the fix, `compute_source_hash` only hashed Rust source files,
-/// `Cargo.toml`, `Cargo.lock`, and `budget.toml`.  Editing `.cargo/config.toml`
-/// (which controls linker flags, compiler settings, and Dylint paths) or the
-/// user-supplied `--config` file did not change the hash, so stale cache
-/// entries were replayed even though the lint results could differ.
+//! Integration tests for cache key invalidation on config and cargo-config
+//! changes, covering the fix for issue #1097.
+//!
+//! Before the fix, `compute_source_hash` only hashed Rust source files,
+//! `Cargo.toml`, `Cargo.lock`, and `budget.toml`.  Editing `.cargo/config.toml`
+//! (which controls linker flags, compiler settings, and Dylint paths) or the
+//! user-supplied `--config` file did not change the hash, so stale cache
+//! entries were replayed even though the lint results could differ.
 
 #[path = "../src/cache.rs"]
+#[allow(dead_code)]
 mod cache;
 
 use cache::compute_source_hash;

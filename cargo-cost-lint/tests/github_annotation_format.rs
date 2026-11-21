@@ -1,12 +1,13 @@
-/// Integration tests for GitHub Actions workflow command annotation formatting.
-///
-/// Covers the fix for issue #1093: `format_github_annotation` now emits
-/// `title=`, `endLine=`, and `endColumn=` parameters so that GitHub PR
-/// checks display the specific lint name and highlight the full expression
-/// span in file diffs.
+//! Integration tests for GitHub Actions workflow command annotation formatting.
+//!
+//! Covers the fix for issue #1093: `format_github_annotation` now emits
+//! `title=`, `endLine=`, and `endColumn=` parameters so that GitHub PR
+//! checks display the specific lint name and highlight the full expression
+//! span in file diffs.
 
 // Minimal stubs required by output_formatters.rs when it is compiled in
 // isolation via `#[path]`.
+#[allow(dead_code)]
 mod error {
     pub type LinterResult<T> = Result<T, LinterError>;
 
@@ -33,11 +34,13 @@ mod error {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 enum ColorChoice {
     Auto,
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Cli {
     config: Option<String>,
     list_lints: bool,
@@ -61,6 +64,7 @@ mod output_formatters;
 
 use output_formatters::{LintFinding, Span, format_github_annotation};
 
+#[allow(clippy::too_many_arguments)]
 fn finding(
     name: &str,
     level: &str,

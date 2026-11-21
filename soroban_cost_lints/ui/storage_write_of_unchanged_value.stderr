@@ -1,0 +1,11 @@
+warning: writing an unchanged value back to storage
+  --> $DIR/storage_write_of_unchanged_value.rs:70:5
+   |
+LL |     env.storage().instance().set(&1, &val);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: guard the write with an inequality check (`if old_val != new_val`) or avoid rewriting identical data
+   = note: `#[warn(storage_write_of_unchanged_value)]` on by default
+
+warning: 1 warning emitted
+

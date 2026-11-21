@@ -59,6 +59,7 @@ pub const ABSENT_LINTIGNORE_HASH: &str = "absent";
 pub const CACHE_KEY_FORMAT: &str = "cache_key_format:v2";
 
 /// Content hash of one file, or `absent` when the file does not exist.
+#[allow(dead_code)]
 pub fn compute_file_hash(path: &Path) -> String {
     match fs::read(path) {
         Ok(content) => {
@@ -179,15 +180,14 @@ pub fn compute_source_hash(dir: &Path, custom_config: Option<&Path>) -> Result<S
     // Include `.cargo/config.toml` when it exists: it controls linker flags,
     // compiler options, and Dylint paths that can change which lints fire.
     let cargo_config = dir.join(".cargo").join("config.toml");
-    if cargo_config.is_file() {
-        if let Ok(content) = fs::read(&cargo_config) {
-            hasher.write_str(".cargo/config.toml");
-            hasher.write_bytes(&content);
-        }
+    if let Ok(content) = fs::read(&cargo_config) {
+        hasher.write_str(".cargo/config.toml");
+        hasher.write_bytes(&content);
     }
 
     // Include the user-supplied `--config` file so that editing custom rules
     // invalidates the cache even when no Rust source changes.
+    #[allow(clippy::collapsible_if)]
     if let Some(config_path) = custom_config {
         if let Ok(content) = fs::read(config_path) {
             hasher.write_str(&config_path.to_string_lossy());
@@ -234,20 +234,15 @@ pub fn save_cache_entry(
 
 /// Clears all cached entries in `cache_dir`.
 ///
-/// Returns `Ok(count)` when every JSON cache file was successfully deleted.
-/// Returns `Err(message)` when one or more files could not be removed, so
-/// the caller can warn the user that stale artifacts remain in the cache
-/// directory; `message` lists every failing path and its error.  Files that
-/// *were* deleted before the first failure are not un-deleted, and their
-/// count is included in the error message so the caller has an accurate view
-/// of what happened.
+/// Returns the number of JSON cache files successfully removed. If any JSON
+/// file cannot be deleted (locked, read-only, or other filesystem error) the
+/// function returns `Err` describing the first failure so callers can inform
+/// the user that residual cached artifacts remain.
 pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     if !cache_dir.exists() {
         return Ok(0);
     }
-    let mut count = 0usize;
-    let mut failures: Vec<String> = Vec::new();
-
+    let mut count = 0;
     let entries = fs::read_dir(cache_dir).map_err(|e| {
         format!(
             "Failed to read cache directory {}: {}",
@@ -258,25 +253,13 @@ pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     for entry in entries.flatten() {
         let path = entry.path();
         let is_json = path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json");
-        if !is_json {
-            continue;
-        }
-        match fs::remove_file(&path) {
-            Ok(()) => count += 1,
-            Err(e) => failures.push(format!("{}: {}", path.display(), e)),
+        if is_json {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove cache file {}: {}", path.display(), e))?;
+            count += 1;
         }
     }
-
-    if failures.is_empty() {
-        Ok(count)
-    } else {
-        Err(format!(
-            "Failed to remove {} cache file(s) ({} removed successfully):\n{}",
-            failures.len(),
-            count,
-            failures.join("\n")
-        ))
-    }
+    Ok(count)
 }
 
 #[cfg(test)]

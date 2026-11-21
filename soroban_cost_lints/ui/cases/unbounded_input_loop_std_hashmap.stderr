@@ -1,0 +1,33 @@
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_std_hashmap.rs:123:5
+   |
+LL | /     for (k, v) in roles.iter() {
+LL | |         env.storage().persistent().set(&k, &v); //~ WARNING loop is driven by caller-supplied input and performs storage writes in...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+   = note: `#[warn(unbounded_input_loop)]` on by default
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_std_hashmap.rs:129:5
+   |
+LL | /     for item in items.iter() {
+LL | |         env.storage().instance().set(&item, &item); //~ WARNING loop is driven by caller-supplied input and performs storage write...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_std_hashmap.rs:136:5
+   |
+LL | /     for byte in payload.iter() {
+LL | |         env.storage().persistent().set(&byte, &byte); //~ WARNING loop is driven by caller-supplied input and performs storage wri...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 3 warnings emitted
+

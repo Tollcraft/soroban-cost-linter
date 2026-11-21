@@ -66,6 +66,15 @@
   * [blind\_storage\_write](lints/blind_storage_write.md)
   * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
+  * [deploy\_in\_loop](lints/deploy_in_loop.md)
+  * [map\_iter\_then\_lookup](lints/map_iter_then_lookup.md)
+  * [storage\_write\_of\_unchanged\_value](lints/storage_write_of_unchanged_value.md)
+  * [large\_value\_decoded\_for\_one\_field](lints/large_value_decoded_for_one_field.md)
+  * [persistent\_write\_without\_ttl\_extension](lints/persistent_write_without_ttl_extension.md)
+  * [address\_equality\_via\_to\_string](lints/address_equality_via_to_string.md)
+  * [address\_from\_string\_in\_loop](lints/address_from_string_in_loop.md)
+  * [bytes\_indexed\_read\_in\_loop](lints/bytes_indexed_read_in_loop.md)
+  * [sort\_in\_loop](lints/sort_in_loop.md)
 
 ## Branding
 

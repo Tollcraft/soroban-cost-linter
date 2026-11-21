@@ -1,10 +1,11 @@
-/// Integration tests for `--diff-only` path matching, covering the fix for
-/// issue #1095: `is_file_changed` compares full repository-relative paths so
-/// that editing `package_a/src/mod.rs` never un-filters a finding that is
-/// anchored to `package_b/src/mod.rs` (or any other package's file with the
-/// same basename).
+//! Integration tests for `--diff-only` path matching, covering the fix for
+//! issue #1095: `is_file_changed` compares full repository-relative paths so
+//! that editing `package_a/src/mod.rs` never un-filters a finding that is
+//! anchored to `package_b/src/mod.rs` (or any other package's file with the
+//! same basename).
 
 // Minimal stubs required by diff_files.rs when compiled in isolation.
+#[allow(dead_code)]
 mod error {
     #[derive(Debug)]
     pub enum LinterError {
@@ -23,6 +24,7 @@ mod error {
 }
 
 #[path = "../src/diff_files.rs"]
+#[allow(dead_code)]
 mod diff_files;
 
 use diff_files::is_file_changed;

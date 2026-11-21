@@ -5,6 +5,8 @@ mod error;
 mod lint_name_set;
 pub use lint_name_set::{LintNameSet, build_lint_name_set};
 mod output_formatters;
+pub mod package_args;
+pub use package_args::validate_and_build_package_args;
 
 use clap::{ArgGroup, Parser, ValueEnum};
 use output_formatters::{LintFinding, OutputFormat, Span};
@@ -216,43 +218,6 @@ fn list_lints_format_error(format: &OutputFormat) -> Option<String> {
             "Error: '--list-lints' supports only '--format text' and '--format json'".to_string(),
         ),
     }
-}
-
-pub fn validate_and_build_package_args(
-    packages: &[String],
-    workspace: bool,
-    available_packages: &[String],
-) -> Result<Vec<String>, String> {
-    if workspace && !packages.is_empty() {
-        return Err(
-            "Error: The argument '--workspace' cannot be used with '--package <SPEC>'".to_string(),
-        );
-    }
-
-    if workspace {
-        return Ok(vec!["--workspace".to_string()]);
-    }
-
-    if packages.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    for pkg in packages {
-        if !available_packages.iter().any(|p| p == pkg) {
-            let valid = available_packages.join(", ");
-            return Err(format!(
-                "Error: Package '{}' not found in workspace. Valid workspace members are: {}",
-                pkg, valid
-            ));
-        }
-    }
-
-    let mut args = Vec::new();
-    for pkg in packages {
-        args.push("--package".to_string());
-        args.push(pkg.clone());
-    }
-    Ok(args)
 }
 
 /// Parses the output of `cargo metadata` to extract workspace member package names.
@@ -511,7 +476,12 @@ pub fn discover_config_file(cwd: &Path, workspace_root: &Path) -> Option<PathBuf
 pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, String> {
     if let Some(path_str) = config_arg {
         let path = PathBuf::from(path_str);
-        if path.exists() {
+        if path.is_dir() {
+            Err(format!(
+                "Error: Config path '{}' is a directory, not a file",
+                path_str
+            ))
+        } else if path.exists() {
             Ok(Some(path))
         } else {
             Err(format!("Error: Config file '{}' does not exist", path_str))
@@ -620,14 +590,17 @@ fn main() {
     };
 
     if cli.clear_cache {
+        let quiet = cli.quiet;
         let cache_dir = cache::get_cache_dir(None);
         match cache::clear_cache(&cache_dir) {
             Ok(count) => {
-                println!(
-                    "Cleared {} cached lint result(s) at {}",
-                    count,
-                    cache_dir.display()
-                );
+                if !quiet {
+                    println!(
+                        "Cleared {} cached lint result(s) at {}",
+                        count,
+                        cache_dir.display()
+                    );
+                }
                 return;
             }
             Err(e) => {
@@ -732,7 +705,7 @@ fn main() {
             Ok(args) => args,
             Err(e) => {
                 eprintln!("{}", e);
-                exit(1);
+                exit(2);
             }
         }
     } else {
@@ -2020,6 +1993,21 @@ mod tests {
             Cli::try_parse_from(["cargo-cost-lint", "--no-cache"]).expect("parsing should succeed");
         assert!(cli.no_cache);
         assert!(!cli.clear_cache);
+    }
+
+    #[test]
+    fn resolve_config_rejects_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = resolve_config(Some(tmp.path().to_str().unwrap()))
+            .expect_err("a directory must not be accepted as a config file");
+        assert!(err.contains("is a directory"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn cli_parses_clear_cache_with_quiet() {
+        let cli = Cli::try_parse_from(["cargo-cost-lint", "--clear-cache", "--quiet"])
+            .expect("parsing should succeed");
+        assert!(cli.clear_cache && cli.quiet);
     }
 
     #[test]

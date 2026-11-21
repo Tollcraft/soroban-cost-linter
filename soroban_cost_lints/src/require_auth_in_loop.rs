@@ -26,7 +26,7 @@ use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::{REQUIRE_AUTH_IN_LOOP, enclosing_loop, is_type_match};
+use crate::{REQUIRE_AUTH_IN_LOOP, enclosing_loop_or_closure, is_type_match};
 
 declare_lint_pass!(RequireAuthInLoop => [REQUIRE_AUTH_IN_LOOP]);
 
@@ -110,8 +110,8 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
     ///
     /// The conditions are checked in cost order, cheapest first: the method name
     /// is read straight off the segment (or path), the receiver type needs a
-    /// typeck lookup, and [`enclosing_loop`] walks the HIR to the surrounding
-    /// loop expression only for the calls that already look like candidates.
+    /// typeck lookup, and [`enclosing_loop_or_closure`] walks the HIR to the
+    /// surrounding loop or multi-call closure only for matching calls.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         let is_auth_call = match expr.kind {
             hir::ExprKind::MethodCall(path_segment, receiver, _, _) => {
@@ -124,7 +124,7 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
         if !is_auth_call {
             return;
         }
-        if enclosing_loop(cx, expr).is_none() {
+        if enclosing_loop_or_closure(cx, expr).is_none() {
             return;
         }
         span_lint_and_help(
