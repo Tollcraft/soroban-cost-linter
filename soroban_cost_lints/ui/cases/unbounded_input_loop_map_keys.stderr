@@ -1,0 +1,33 @@
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_map_keys.rs:93:5
+   |
+LL | /     for k in roles.keys() {
+LL | |         env.storage().persistent().set(&k, &k); //~ WARNING loop is driven by caller-supplied input and performs storage writes in...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+   = note: `#[warn(unbounded_input_loop)]` on by default
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_map_keys.rs:101:5
+   |
+LL | /     for v in roles.values() {
+LL | |         env.storage().instance().set(&v, &v); //~ WARNING loop is driven by caller-supplied input and performs storage writes insi...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_map_keys.rs:109:5
+   |
+LL | /     for (k, v) in roles.iter() {
+LL | |         env.storage().persistent().set(&k, &v); //~ WARNING loop is driven by caller-supplied input and performs storage writes in...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 3 warnings emitted
+
