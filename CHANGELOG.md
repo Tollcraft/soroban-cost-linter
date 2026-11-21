@@ -9,6 +9,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
 - `unbounded_input_loop` now identifies caller-sized collections by exact Soroban
   definition path (`soroban_sdk::vec::Vec`, `soroban_sdk::map::Map`,
   `soroban_sdk::bytes::Bytes`) instead of scanning the rendered type name for
