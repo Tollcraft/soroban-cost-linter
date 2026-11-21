@@ -138,4 +138,38 @@ fn reinitialise_cache(env: Env) {
     env.storage().instance().set(&1, &2); // Silent — exempt by accident (`init`)
 }
 
+// --- Negative: a read anywhere in the body suppresses the write ---
+//
+// Reads are collected over the whole function body before writes are checked,
+// so the suppression is body-wide, not path-sensitive: a read on one branch
+// excuses a write that may be the first observation on another path. These
+// cases pin that behaviour; a flow-sensitive rewrite would make them warn.
+
+/// Body-wide, not path-sensitive: the read only runs when `flag` is true, yet
+/// it still suppresses the unconditional write.
+fn branch_local_read_in_if(env: Env, flag: bool) {
+    if flag {
+        if let Some(_cached) = env.storage().instance().get::<i32, i32>(&1) {}
+    }
+    env.storage().instance().set(&1, &2); // Silent — read on one branch only
+}
+
+/// Body-wide, not path-sensitive: the read sits in one `match` arm only, yet
+/// it still suppresses the write that follows the `match`.
+fn branch_local_read_in_match_arm(env: Env, choice: u8) {
+    match choice {
+        0 => {
+            if let Some(_cached) = env.storage().instance().get::<i32, i32>(&1) {}
+        }
+        _ => {}
+    }
+    env.storage().instance().set(&1, &2); // Silent — read in one arm only
+}
+
+/// Control: an unconditional read before the write, silent on every path.
+fn unconditional_read_before_set(env: Env) {
+    if let Some(_cached) = env.storage().instance().get::<i32, i32>(&1) {}
+    env.storage().instance().set(&1, &2); // Silent — read on every path
+}
+
 fn main() {}
