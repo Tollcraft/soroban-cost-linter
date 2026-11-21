@@ -24,10 +24,14 @@ fn workspace_root() -> PathBuf {
 /// and must be sorted to keep diffs readable.
 const MANIFEST: &[&str] = &[
     "README.md",
+    "ledger_context_binding_in_loop.rs",
+    "ledger_context_binding_in_loop.stderr",
     "std_collection_in_contract.rs",
     "std_collection_in_contract.stderr",
     "storage_read_never_written.rs",
     "storage_read_never_written.stderr",
+    "storage_write_before_read.rs",
+    "storage_write_before_read.stderr",
     "temporary_storage_for_persistent_data.rs",
     "temporary_storage_for_persistent_data.stderr",
     "u128_where_u64_suffices.rs",

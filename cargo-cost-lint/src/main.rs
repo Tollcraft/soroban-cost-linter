@@ -484,7 +484,19 @@ pub fn resolve_config(config_arg: Option<&str>) -> Result<Option<PathBuf>, Strin
         } else if path.exists() {
             Ok(Some(path))
         } else {
-            Err(format!("Error: Config file '{}' does not exist", path_str))
+            let cwd = std::env::current_dir().ok();
+            let suggestion = cwd.as_deref().and_then(|d| {
+                let workspace_root = find_workspace_root_path(d);
+                discover_config_file(d, &workspace_root)
+            });
+            let hint = match suggestion {
+                Some(ref found) => format!(" Did you mean '{}'?", found.display()),
+                None => String::new(),
+            };
+            Err(format!(
+                "Error: Config file '{}' does not exist.{}",
+                path_str, hint
+            ))
         }
     } else {
         let cwd = std::env::current_dir()
@@ -2178,7 +2190,28 @@ mod tests {
 
         let res_err = resolve_config(Some("/nonexistent/file/path/budget.toml"));
         assert!(res_err.is_err());
-        assert!(res_err.unwrap_err().contains("does not exist"));
+        let err_msg = res_err.unwrap_err();
+        assert!(
+            err_msg.contains("does not exist"),
+            "error should mention 'does not exist': {err_msg}"
+        );
+
+        // When a budget.toml exists in the current directory the error must suggest it.
+        let suggest_dir = tempfile::tempdir().unwrap();
+        let default_budget = suggest_dir.path().join("budget.toml");
+        std::fs::write(&default_budget, "[lints]\n").unwrap();
+        let prev_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(suggest_dir.path()).unwrap();
+        let res_suggest = resolve_config(Some("typo-budget.toml"));
+        if let Some(prev) = prev_dir {
+            let _ = std::env::set_current_dir(prev);
+        }
+        assert!(res_suggest.is_err());
+        let suggest_msg = res_suggest.unwrap_err();
+        assert!(
+            suggest_msg.contains("Did you mean"),
+            "error should suggest budget.toml: {suggest_msg}"
+        );
     }
 
     #[test]
