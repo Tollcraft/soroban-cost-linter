@@ -34,10 +34,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod address_equality_via_to_string;
+mod address_from_string_in_loop;
 mod blind_storage_write;
+mod bytes_indexed_read_in_loop;
 mod bytes_slice_copy_in_loop;
+mod collection_len_from_storage;
 mod collection_len_in_loop_condition;
 mod cross_contract_result_discarded;
+mod crypto_hash_of_loop_invariant;
 mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
@@ -57,10 +62,13 @@ mod redundant_require_auth;
 mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
+mod sort_in_loop;
 mod storage_read_modify_write;
 mod storage_write_of_unchanged_value;
 mod storage_write_without_read;
 mod string_concat_in_loop;
+mod string_type_as_storage_key;
+mod symbol_to_string_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
 mod val_conversion_chain;
@@ -136,6 +144,14 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
+        COLLECTION_LEN_FROM_STORAGE,
+        CRYPTO_HASH_OF_LOOP_INVARIANT,
+        STRING_TYPE_AS_STORAGE_KEY,
+        SYMBOL_TO_STRING_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -232,6 +248,19 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(persistent_write_without_ttl_extension::PersistentWriteWithoutTtlExtension)
     });
+    lint_store.register_late_pass(|_| {
+        Box::new(address_equality_via_to_string::AddressEqualityViaToString)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(address_from_string_in_loop::AddressFromStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(bytes_indexed_read_in_loop::BytesIndexedReadInLoop));
+    lint_store.register_late_pass(|_| Box::new(sort_in_loop::SortInLoop));
+    lint_store
+        .register_late_pass(|_| Box::new(collection_len_from_storage::CollectionLenFromStorage));
+    lint_store
+        .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
+    lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
+    lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -553,6 +582,54 @@ rustc_session::declare_lint! {
     pub REDUNDANT_ADDRESS_CLONE,
     Warn,
     "redundant clone on Address object"
+}
+
+rustc_session::declare_lint! {
+    pub ADDRESS_EQUALITY_VIA_TO_STRING,
+    Warn,
+    "compares Address values through their string representations"
+}
+
+rustc_session::declare_lint! {
+    pub ADDRESS_FROM_STRING_IN_LOOP,
+    Warn,
+    "Address::from_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_INDEXED_READ_IN_LOOP,
+    Warn,
+    "per-byte Bytes::get call inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub SORT_IN_LOOP,
+    Warn,
+    "sorting a Soroban Vec inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub COLLECTION_LEN_FROM_STORAGE,
+    Warn,
+    "stored collection loaded from storage only to call len()"
+}
+
+rustc_session::declare_lint! {
+    pub CRYPTO_HASH_OF_LOOP_INVARIANT,
+    Warn,
+    "cryptographic hash of a loop-invariant value inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub STRING_TYPE_AS_STORAGE_KEY,
+    Warn,
+    "String storage key uses a short literal where a Symbol would do"
+}
+
+rustc_session::declare_lint! {
+    pub SYMBOL_TO_STRING_IN_LOOP,
+    Warn,
+    "Symbol::to_string called inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -892,6 +969,54 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "persistent storage write without TTL extension — archival cost cliff",
         rationale: "Writing to persistent storage without extending its TTL leaves the entry vulnerable to premature archiving, which forces an expensive restoration transaction.",
     },
+    LintMeta {
+        name: "address_equality_via_to_string",
+        category: LintCategory::Memory,
+        description: "compares Address values through their string representations",
+        rationale: "Converting both addresses to strings allocates values only to compare their contents; Address equality performs a direct host comparison without those allocations.",
+    },
+    LintMeta {
+        name: "address_from_string_in_loop",
+        category: LintCategory::Host,
+        description: "Address::from_string called inside a loop",
+        rationale: "Parsing and validating an unchanged strkey on every iteration repeats host work and constructs the same Address handle; parse it once before the loop.",
+    },
+    LintMeta {
+        name: "bytes_indexed_read_in_loop",
+        category: LintCategory::Compute,
+        description: "per-byte Bytes::get call inside a loop",
+        rationale: "Reading a Soroban Bytes value one index at a time crosses the host boundary and checks bounds per byte; a native bulk copy avoids repeated host reads.",
+    },
+    LintMeta {
+        name: "sort_in_loop",
+        category: LintCategory::Compute,
+        description: "sorting a Soroban Vec inside a loop",
+        rationale: "Sorting a host collection on each iteration repeats metered collection work; sort once outside the loop when its contents are invariant.",
+    },
+    LintMeta {
+        name: "collection_len_from_storage",
+        category: LintCategory::Storage,
+        description: "stored collection loaded from storage only to call len()",
+        rationale: "Decoding a whole stored collection just to ask whether it is empty pays full ledger read and host decode costs; `has` or a stored counter answers the same question for far less.",
+    },
+    LintMeta {
+        name: "crypto_hash_of_loop_invariant",
+        category: LintCategory::Compute,
+        description: "cryptographic hash of a loop-invariant value inside a loop",
+        rationale: "Hashing a value that does not change between iterations repeats the same expensive metered host hash on every iteration; the digest can be computed once before the loop.",
+    },
+    LintMeta {
+        name: "string_type_as_storage_key",
+        category: LintCategory::Storage,
+        description: "String storage key uses a short literal where a Symbol would do",
+        rationale: "A String key encodes its entire byte length into every ledger entry and is hashed on every access; a Symbol or fixed-width integer key is strictly cheaper for short literals.",
+    },
+    LintMeta {
+        name: "symbol_to_string_in_loop",
+        category: LintCategory::Compute,
+        description: "Symbol::to_string called inside a loop",
+        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -948,6 +1073,15 @@ dylint_lint_impl! {
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
+        COLLECTION_LEN_FROM_STORAGE,
+        CRYPTO_HASH_OF_LOOP_INVARIANT,
+        STRING_TYPE_AS_STORAGE_KEY,
+        SYMBOL_TO_STRING_IN_LOOP,
+
     ]
 }
 
@@ -3093,6 +3227,7 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                 golden
             );
         }
+
         if path.extension().and_then(|ext| ext.to_str()) == Some("stderr") {
             let content = std::fs::read_to_string(&path).expect("stderr must be readable");
             assert!(

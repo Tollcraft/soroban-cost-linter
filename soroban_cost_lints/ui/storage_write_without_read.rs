@@ -129,6 +129,13 @@ fn update_before_set(env: Env) {
     env.storage().instance().set(&1, &2); // Good
 }
 
+/// A `set` on line N followed by a `get` on line N+2 — the read comes AFTER
+/// the write so it must NOT suppress the warning for that write.
+fn write_before_read_same_key(env: Env) {
+    env.storage().instance().set(&1, &2); // Should Warn — read appears after the write
+    let _ = env.storage().instance().get::<i32, i32>(&1);
+}
+
 // --- Documented false negative: accidental initialiser exemption ---
 
 /// Not an initialiser, but its name contains `init`, so the substring rule in

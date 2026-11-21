@@ -75,6 +75,7 @@ pub fn format_github_annotation(finding: &LintFinding) -> String {
     };
 
     let escaped_message = escape_github_message(&finding.message);
+    let escaped_title = escape_github_property(&finding.name);
 
     // Normalize file path: make relative to current directory if absolute, and use forward slashes.
     let rel_file = if let Ok(current_dir) = std::env::current_dir() {
@@ -90,27 +91,44 @@ pub fn format_github_annotation(finding: &LintFinding) -> String {
 
     let escaped_file = escape_github_property(&rel_file);
 
-    if finding.span.line_start > 0 {
-        if finding.span.column_start > 0 {
-            format!(
-                "::{} file={},line={},col={}::{}",
-                severity,
-                escaped_file,
-                finding.span.line_start,
-                finding.span.column_start,
-                escaped_message
-            )
-        } else {
-            format!(
-                "::{} file={},line={}::{}",
-                severity, escaped_file, finding.span.line_start, escaped_message
-            )
-        }
-    } else if !escaped_file.is_empty() {
-        format!("::{} file={}::{}", severity, escaped_file, escaped_message)
-    } else {
-        format!("::{}::{}", severity, escaped_message)
+    // Build the parameter list dynamically so optional fields are only
+    // included when the span data supports them.
+    let mut params = String::new();
+
+    if !escaped_file.is_empty() {
+        params.push_str(&format!("file={}", escaped_file));
     }
+
+    if finding.span.line_start > 0 {
+        if !params.is_empty() {
+            params.push(',');
+        }
+        params.push_str(&format!("line={}", finding.span.line_start));
+
+        // `endLine` only when the span covers more than one line.
+        if finding.span.line_end > finding.span.line_start {
+            params.push_str(&format!(",endLine={}", finding.span.line_end));
+        }
+
+        if finding.span.column_start > 0 {
+            params.push_str(&format!(",col={}", finding.span.column_start));
+
+            // `endColumn` only when the span covers more than one column on
+            // the last line, i.e. the end position is strictly past the start.
+            if finding.span.column_end > finding.span.column_start {
+                params.push_str(&format!(",endColumn={}", finding.span.column_end));
+            }
+        }
+    }
+
+    // `title` is always included so PR check annotations display the lint
+    // name rather than a generic header.
+    if !params.is_empty() {
+        params.push(',');
+    }
+    params.push_str(&format!("title={}", escaped_title));
+
+    format!("::{} {}::{}", severity, params, escaped_message)
 }
 
 /// Emit a GitHub Actions workflow command annotation for a finding.
@@ -364,7 +382,15 @@ pub fn format_diagnostic(finding: &LintFinding) -> String {
 }
 
 /// Generate SARIF 2.1.0 JSON report from accumulated findings.
-pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
+///
+/// `lint_info` is a slice of `(name, description)` pairs drawn from the static
+/// `LINT_INFO` table. Each SARIF rule descriptor's `shortDescription.text` is
+/// populated from this table; rules not found in it fall back to the generic
+/// `"Cost lint rule: <name>"` placeholder. Pass an empty slice when calling
+/// from tests that only exercise SARIF structure.
+pub fn generate_sarif_report(findings: &[LintFinding], lint_info: &[(&str, &str)]) -> String {
+    // name → description lookup; built once per call, O(|LINT_INFO|).
+    let desc_lookup: std::collections::HashMap<&str, &str> = lint_info.iter().copied().collect();
     let results: Vec<SarifResult> = findings
         .iter()
         .map(|f| {
@@ -435,11 +461,17 @@ pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
         findings.iter().map(|f| f.name.as_str()).collect();
     let rules: Vec<SarifRule> = unique_rules
         .into_iter()
-        .map(|name| SarifRule {
-            id: name.to_string(),
-            short_description: SarifRuleShortDescription {
-                text: format!("Cost lint rule: {}", name),
-            },
+        .map(|name| {
+            let text = desc_lookup
+                .get(name)
+                .copied()
+                .filter(|d| !d.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Cost lint rule: {}", name));
+            SarifRule {
+                id: name.to_string(),
+                short_description: SarifRuleShortDescription { text },
+            }
         })
         .collect();
 
@@ -828,7 +860,10 @@ mod tests {
             suggestion: None,
         };
         let ann = format_github_annotation(&finding);
-        assert!(ann.starts_with("::error::"));
+        // No file and no span: only `title=` appears before the `::` separator.
+        assert!(ann.starts_with("::error "), "got: {ann}");
+        assert!(ann.contains("title=test_lint"), "got: {ann}");
+        assert!(!ann.contains("file="), "got: {ann}");
     }
 
     #[test]
@@ -1099,7 +1134,7 @@ mod tests {
 
     #[test]
     fn test_generate_sarif_report_empty() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["version"], "2.1.0");
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 0);
@@ -1123,7 +1158,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["version"], "2.1.0");
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 1);
@@ -1179,7 +1214,7 @@ mod tests {
             },
         ];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 2);
         // Rules should be deduplicated
@@ -1209,7 +1244,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "error");
     }
@@ -1231,7 +1266,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "warning");
     }
@@ -1253,7 +1288,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "note");
     }
@@ -1275,7 +1310,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let region = &value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
         assert!(region.is_null(), "region should be null when span is zero");
@@ -1298,7 +1333,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let region = &value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
         assert_eq!(region["startLine"], 10);
@@ -1309,14 +1344,14 @@ mod tests {
 
     #[test]
     fn test_generate_sarif_report_schema_url() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert!(value["$schema"].as_str().unwrap().contains("sarif-2.1.0"));
     }
 
     #[test]
     fn test_generate_sarif_report_tool_name() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(
             value["runs"][0]["tool"]["driver"]["name"],
@@ -1352,7 +1387,7 @@ mod tests {
             sarif_finding("z_lint"),
         ];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let ids: Vec<&str> = value["runs"][0]["tool"]["driver"]["rules"]
             .as_array()
@@ -1375,8 +1410,8 @@ mod tests {
             sarif_finding("m_lint"),
         ];
 
-        let first = generate_sarif_report(&findings);
-        let second = generate_sarif_report(&findings);
+        let first = generate_sarif_report(&findings, &[]);
+        let second = generate_sarif_report(&findings, &[]);
         assert_eq!(first, second);
     }
 
