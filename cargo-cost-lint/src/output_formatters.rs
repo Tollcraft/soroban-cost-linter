@@ -364,7 +364,15 @@ pub fn format_diagnostic(finding: &LintFinding) -> String {
 }
 
 /// Generate SARIF 2.1.0 JSON report from accumulated findings.
-pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
+///
+/// `lint_info` is a slice of `(name, description)` pairs drawn from the static
+/// `LINT_INFO` table. Each SARIF rule descriptor's `shortDescription.text` is
+/// populated from this table; rules not found in it fall back to the generic
+/// `"Cost lint rule: <name>"` placeholder. Pass an empty slice when calling
+/// from tests that only exercise SARIF structure.
+pub fn generate_sarif_report(findings: &[LintFinding], lint_info: &[(&str, &str)]) -> String {
+    // name → description lookup; built once per call, O(|LINT_INFO|).
+    let desc_lookup: std::collections::HashMap<&str, &str> = lint_info.iter().copied().collect();
     let results: Vec<SarifResult> = findings
         .iter()
         .map(|f| {
@@ -435,11 +443,17 @@ pub fn generate_sarif_report(findings: &[LintFinding]) -> String {
         findings.iter().map(|f| f.name.as_str()).collect();
     let rules: Vec<SarifRule> = unique_rules
         .into_iter()
-        .map(|name| SarifRule {
-            id: name.to_string(),
-            short_description: SarifRuleShortDescription {
-                text: format!("Cost lint rule: {}", name),
-            },
+        .map(|name| {
+            let text = desc_lookup
+                .get(name)
+                .copied()
+                .filter(|d| !d.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Cost lint rule: {}", name));
+            SarifRule {
+                id: name.to_string(),
+                short_description: SarifRuleShortDescription { text },
+            }
         })
         .collect();
 
@@ -1099,7 +1113,7 @@ mod tests {
 
     #[test]
     fn test_generate_sarif_report_empty() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["version"], "2.1.0");
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 0);
@@ -1123,7 +1137,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["version"], "2.1.0");
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 1);
@@ -1179,7 +1193,7 @@ mod tests {
             },
         ];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"].as_array().unwrap().len(), 2);
         // Rules should be deduplicated
@@ -1209,7 +1223,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "error");
     }
@@ -1231,7 +1245,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "warning");
     }
@@ -1253,7 +1267,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(value["runs"][0]["results"][0]["level"], "note");
     }
@@ -1275,7 +1289,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let region = &value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
         assert!(region.is_null(), "region should be null when span is zero");
@@ -1298,7 +1312,7 @@ mod tests {
             suggestion: None,
         }];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let region = &value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"];
         assert_eq!(region["startLine"], 10);
@@ -1309,14 +1323,14 @@ mod tests {
 
     #[test]
     fn test_generate_sarif_report_schema_url() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert!(value["$schema"].as_str().unwrap().contains("sarif-2.1.0"));
     }
 
     #[test]
     fn test_generate_sarif_report_tool_name() {
-        let report = generate_sarif_report(&[]);
+        let report = generate_sarif_report(&[], &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         assert_eq!(
             value["runs"][0]["tool"]["driver"]["name"],
@@ -1352,7 +1366,7 @@ mod tests {
             sarif_finding("z_lint"),
         ];
 
-        let report = generate_sarif_report(&findings);
+        let report = generate_sarif_report(&findings, &[]);
         let value: serde_json::Value = serde_json::from_str(&report).unwrap();
         let ids: Vec<&str> = value["runs"][0]["tool"]["driver"]["rules"]
             .as_array()
@@ -1375,8 +1389,8 @@ mod tests {
             sarif_finding("m_lint"),
         ];
 
-        let first = generate_sarif_report(&findings);
-        let second = generate_sarif_report(&findings);
+        let first = generate_sarif_report(&findings, &[]);
+        let second = generate_sarif_report(&findings, &[]);
         assert_eq!(first, second);
     }
 
