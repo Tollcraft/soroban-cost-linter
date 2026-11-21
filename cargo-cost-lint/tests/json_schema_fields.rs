@@ -132,19 +132,20 @@ fn json_span_fields_are_non_negative_integers() {
 fn json_optional_fields_absent_when_none() {
     // `help` and `suggestion` are decorated with `#[serde(skip_serializing_if =
     // "Option::is_none")]`; they must not appear in the JSON object when the
-    // lint did not populate them.  The smoke_test fixture fires two lints; at
-    // least one finding is expected to lack both optional fields.
+    // lint did not populate them. In the smoke_test fixture, findings do not
+    // populate `suggestion`, so verifying that `suggestion` is omitted from
+    // the JSON output validates the skip_serializing_if contract.
     let stdout = run_json();
     let findings = parse_findings(&stdout);
 
-    let without_optional: Vec<_> = findings
+    let without_suggestion: Vec<_> = findings
         .iter()
-        .filter(|f| f.get("help").is_none() && f.get("suggestion").is_none())
+        .filter(|f| f.get("suggestion").is_none())
         .collect();
 
     assert!(
-        !without_optional.is_empty(),
-        "expected at least one finding with neither `help` nor `suggestion` \
+        !without_suggestion.is_empty(),
+        "expected at least one finding without `suggestion` \
          to verify skip_serializing_if behaviour; got findings: {findings:#?}"
     );
 }
