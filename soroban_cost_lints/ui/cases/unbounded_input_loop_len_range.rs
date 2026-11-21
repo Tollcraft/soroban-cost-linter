@@ -28,14 +28,16 @@ pub mod soroban_sdk {
         }
     }
 
-    /// Stand-in for `soroban_sdk::Vec`: only a `len()` that resolves is needed.
-    pub struct Vec<T>(core::marker::PhantomData<T>);
-    impl<T> Vec<T> {
-        pub fn len(&self) -> u32 { 0 }
+    pub mod vec {
+        /// Stand-in for `soroban_sdk::vec::Vec`: only a `len()` that resolves is needed.
+        pub struct Vec<T>(core::marker::PhantomData<T>);
+        impl<T> Vec<T> {
+            pub fn len(&self) -> u32 { 0 }
+        }
     }
 }
 
-use soroban_sdk::{Env, Vec};
+use soroban_sdk::{vec::Vec, Env};
 
 // Input-driven range (`0..input.len()`) whose body only reads: silent because
 // the loop body performs no metered write.

@@ -1,5 +1,5 @@
 warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
-  --> $DIR/unbounded_input_loop_len_range.rs:58:5
+  --> $DIR/unbounded_input_loop_len_range.rs:60:5
    |
 LL | /     for i in 0..input.len() {
 LL | |         env.storage().instance().set(&i, &i); // Should Warn
