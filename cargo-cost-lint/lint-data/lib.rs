@@ -3131,28 +3131,17 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
         .filter(|l| !l.is_empty() && !l.starts_with("//"))
         .collect();
 
-    fn collect_files(directory: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-        for entry in std::fs::read_dir(directory).expect("UI directory must be readable") {
-            let path = entry.expect("UI directory entry must be readable").path();
-            if path.is_dir() {
-                collect_files(&path, files);
-            } else {
-                files.push(path);
-            }
-        }
-    }
-
-    let mut files = Vec::new();
-    collect_files(&ui_dir, &mut files);
-    let mut fixture_names = std::collections::HashSet::new();
-    for path in files {
+    for entry in std::fs::read_dir(&ui_dir)
+        .expect("ui dir must exist")
+        .flatten()
+    {
+        let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
             let stem = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .expect("valid file stem");
             if stem != "main" {
-                fixture_names.insert(stem.to_lowercase());
                 assert!(
                     registered_names.contains(&stem.to_lowercase()),
                     "UI fixture '{:?}' does not match any registered lint in register_lints",
@@ -3171,6 +3160,7 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                 golden
             );
         }
+
         if path.extension().and_then(|ext| ext.to_str()) == Some("stderr") {
             let content = std::fs::read_to_string(&path).expect("stderr must be readable");
             assert!(
@@ -3185,10 +3175,11 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
     // Every registered lint must have a dedicated UI fixture so a lint can
     // never ship (or regress) without a test that exercises it directly.
     for name in registered_names {
+        let fixture = ui_dir.join(format!("{name}.rs"));
         assert!(
-            fixture_names.contains(&name),
-            "registered lint '{name}' has no dedicated UI fixture in {:?}",
-            ui_dir
+            fixture.exists(),
+            "registered lint '{name}' has no dedicated UI fixture at {:?}",
+            fixture
         );
     }
 }
