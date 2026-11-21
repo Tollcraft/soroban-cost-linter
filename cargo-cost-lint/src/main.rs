@@ -714,8 +714,9 @@ fn main() {
 
     let cache_dir = cache::get_cache_dir(None);
     let cache_key_hash = if !cli.no_cache {
-        let source_hash = cache::compute_source_hash(Path::new("."))
-            .unwrap_or_else(|_| "unknown-source".to_string());
+        let source_hash =
+            cache::compute_source_hash(Path::new("."), resolved_config_path.as_deref())
+                .unwrap_or_else(|_| "unknown-source".to_string());
         let toolchain = cache::get_toolchain_version();
         // The diff scope and the resolved .lintignore change what a run
         // reports, so they join the cache key (#793).

@@ -59,6 +59,7 @@ pub const ABSENT_LINTIGNORE_HASH: &str = "absent";
 pub const CACHE_KEY_FORMAT: &str = "cache_key_format:v2";
 
 /// Content hash of one file, or `absent` when the file does not exist.
+#[allow(dead_code)]
 pub fn compute_file_hash(path: &Path) -> String {
     match fs::read(path) {
         Ok(content) => {
@@ -122,7 +123,14 @@ pub fn get_cache_dir(base_dir: Option<&Path>) -> PathBuf {
 
 /// Computes a deterministic hash of all relevant source files in `dir`.
 /// Respects `.gitignore` rules via the `ignore` crate.
-pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
+///
+/// `custom_config` is the path to a user-supplied `--config` file.  When
+/// provided its contents join the hash so that editing the file invalidates
+/// the cache.  `.cargo/config.toml` (relative to `dir`) is also always
+/// included when it exists, because it controls linker flags, compiler
+/// options, and Dylint paths that can alter lint results without touching
+/// any Rust source file.
+pub fn compute_source_hash(dir: &Path, custom_config: Option<&Path>) -> Result<String, String> {
     // Keep only paths during discovery. Retaining every file's contents until
     // after sorting needlessly duplicates the workspace in memory, especially
     // for large generated Rust sources.
@@ -167,6 +175,24 @@ pub fn compute_source_hash(dir: &Path) -> Result<String, String> {
         };
         hasher.write_str(&rel_path.to_string_lossy());
         hasher.write_bytes(&content);
+    }
+
+    // Include `.cargo/config.toml` when it exists: it controls linker flags,
+    // compiler options, and Dylint paths that can change which lints fire.
+    let cargo_config = dir.join(".cargo").join("config.toml");
+    if let Ok(content) = fs::read(&cargo_config) {
+        hasher.write_str(".cargo/config.toml");
+        hasher.write_bytes(&content);
+    }
+
+    // Include the user-supplied `--config` file so that editing custom rules
+    // invalidates the cache even when no Rust source changes.
+    #[allow(clippy::collapsible_if)]
+    if let Some(config_path) = custom_config {
+        if let Ok(content) = fs::read(config_path) {
+            hasher.write_str(&config_path.to_string_lossy());
+            hasher.write_bytes(&content);
+        }
     }
 
     Ok(hasher.finish_hex())
@@ -380,10 +406,10 @@ mod tests {
         let main_rs = src_dir.join("main.rs");
         fs::write(&main_rs, "fn main() {}").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(&main_rs, "fn main() { let x = 1; }").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -394,10 +420,10 @@ mod tests {
         fs::write(tmp.path().join("README.md"), "hello").unwrap();
         fs::write(tmp.path().join("data.txt"), "world").unwrap();
 
-        let hash = compute_source_hash(tmp.path()).unwrap();
+        let hash = compute_source_hash(tmp.path(), None).unwrap();
         // Should be the hash of an empty file set (same as empty dir)
         let tmp2 = tempfile::tempdir().unwrap();
-        let hash2 = compute_source_hash(tmp2.path()).unwrap();
+        let hash2 = compute_source_hash(tmp2.path(), None).unwrap();
         assert_eq!(hash, hash2);
     }
 
@@ -406,10 +432,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"foo\"").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -419,10 +445,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("budget.toml"), "[lints]").unwrap();
 
-        let hash1 = compute_source_hash(tmp.path()).unwrap();
+        let hash1 = compute_source_hash(tmp.path(), None).unwrap();
 
         fs::write(tmp.path().join("budget.toml"), "[lints]\nfoo = \"bar\"").unwrap();
-        let hash2 = compute_source_hash(tmp.path()).unwrap();
+        let hash2 = compute_source_hash(tmp.path(), None).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -430,7 +456,7 @@ mod tests {
     #[test]
     fn test_compute_source_hash_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let hash = compute_source_hash(tmp.path()).unwrap();
+        let hash = compute_source_hash(tmp.path(), None).unwrap();
         assert_eq!(hash.len(), 16); // FNV-1a produces 16 hex chars
     }
 

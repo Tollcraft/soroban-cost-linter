@@ -75,6 +75,7 @@ pub fn format_github_annotation(finding: &LintFinding) -> String {
     };
 
     let escaped_message = escape_github_message(&finding.message);
+    let escaped_title = escape_github_property(&finding.name);
 
     // Normalize file path: make relative to current directory if absolute, and use forward slashes.
     let rel_file = if let Ok(current_dir) = std::env::current_dir() {
@@ -90,27 +91,44 @@ pub fn format_github_annotation(finding: &LintFinding) -> String {
 
     let escaped_file = escape_github_property(&rel_file);
 
-    if finding.span.line_start > 0 {
-        if finding.span.column_start > 0 {
-            format!(
-                "::{} file={},line={},col={}::{}",
-                severity,
-                escaped_file,
-                finding.span.line_start,
-                finding.span.column_start,
-                escaped_message
-            )
-        } else {
-            format!(
-                "::{} file={},line={}::{}",
-                severity, escaped_file, finding.span.line_start, escaped_message
-            )
-        }
-    } else if !escaped_file.is_empty() {
-        format!("::{} file={}::{}", severity, escaped_file, escaped_message)
-    } else {
-        format!("::{}::{}", severity, escaped_message)
+    // Build the parameter list dynamically so optional fields are only
+    // included when the span data supports them.
+    let mut params = String::new();
+
+    if !escaped_file.is_empty() {
+        params.push_str(&format!("file={}", escaped_file));
     }
+
+    if finding.span.line_start > 0 {
+        if !params.is_empty() {
+            params.push(',');
+        }
+        params.push_str(&format!("line={}", finding.span.line_start));
+
+        // `endLine` only when the span covers more than one line.
+        if finding.span.line_end > finding.span.line_start {
+            params.push_str(&format!(",endLine={}", finding.span.line_end));
+        }
+
+        if finding.span.column_start > 0 {
+            params.push_str(&format!(",col={}", finding.span.column_start));
+
+            // `endColumn` only when the span covers more than one column on
+            // the last line, i.e. the end position is strictly past the start.
+            if finding.span.column_end > finding.span.column_start {
+                params.push_str(&format!(",endColumn={}", finding.span.column_end));
+            }
+        }
+    }
+
+    // `title` is always included so PR check annotations display the lint
+    // name rather than a generic header.
+    if !params.is_empty() {
+        params.push(',');
+    }
+    params.push_str(&format!("title={}", escaped_title));
+
+    format!("::{} {}::{}", severity, params, escaped_message)
 }
 
 /// Emit a GitHub Actions workflow command annotation for a finding.
@@ -842,7 +860,10 @@ mod tests {
             suggestion: None,
         };
         let ann = format_github_annotation(&finding);
-        assert!(ann.starts_with("::error::"));
+        // No file and no span: only `title=` appears before the `::` separator.
+        assert!(ann.starts_with("::error "), "got: {ann}");
+        assert!(ann.contains("title=test_lint"), "got: {ann}");
+        assert!(!ann.contains("file="), "got: {ann}");
     }
 
     #[test]
