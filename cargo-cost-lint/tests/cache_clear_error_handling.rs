@@ -99,6 +99,15 @@ fn clear_cache_empty_directory_returns_zero() {
 fn clear_cache_propagates_permission_error_on_read_only_file() {
     use std::os::unix::fs::PermissionsExt;
 
+    // Skip on root (root can bypass directory permissions).
+    // SAFETY: getuid is a standard POSIX C function with no preconditions.
+    unsafe extern "C" {
+        fn getuid() -> u32;
+    }
+    if unsafe { getuid() } == 0 {
+        return;
+    }
+
     let tmp = tempdir().unwrap();
     let cache_dir = tmp.path().join("cache");
     fs::create_dir_all(&cache_dir).unwrap();
@@ -106,15 +115,15 @@ fn clear_cache_propagates_permission_error_on_read_only_file() {
     let json_path = cache_dir.join("locked.json");
     fs::write(&json_path, "{}").unwrap();
 
-    fs::set_permissions(&json_path, fs::Permissions::from_mode(0o444)).unwrap();
+    // In Unix, removing a file requires write permission on the parent directory.
+    fs::set_permissions(&cache_dir, fs::Permissions::from_mode(0o555)).unwrap();
 
-    // Skip on root (root can remove read-only files).
-    // SAFETY: getuid is a safe libc call with no preconditions.
-    if unsafe { libc::getuid() } == 0 {
-        return;
-    }
+    let res = clear_cache(&cache_dir);
 
-    let err = clear_cache(&cache_dir).unwrap_err();
+    // Restore write permissions so tempdir cleanup succeeds.
+    let _ = fs::set_permissions(&cache_dir, fs::Permissions::from_mode(0o755));
+
+    let err = res.unwrap_err();
     assert!(
         err.contains("Failed to remove cache file"),
         "error must describe the removal failure: {err}"
