@@ -33,7 +33,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`nested_loop_storage_access`](nested_loop_storage_access.md) | `deny` | storage operation inside a nested loop — cost is O(n·m) |
 | [`persistent_storage_for_ephemeral_data`](persistent_storage_for_ephemeral_data.md) | `warn` | persistent storage write is removed on every path through the function |
 | [`collection_len_from_storage`](collection_len_from_storage.md) | `warn` | stored collection loaded from storage only to call len() |
-| [`string_type_as_storage_key`](string_type_as_storage_key.md) | `warn` | String storage key built from a short literal where a Symbol would do |
+| [`string_type_as_storage_key`](string_type_as_storage_key.md) | `warn` | String storage key uses a short literal where a Symbol would do |
 
 ## Compute
 

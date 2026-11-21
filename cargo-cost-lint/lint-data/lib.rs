@@ -623,7 +623,7 @@ rustc_session::declare_lint! {
 rustc_session::declare_lint! {
     pub STRING_TYPE_AS_STORAGE_KEY,
     Warn,
-    "String storage key built from a short literal where a Symbol would do"
+    "String storage key uses a short literal where a Symbol would do"
 }
 
 rustc_session::declare_lint! {
@@ -1008,14 +1008,14 @@ pub const LINT_METADATA: &[LintMeta] = &[
     LintMeta {
         name: "string_type_as_storage_key",
         category: LintCategory::Storage,
-        description: "String storage key built from a short literal where a Symbol would do",
+        description: "String storage key uses a short literal where a Symbol would do",
         rationale: "A String key encodes its entire byte length into every ledger entry and is hashed on every access; a Symbol or fixed-width integer key is strictly cheaper for short literals.",
     },
     LintMeta {
         name: "symbol_to_string_in_loop",
         category: LintCategory::Compute,
         description: "Symbol::to_string called inside a loop",
-        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or built once.",
+        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
     },
 ];
 

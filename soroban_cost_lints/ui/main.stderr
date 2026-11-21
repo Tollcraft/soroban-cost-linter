@@ -158,6 +158,15 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    |
    = help: cache the result outside the loop when the call is loop-invariant
 
+warning: cryptographic hash of a loop-invariant value inside a loop
+  --> $DIR/main.rs:435:21
+   |
+LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: compute the digest once before the loop and reuse it; the input does not change between iterations
+   = note: `#[warn(crypto_hash_of_loop_invariant)]` on by default
+
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:457:18
    |
@@ -673,5 +682,5 @@ LL |     let _b: Option<i32> = env.storage().instance().get(&key); // Good (allo
    |
    = help: delete the storage read or use its returned value
 
-error: aborting due to 3 previous errors; 80 warnings emitted
+error: aborting due to 3 previous errors; 81 warnings emitted
 

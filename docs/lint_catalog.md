@@ -65,7 +65,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `sort_in_loop` | warn | sorting a Soroban Vec inside a loop | [Link](lints/sort_in_loop.md) |
 | `collection_len_from_storage` | warn | stored collection loaded from storage only to call len() | [Link](lints/collection_len_from_storage.md) |
 | `crypto_hash_of_loop_invariant` | warn | cryptographic hash of a loop-invariant value inside a loop | [Link](lints/crypto_hash_of_loop_invariant.md) |
-| `string_type_as_storage_key` | warn | String storage key built from a short literal where a Symbol would do | [Link](lints/string_type_as_storage_key.md) |
+| `string_type_as_storage_key` | warn | String storage key uses a short literal where a Symbol would do | [Link](lints/string_type_as_storage_key.md) |
 | `symbol_to_string_in_loop` | warn | Symbol::to_string called inside a loop | [Link](lints/symbol_to_string_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

@@ -14,7 +14,7 @@ declare_lint_pass!(StringTypeAsStorageKey => [STRING_TYPE_AS_STORAGE_KEY]);
 const KEY_METHODS: &[&str] = &["get", "has", "set"];
 
 const STRING_TYPE_AS_STORAGE_KEY_MSG: &str =
-    "String storage key built from a short literal where a Symbol would do";
+    "String storage key uses a short literal where a Symbol would do";
 
 const STRING_TYPE_AS_STORAGE_KEY_HELP: &str = "use `symbol_short!` or a fixed-width integer key: the key is encoded, hashed and stored on every access";
 

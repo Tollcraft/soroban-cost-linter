@@ -15,7 +15,7 @@ const SYMBOL_TYPE: &[&str] = &["soroban_sdk", "Symbol"];
 const SYMBOL_TO_STRING_IN_LOOP_MSG: &str = "Symbol::to_string called inside a loop";
 
 const SYMBOL_TO_STRING_IN_LOOP_HELP: &str =
-    "compare the `Symbol` values directly, or build the `String` once before the loop";
+    "compare the `Symbol` values directly, or create the `String` once before the loop";
 
 impl<'tcx> LateLintPass<'tcx> for SymbolToStringInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
