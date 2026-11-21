@@ -4,7 +4,7 @@
     instance_storage_for_unbounded_data,
     loop_invariant_storage_access,
     soroban_storage_in_loop,
-    unbounded_input_loop
+    unbounded_input_loop, discarded_storage_read
 )]
 
 
