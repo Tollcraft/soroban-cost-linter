@@ -28,7 +28,7 @@ Writing `env.storage().instance().set()` inside a `for` loop is mathematically g
 
 ## Features
 
-The linter runs as a Dylint library against the Rust compiler's HIR to catch specific Soroban anti-patterns (with a single early AST pass for the `format_args!` nodes the HIR no longer exposes). 55 lints ship in `v0.1.1`:
+The linter runs as a Dylint library against the Rust compiler's HIR to catch specific Soroban anti-patterns (with a single early AST pass for the `format_args!` nodes the HIR no longer exposes). 59 lints ship in the next release:
 
 *   **[`soroban_storage_in_loop`](docs/lints/soroban_storage_in_loop.md):** Flags storage read/write operations placed inside loop bodies, suggesting memory aggregation instead.
 *   **[`redundant_env_clone`](docs/lints/redundant_env_clone.md):** Detects unnecessary `.clone()` calls on the Soroban `Env` object.
@@ -354,7 +354,7 @@ Release history is documented in [CHANGELOG.md](CHANGELOG.md).
 
 ## Community
 
-Join the discussion on our [Discord](https://discord.gg/5aprtMSyR).
+Join the discussion on our [Discord](https://discord.gg/5aprtMSyR), or follow the org on [X](https://x.com/tollcraft_dev).
 
 ## Maintainers
 

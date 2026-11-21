@@ -40,10 +40,13 @@ let value: i32 = env.storage().persistent().get(&key).unwrap_or(0);
 
 ## Scope
 
-- Fires on `.unwrap()` and `.expect()` whose receiver is directly a storage `get` or `try_get`.
+- Fires on `.unwrap()` and `.expect()` whose receiver is directly a storage `get` or `try_get`, written either as a method call (`env.storage().instance().get(&k).unwrap()`) or as a UFCS call (`Instance::get(&storage, &k).unwrap()`).
+- Only the four Soroban storage types are matched: `soroban_sdk::storage::Storage`, `Instance`, `Persistent` and `Temporary`. A `get` on any other type, such as `soroban_sdk::Map` or a plain `Option`, is not reported.
+- References are peeled before the type is checked, so a `get` through a `&Instance` or `&Persistent` binding is matched the same as one on the value itself.
+- Only the `get` and `try_get` accessors are matched. `has` returns a `bool` rather than an `Option`, so there is nothing to unwrap and it never matches.
 - Does not fire when the returned `Option` is matched, handled with `unwrap_or`/`unwrap_or_else`, or otherwise consumed without panicking.
 - Does not fire on `unwrap` anywhere other than directly on a storage read (e.g. on SDK collections or plain `Option`s).
-- Does not fire under `#[cfg(test)]` or inside test modules — unwrap in tests is idiomatic.
+- Does not fire under `#[cfg(test)]` or inside test modules. A panic in a test is a failed assertion, not a trapped invocation: no metered budget is spent and no caller is charged, so the cost this lint exists to catch does not arise, and unwrap in tests is idiomatic.
 
 ## Known false positives
 

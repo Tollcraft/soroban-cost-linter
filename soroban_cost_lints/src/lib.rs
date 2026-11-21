@@ -34,7 +34,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod address_equality_via_to_string;
+mod address_from_string_in_loop;
 mod blind_storage_write;
+mod bytes_indexed_read_in_loop;
 mod bytes_slice_copy_in_loop;
 mod collection_len_from_storage;
 mod collection_len_in_loop_condition;
@@ -59,6 +62,7 @@ mod redundant_require_auth;
 mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
+mod sort_in_loop;
 mod storage_read_modify_write;
 mod storage_write_of_unchanged_value;
 mod storage_write_without_read;
@@ -140,10 +144,15 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
         COLLECTION_LEN_FROM_STORAGE,
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -240,6 +249,13 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(persistent_write_without_ttl_extension::PersistentWriteWithoutTtlExtension)
     });
+    lint_store.register_late_pass(|_| {
+        Box::new(address_equality_via_to_string::AddressEqualityViaToString)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(address_from_string_in_loop::AddressFromStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(bytes_indexed_read_in_loop::BytesIndexedReadInLoop));
+    lint_store.register_late_pass(|_| Box::new(sort_in_loop::SortInLoop));
     lint_store
         .register_late_pass(|_| Box::new(collection_len_from_storage::CollectionLenFromStorage));
     lint_store
@@ -570,6 +586,30 @@ rustc_session::declare_lint! {
 }
 
 rustc_session::declare_lint! {
+    pub ADDRESS_EQUALITY_VIA_TO_STRING,
+    Warn,
+    "compares Address values through their string representations"
+}
+
+rustc_session::declare_lint! {
+    pub ADDRESS_FROM_STRING_IN_LOOP,
+    Warn,
+    "Address::from_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_INDEXED_READ_IN_LOOP,
+    Warn,
+    "per-byte Bytes::get call inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub SORT_IN_LOOP,
+    Warn,
+    "sorting a Soroban Vec inside a loop"
+}
+
+rustc_session::declare_lint! {
     pub COLLECTION_LEN_FROM_STORAGE,
     Warn,
     "stored collection loaded from storage only to call len()"
@@ -590,7 +630,7 @@ rustc_session::declare_lint! {
 rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
-    "Symbol::to_string called inside a loop"
+    "Symbol::to_string called inside a loop" 
 }
 
 pub struct SorobanCostLints;
@@ -931,6 +971,30 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Writing to persistent storage without extending its TTL leaves the entry vulnerable to premature archiving, which forces an expensive restoration transaction.",
     },
     LintMeta {
+        name: "address_equality_via_to_string",
+        category: LintCategory::Memory,
+        description: "compares Address values through their string representations",
+        rationale: "Converting both addresses to strings allocates values only to compare their contents; Address equality performs a direct host comparison without those allocations.",
+    },
+    LintMeta {
+        name: "address_from_string_in_loop",
+        category: LintCategory::Host,
+        description: "Address::from_string called inside a loop",
+        rationale: "Parsing and validating an unchanged strkey on every iteration repeats host work and constructs the same Address handle; parse it once before the loop.",
+    },
+    LintMeta {
+        name: "bytes_indexed_read_in_loop",
+        category: LintCategory::Compute,
+        description: "per-byte Bytes::get call inside a loop",
+        rationale: "Reading a Soroban Bytes value one index at a time crosses the host boundary and checks bounds per byte; a native bulk copy avoids repeated host reads.",
+    },
+    LintMeta {
+        name: "sort_in_loop",
+        category: LintCategory::Compute,
+        description: "sorting a Soroban Vec inside a loop",
+        rationale: "Sorting a host collection on each iteration repeats metered collection work; sort once outside the loop when its contents are invariant.",
+    },
+    LintMeta {
         name: "collection_len_from_storage",
         category: LintCategory::Storage,
         description: "stored collection loaded from storage only to call len()",
@@ -952,7 +1016,7 @@ pub const LINT_METADATA: &[LintMeta] = &[
         name: "symbol_to_string_in_loop",
         category: LintCategory::Compute,
         description: "Symbol::to_string called inside a loop",
-        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or built once.",
+        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or built once.", 
     },
 ];
 
@@ -1010,10 +1074,15 @@ dylint_lint_impl! {
         STORAGE_WRITE_OF_UNCHANGED_VALUE,
         LARGE_VALUE_DECODED_FOR_ONE_FIELD,
         PERSISTENT_WRITE_WITHOUT_TTL_EXTENSION,
+        ADDRESS_EQUALITY_VIA_TO_STRING,
+        ADDRESS_FROM_STRING_IN_LOOP,
+        BYTES_INDEXED_READ_IN_LOOP,
+        SORT_IN_LOOP,
         COLLECTION_LEN_FROM_STORAGE,
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+
     ]
 }
 
@@ -3159,6 +3228,7 @@ fn ui_fixtures_match_registered_lints_and_have_no_unknown_lint_warnings() {
                 golden
             );
         }
+
         if path.extension().and_then(|ext| ext.to_str()) == Some("stderr") {
             let content = std::fs::read_to_string(&path).expect("stderr must be readable");
             assert!(
