@@ -7,6 +7,9 @@
   "unnecessary_host_function_call",
   "unwrap_on_storage_get",
   "persistent_read_without_ttl_extension",
+  "persistent_write_without_ttl_extension",
+  "storage_write_of_unchanged_value",
+  "large_value_decoded_for_one_field",
   "collection_len_in_loop_condition",
   "cross_contract_result_discarded"
 ]

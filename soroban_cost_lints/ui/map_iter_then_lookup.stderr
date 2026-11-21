@@ -1,0 +1,23 @@
+warning: iterating map keys and looking up each key is quadratic
+  --> $DIR/map_iter_then_lookup.rs:28:5
+   |
+LL | /     for k in map.keys() {
+LL | |         let _ = map.get(&k);
+LL | |     }
+   | |_____^
+   |
+   = help: use `map.iter()` to iterate over key-value pairs directly
+   = note: `#[warn(map_iter_then_lookup)]` on by default
+
+warning: iterating map keys and looking up each key is quadratic
+  --> $DIR/map_iter_then_lookup.rs:35:5
+   |
+LL | /     for k in map.keys() {
+LL | |         let _ = map.get_unchecked(&k);
+LL | |     }
+   | |_____^
+   |
+   = help: use `map.iter()` to iterate over key-value pairs directly
+
+warning: 2 warnings emitted
+

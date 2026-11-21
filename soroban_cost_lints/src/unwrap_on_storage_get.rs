@@ -13,7 +13,7 @@
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::is_in_test;
-use rustc_hir::{Expr, ExprKind};
+use rustc_hir::{Expr, ExprKind, QPath};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
@@ -102,22 +102,42 @@ fn panicking_unwrap_receiver<'tcx>(expr: &'tcx Expr<'tcx>) -> Option<&'tcx Expr<
 }
 
 /// Whether `receiver` is the accessor of a Soroban storage read, i.e. a
-/// `get` call made on one of the [`SOROBAN_STORAGE_TYPES`].
+/// `get` / `try_get` call made on one of the [`SOROBAN_STORAGE_TYPES`].
 ///
-/// References are peeled before the type is inspected, so this matches both
-/// `instance.get(&k)` and a `get` through a `&Instance` binding.
+/// Both spellings are recognised: the method call `instance.get(&k)` and the
+/// UFCS call `Instance::get(&instance, &k)`, whose first argument is the
+/// accessor. References are peeled before the type is inspected, so this
+/// matches a `get` through a `&Instance` binding too.
 fn is_storage_read_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx Expr<'tcx>) -> bool {
-    let ExprKind::MethodCall(get_segment, storage_receiver, _get_args, _get_span) = receiver.kind
-    else {
-        return false;
-    };
-
-    STORAGE_READ_METHODS.contains(&get_segment.ident.name.as_str())
-        && is_type_match(
-            cx,
-            cx.typeck_results().expr_ty(storage_receiver),
-            SOROBAN_STORAGE_TYPES,
-        )
+    match receiver.kind {
+        ExprKind::MethodCall(get_segment, storage_receiver, _get_args, _get_span) => {
+            STORAGE_READ_METHODS.contains(&get_segment.ident.name.as_str())
+                && is_type_match(
+                    cx,
+                    cx.typeck_results().expr_ty(storage_receiver),
+                    SOROBAN_STORAGE_TYPES,
+                )
+        }
+        ExprKind::Call(callee, args) => {
+            let ExprKind::Path(ref qpath) = callee.kind else {
+                return false;
+            };
+            let method = match qpath {
+                QPath::Resolved(_, path) => path.segments.last().map(|seg| seg.ident.name),
+                QPath::TypeRelative(_, seg) => Some(seg.ident.name),
+            };
+            let Some(storage_receiver) = args.first() else {
+                return false;
+            };
+            method.is_some_and(|name| STORAGE_READ_METHODS.contains(&name.as_str()))
+                && is_type_match(
+                    cx,
+                    cx.typeck_results().expr_ty(storage_receiver),
+                    SOROBAN_STORAGE_TYPES,
+                )
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

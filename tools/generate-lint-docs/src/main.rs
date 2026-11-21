@@ -580,8 +580,33 @@ fn orphan_lint_pages(lints_dir: &Path, entries: &[LintEntry]) -> Vec<String> {
     orphans
 }
 
+/// Validates the command line: only `--check` and `--workspace-root <PATH>`
+/// are accepted. Anything else (a typo such as `--chek`, or a
+/// `--workspace-root` with no value) is an error rather than being ignored.
+fn validate_args<I: IntoIterator<Item = String>>(args: I) -> Result<(), String> {
+    let mut it = args.into_iter().skip(1);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--check" => {}
+            "--allow-empty" => {}
+            "--workspace-root" => match it.next() {
+                Some(v) if !v.is_empty() && !v.starts_with("--") => {}
+                _ => return Err("--workspace-root requires a path value".to_string()),
+            },
+            other => return Err(format!("unknown argument '{other}'")),
+        }
+    }
+    Ok(())
+}
+
 fn main() {
+    if let Err(e) = validate_args(std::env::args()) {
+        eprintln!("Error: {e}");
+        eprintln!("Usage: generate-lint-docs [--check] [--allow-empty] [--workspace-root <PATH>]");
+        process::exit(2);
+    }
     let check_mode = std::env::args().any(|a| a == "--check");
+    let allow_empty = std::env::args().any(|a| a == "--allow-empty");
 
     let lib_path = resolve_path("soroban_cost_lints/src/lib.rs");
     let readme_path = resolve_path("docs/lints/README.md");
@@ -601,6 +626,14 @@ fn main() {
 
     let content = fs::read_to_string(&lib_path).expect("Failed to read lib.rs");
     let entries = parse_lib_rs(&content);
+
+    if entries.is_empty() && !allow_empty {
+        eprintln!(
+            "Error: No lints parsed from {:?}. Refusing to overwrite documentation without --allow-empty.",
+            lib_path
+        );
+        process::exit(1);
+    }
 
     let readme = generate_readme(&entries);
     let catalog = generate_catalog(&entries);
@@ -1101,7 +1134,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_readme(&entries);
+        let generated = generate_readme(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lints/README.md"))
             .expect("Failed to read docs/lints/README.md");
         let actual = actual.replace("\r\n", "\n");
@@ -1117,7 +1150,7 @@ multiline description"
         let content = fs::read_to_string(ws.join("soroban_cost_lints/src/lib.rs"))
             .expect("Failed to read lib.rs — run from workspace root");
         let entries = parse_lib_rs(&content);
-        let generated = generate_catalog(&entries);
+        let generated = generate_catalog(&entries).replace("\r\n", "\n");
         let actual = fs::read_to_string(ws.join("docs/lint_catalog.md"))
             .expect("Failed to read docs/lint_catalog.md");
         let actual = actual.replace("\r\n", "\n");
@@ -1517,6 +1550,41 @@ multiline description"
             "docs/SUMMARY.md links to pages that do not exist: {:?}",
             broken
         );
+    }
+
+    #[test]
+    fn validate_args_rejects_unknown_flag() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(validate_args(a(&["bin", "--chek"])).is_err());
+        assert!(validate_args(a(&["bin", "--workspace-root"])).is_err());
+        assert!(validate_args(a(&["bin", "--workspace-root", "--check"])).is_err());
+        assert!(validate_args(a(&["bin", "--check", "--workspace-root", "x"])).is_ok());
+        assert!(validate_args(a(&["bin"])).is_ok());
+    }
+
+    #[test]
+    fn unknown_flag_exits_nonzero_and_writes_nothing() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let fake_lib = root.join("soroban_cost_lints/src/lib.rs");
+        fs::create_dir_all(fake_lib.parent().unwrap()).unwrap();
+        fs::write(&fake_lib, SINGLE_LINT).unwrap();
+
+        let status = Command::new(&bin)
+            .args(["--chek", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(!status.success());
+        assert!(!root.join("docs/lints/README.md").exists());
+
+        let status = Command::new(&bin)
+            .arg("--workspace-root")
+            .current_dir(root)
+            .status()
+            .expect("Failed to execute binary");
+        assert!(!status.success());
+        assert!(!root.join("docs").exists());
     }
 
     #[test]

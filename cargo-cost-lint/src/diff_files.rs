@@ -20,7 +20,10 @@ pub fn get_changed_files() -> LinterResult<Vec<String>> {
 
 /// Detect the repository's default branch by checking:
 /// 1. The `origin/HEAD` reference
-/// 2. Falls back to `main`, then `master`
+/// 2. `origin/main` then `origin/master`
+/// 3. Local `refs/heads/main` then `refs/heads/master` (repos without an origin remote)
+///
+/// Returns the full ref string used for the merge-base lookup.
 fn detect_default_branch() -> LinterResult<String> {
     // Try origin/HEAD first
     let output = Command::new("git")
@@ -30,13 +33,13 @@ fn detect_default_branch() -> LinterResult<String> {
 
     if output.status.success() {
         let ref_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        // refs/remotes/origin/main -> main
+        // refs/remotes/origin/main -> origin/main
         if let Some(branch) = ref_name.strip_prefix("refs/remotes/origin/") {
-            return Ok(branch.to_string());
+            return Ok(format!("origin/{branch}"));
         }
     }
 
-    // Try common defaults
+    // Try common remote defaults
     for candidate in &["main", "master"] {
         let check = Command::new("git")
             .args(["rev-parse", "--verify", &format!("origin/{candidate}")])
@@ -44,28 +47,44 @@ fn detect_default_branch() -> LinterResult<String> {
         if let Ok(o) = check
             && o.status.success()
         {
-            return Ok(candidate.to_string());
+            return Ok(format!("origin/{candidate}"));
+        }
+    }
+
+    // Fallback: local branches for repos without an origin remote (#1096)
+    for candidate in &["main", "master"] {
+        let check = Command::new("git")
+            .args(["rev-parse", "--verify", &format!("refs/heads/{candidate}")])
+            .output();
+        if let Ok(o) = check
+            && o.status.success()
+        {
+            return Ok(format!("refs/heads/{candidate}"));
         }
     }
 
     Err(LinterError::Other(
         "Could not determine the default branch. \
-         Ensure 'origin/HEAD', 'origin/main', or 'origin/master' exists."
+         Ensure 'origin/HEAD', 'origin/main', 'origin/master', \
+         or a local 'main'/'master' branch exists."
             .to_string(),
     ))
 }
 
-/// Find the merge base between the current HEAD and the given branch.
-fn find_merge_base(default_branch: &str) -> LinterResult<String> {
+/// Find the merge base between the current HEAD and the given branch ref.
+///
+/// `branch_ref` is the full ref returned by `detect_default_branch`, e.g.
+/// `origin/main` or `refs/heads/main`.
+fn find_merge_base(branch_ref: &str) -> LinterResult<String> {
     let output = Command::new("git")
-        .args(["merge-base", "HEAD", &format!("origin/{default_branch}")])
+        .args(["merge-base", "HEAD", branch_ref])
         .output()
         .map_err(|e| LinterError::Other(format!("Failed to run git: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(LinterError::Other(format!(
-            "No common ancestor found between HEAD and origin/{default_branch}.\n\
+            "No common ancestor found between HEAD and {branch_ref}.\n\
              {stderr}"
         )));
     }
