@@ -7,6 +7,13 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- `require_auth_in_loop` now detects repeated authorization calls inside iterator closures, including `require_auth_for_args`.
+- `generate-lint-docs` now rejects unknown flags (such as a mistyped `--chek`) and a `--workspace-root` with no value, exiting non-zero instead of rewriting the docs or falling back to the current directory.
+- `cargo-cost-lint --config <DIR>` now errors when the path is a directory instead of silently ignoring it.
+- `cargo-cost-lint --clear-cache --quiet` no longer prints the success line.
+
 ### Added
 
 - New lint `collection_len_in_loop_condition` detecting `.len()` calls on Soroban `Vec`/`Map` in a `while` loop condition when the collection is not mutated inside the loop, where the length is re-fetched through a metered host call on every iteration.

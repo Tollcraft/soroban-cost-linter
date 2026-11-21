@@ -1,110 +1,46 @@
-//! Invariant tests confirming `config::BudgetConfig` is the sole config parser
-//! (issue #1099).
-//!
-//! The obsolete `budget_config.rs` module implemented a parallel parser for
-//! the `[budget.lints]` wrapper schema; it has been removed. These tests pin
-//! the canonical parser's behaviour so a re-introduction would be caught.
+//! Verify that the obsolete `budget_config` module has been removed and that
+//! `config::BudgetConfig` remains the sole config parser.
 
-#[path = "../src/error.rs"]
-mod error;
+use std::path::PathBuf;
 
-#[path = "../src/config.rs"]
-mod config;
-
-use config::BudgetConfig;
-use std::path::Path;
-use tempfile::tempdir;
-
-fn known_lints() -> &'static [&'static str] {
-    &["soroban_storage_in_loop", "soroban_redundant_auth"]
+fn crate_src_dir() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("src");
+    path
 }
 
+/// `src/budget_config.rs` must not exist. It was an obsolete file that
+/// duplicated `BudgetConfig` from `config.rs`; removing it prevents drift.
 #[test]
-fn budget_config_parses_flat_lints_section() {
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("budget.toml");
-    std::fs::write(&path, "[lints]\nsoroban_storage_in_loop = \"warn\"\n").unwrap();
-
-    let cfg = BudgetConfig::from_file_validated(&path, known_lints()).unwrap();
-    let lints = cfg.lints.as_ref().expect("lints section must be present");
-    assert_eq!(
-        lints.get("soroban_storage_in_loop").map(String::as_str),
-        Some("warn")
-    );
-}
-
-#[test]
-fn obsolete_budget_wrapper_schema_does_not_populate_lints() {
-    // The [budget.lints] schema was used by the removed budget_config module.
-    // The canonical parser must not silently accept it.
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("budget.toml");
-    std::fs::write(
-        &path,
-        "[budget]\n[budget.lints]\nsoroban_storage_in_loop = \"warn\"\n",
-    )
-    .unwrap();
-
-    match BudgetConfig::from_file_validated(&path, known_lints()) {
-        Ok(cfg) => {
-            let lint_count = cfg.lints.as_ref().map(|m| m.len()).unwrap_or(0);
-            assert_eq!(
-                lint_count, 0,
-                "obsolete [budget.lints] schema must not populate the lint map"
-            );
-        }
-        Err(_) => {
-            // A hard parse error is also acceptable; the caller gets a clear diagnostic.
-        }
-    }
-}
-
-#[test]
-fn invalid_lint_level_is_rejected() {
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("budget.toml");
-    std::fs::write(&path, "[lints]\nsoroban_storage_in_loop = \"ignore\"\n").unwrap();
-
-    let err = BudgetConfig::from_file_validated(&path, known_lints()).unwrap_err();
-    let msg = err.to_string();
+fn no_obsolete_budget_config_module_file() {
+    let budget_config = crate_src_dir().join("budget_config.rs");
     assert!(
-        msg.contains("ignore") || msg.contains("level"),
-        "error must mention the bad level: {msg}"
+        !budget_config.exists(),
+        "src/budget_config.rs must not exist — it is an obsolete module removed by \
+         issue #1099. Delete the file and any `mod budget_config;` declaration in main.rs."
     );
 }
 
+/// `main.rs` must not declare a `budget_config` module.
 #[test]
-fn unknown_lint_name_is_rejected() {
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("budget.toml");
-    std::fs::write(&path, "[lints]\nunknown_lint = \"warn\"\n").unwrap();
-
-    let err = BudgetConfig::from_file_validated(&path, known_lints()).unwrap_err();
-    let msg = err.to_string();
+fn main_rs_does_not_declare_budget_config_mod() {
+    let main_path = crate_src_dir().join("main.rs");
+    let src = std::fs::read_to_string(&main_path)
+        .unwrap_or_else(|e| panic!("Failed to read main.rs: {e}"));
     assert!(
-        msg.contains("unknown_lint"),
-        "error must name the unknown lint: {msg}"
+        !src.contains("mod budget_config"),
+        "main.rs must not declare `mod budget_config` — the module was removed by issue #1099"
     );
 }
 
+/// The canonical `BudgetConfig` struct lives in `config.rs`.
 #[test]
-fn missing_config_file_returns_io_error() {
-    let err =
-        BudgetConfig::from_file_validated(Path::new("/nonexistent/budget.toml"), known_lints())
-            .unwrap_err();
+fn budget_config_is_defined_in_config_module() {
+    let config_path = crate_src_dir().join("config.rs");
+    let src = std::fs::read_to_string(&config_path)
+        .unwrap_or_else(|e| panic!("Failed to read config.rs: {e}"));
     assert!(
-        err.to_string().contains("Failed to read"),
-        "error must indicate read failure: {err}"
+        src.contains("struct BudgetConfig"),
+        "config.rs must define `BudgetConfig` — it is the sole canonical config parser"
     );
-}
-
-#[test]
-fn empty_lints_section_is_valid() {
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("budget.toml");
-    std::fs::write(&path, "[lints]\n").unwrap();
-
-    let cfg = BudgetConfig::from_file_validated(&path, known_lints()).unwrap();
-    let count = cfg.lints.as_ref().map(|m| m.len()).unwrap_or(0);
-    assert_eq!(count, 0);
 }
