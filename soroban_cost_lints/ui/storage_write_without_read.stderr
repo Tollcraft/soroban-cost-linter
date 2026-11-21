@@ -73,18 +73,18 @@ LL |     let _ = env.storage().instance().has(&1);
    = help: delete the storage read or use its returned value
 
 warning: storage write without a corresponding read
-  --> $DIR/storage_write_without_read.rs:116:30
+  --> $DIR/storage_write_without_read.rs:128:30
    |
-LL |     env.storage().instance().set(&1, &2); // Should Warn
+LL |     env.storage().instance().set(&1, &2); // Should Warn — read appears after the write
    |                              ^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage read result is discarded
-  --> $DIR/storage_write_without_read.rs:117:26
+  --> $DIR/storage_write_without_read.rs:129:13
    |
-LL |     let _: Option<i32> = env.storage().instance().get::<i32, i32>(&1); // read later, not earlier
-   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let _ = env.storage().instance().get::<i32, i32>(&1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: delete the storage read or use its returned value
 
