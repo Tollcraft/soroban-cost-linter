@@ -59,5 +59,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `nested_loop_storage_access` | deny | storage operation inside a nested loop — cost is O(n·m) | [Link](lints/nested_loop_storage_access.md) |
 | `persistent_storage_for_ephemeral_data` | warn | persistent storage write is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
 | `redundant_address_clone` | warn | redundant clone on Address object | [Link](lints/redundant_address_clone.md) |
+| `address_equality_via_to_string` | warn | compares Address values through their string representations | [Link](lints/address_equality_via_to_string.md) |
+| `address_from_string_in_loop` | warn | Address::from_string called inside a loop | [Link](lints/address_from_string_in_loop.md) |
+| `bytes_indexed_read_in_loop` | warn | per-byte Bytes::get call inside a loop | [Link](lints/bytes_indexed_read_in_loop.md) |
+| `sort_in_loop` | warn | sorting a Soroban Vec inside a loop | [Link](lints/sort_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*
