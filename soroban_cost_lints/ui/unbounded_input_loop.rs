@@ -1,7 +1,13 @@
 #![allow(
     soroban_storage_in_loop,
     loop_invariant_storage_access,
-    storage_write_without_read, instance_storage_write_in_loop
+    storage_write_without_read,
+    instance_storage_write_in_loop,
+    // The `Vec` parameter below is a faithful `soroban_sdk::vec::Vec` (issue
+    // #1036), and the slice-preference lint reports on any Soroban `Vec`
+    // parameter, including the mock's own `into_iter`. Orthogonal to this
+    // fixture, which is about `unbounded_input_loop`.
+    vec_where_slice_could_be_used
 )]
 
 pub mod soroban_sdk {
@@ -53,25 +59,64 @@ pub mod soroban_sdk {
         }
     }
 
-    /// Stand-in for `soroban_sdk::Set` so the collection-length bound
-    /// fixture can exercise the `.len()` arm without depending on the real
-    /// SDK: the lint only needs a type whose name matches a collection
-    /// fragment and whose `len(&self) -> usize` method resolves.
+    /// Stand-in for a set-like collection, kept so the `.len()` bound arm has
+    /// a non-`Vec` type to exercise. The SDK has no `Set` type (see the
+    /// `Array`/`Set` note in `src/unbounded_input_loop.rs`) and nothing here
+    /// uses it, so it deliberately matches no lint path.
     pub struct Set;
     impl Set {
         pub fn len(&self) -> usize { 0 }
     }
 
-    // Models `soroban_sdk::Map`: the lint's `is_collection` test sees the
-    // receiver of `keys()`/`values()`, so only the name and projections matter.
-    pub struct Map<K, V>(core::marker::PhantomData<(K, V)>);
-    impl<K: Clone, V: Clone> Map<K, V> {
-        pub fn keys(&self) -> Vec<K> { Vec::new() }
-        pub fn values(&self) -> Vec<V> { Vec::new() }
+    // The mocks live at the SDK's real definition paths,
+    // `soroban_sdk::vec::Vec` and `soroban_sdk::map::Map`. `is_collection`
+    // matches definition paths (issue #1036), so a mock declared at
+    // `soroban_sdk::Map` matched only the old name scan and would go silent
+    // under the path test.
+    pub mod vec {
+        pub struct Vec<T>(std::vec::Vec<T>);
+
+        impl<T> Vec<T> {
+            pub fn new() -> Vec<T> {
+                Vec(std::vec::Vec::new())
+            }
+            pub fn iter(&self) -> std::slice::Iter<'_, T> {
+                self.0.iter()
+            }
+            pub fn len(&self) -> usize {
+                self.0.len()
+            }
+        }
+
+        impl<T> IntoIterator for Vec<T> {
+            type Item = T;
+            type IntoIter = std::vec::IntoIter<T>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.into_iter()
+            }
+        }
     }
+
+    pub mod map {
+        use super::vec::Vec;
+
+        pub struct Map<K, V>(core::marker::PhantomData<(K, V)>);
+        impl<K: Clone, V: Clone> Map<K, V> {
+            pub fn keys(&self) -> Vec<K> {
+                Vec::new()
+            }
+            pub fn values(&self) -> Vec<V> {
+                Vec::new()
+            }
+        }
+    }
+
+    pub use self::map::Map;
+    pub use self::vec::Vec;
 }
 
-use soroban_sdk::{Env, Map};
+use soroban_sdk::{Env, Map, Vec};
 
 // =======================================================================
 // unbounded_input_loop — Fixtures

@@ -9,6 +9,14 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
+- `unbounded_input_loop` now identifies caller-sized collections by exact Soroban
+  definition path (`soroban_sdk::vec::Vec`, `soroban_sdk::map::Map`,
+  `soroban_sdk::bytes::Bytes`) instead of scanning the rendered type name for
+  `Vec`/`Map`/`Array`/`Bytes`/`Set`. A `std::collections::HashMap<u32, u32>` loop
+  whose body writes to storage is no longer reported as caller-driven input, and
+  the report can be suppressed per collection again.
+- `require_auth_in_loop` now detects repeated authorization calls inside iterator closures, including `require_auth_for_args`.
 - `generate-lint-docs` now rejects unknown flags (such as a mistyped `--chek`) and a `--workspace-root` with no value, exiting non-zero instead of rewriting the docs or falling back to the current directory.
 - `cargo-cost-lint --config <DIR>` now errors when the path is a directory instead of silently ignoring it.
 - `cargo-cost-lint --clear-cache --quiet` no longer prints the success line.
@@ -49,6 +57,7 @@ and this project adheres to Semantic Versioning.
 - Expanded the `require_auth_in_loop`, `storage_write_without_read`, `redundant_require_auth` and `soroban_redundant_storage_read` fixtures, and added unit tests for the extracted passes (method tables, storage-accessor paths, and the read/write pairing analysis) so the reachable branches are pinned before the modules are refactored.
 - New lint `val_conversion_chain` flagging values shuttled through `Val` three or more times across a binding chain (`into_val` / `try_into_val` / `from_val` / `try_from_val`), where converting directly to the final representation would cross the host boundary once instead of once per hop.
 - New lint `storage_read_modify_write` flagging storage keys that complete two or more full read-modify-write cycles (`get` then `set`) within one function body, reported from the second cycle onward, since the value never left the host between cycles and the repeat read and write buy nothing.
+- New UI fixtures `unbounded_input_loop_map_keys`, `unbounded_input_loop_remove`, `unbounded_input_loop_std_hashmap` and `string_concat_in_loop_single_report`, pinning `Map::keys()`/`values()`/`iter()` as caller-driven iteration, `remove` as a metered write, `std` `HashMap`/`HashSet`/`BTreeMap`/`Vec` loops staying silent while the Soroban `Vec`/`Map`/`Bytes` pairs still report, and exactly one `string_concat_in_loop` diagnostic per `String::from_bytes` expression.
 
 ### Changed
 
