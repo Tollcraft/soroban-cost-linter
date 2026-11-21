@@ -29,6 +29,11 @@ This document provides a concise reference for all lints supported by **soroban-
 | `blind_storage_write` | warn | blind storage write overwrites a previously written key without reading it back | [Link](lints/blind_storage_write.md) |
 | `bytes_slice_copy_in_loop` | warn | repeatedly copying a sub-slice of `Bytes` inside a loop | [Link](lints/bytes_slice_copy_in_loop.md) |
 | `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec | [Link](lints/excessive_vec_capacity.md) |
+| `deploy_in_loop` | warn | contract deployment inside a loop | [Link](lints/deploy_in_loop.md) |
+| `map_iter_then_lookup` | warn | iterating map keys and looking up each key is quadratic | [Link](lints/map_iter_then_lookup.md) |
+| `storage_write_of_unchanged_value` | warn | writing an unchanged value back to storage | [Link](lints/storage_write_of_unchanged_value.md) |
+| `large_value_decoded_for_one_field` | warn | decoding a large stored value to read only a single field | [Link](lints/large_value_decoded_for_one_field.md) |
+| `persistent_write_without_ttl_extension` | warn | persistent storage write without TTL extension — archival cost cliff | [Link](lints/persistent_write_without_ttl_extension.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |
@@ -54,5 +59,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `nested_loop_storage_access` | deny | storage operation inside a nested loop — cost is O(n·m) | [Link](lints/nested_loop_storage_access.md) |
 | `persistent_storage_for_ephemeral_data` | warn | persistent storage write is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
 | `redundant_address_clone` | warn | redundant clone on Address object | [Link](lints/redundant_address_clone.md) |
+| `address_equality_via_to_string` | warn | compares Address values through their string representations | [Link](lints/address_equality_via_to_string.md) |
+| `address_from_string_in_loop` | warn | Address::from_string called inside a loop | [Link](lints/address_from_string_in_loop.md) |
+| `bytes_indexed_read_in_loop` | warn | per-byte Bytes::get call inside a loop | [Link](lints/bytes_indexed_read_in_loop.md) |
+| `sort_in_loop` | warn | sorting a Soroban Vec inside a loop | [Link](lints/sort_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

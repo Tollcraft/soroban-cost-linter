@@ -2,7 +2,7 @@
     unused,
     storage_write_without_read,
     soroban_redundant_storage_read,
-    persistent_read_without_ttl_extension,
+    persistent_read_without_ttl_extension, persistent_write_without_ttl_extension,
     instance_storage_for_unbounded_data,
     loop_invariant_storage_access,
     soroban_storage_in_loop,

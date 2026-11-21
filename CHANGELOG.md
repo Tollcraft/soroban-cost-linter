@@ -7,8 +7,23 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
+- `unbounded_input_loop` now identifies caller-sized collections by exact Soroban
+  definition path (`soroban_sdk::vec::Vec`, `soroban_sdk::map::Map`,
+  `soroban_sdk::bytes::Bytes`) instead of scanning the rendered type name for
+  `Vec`/`Map`/`Array`/`Bytes`/`Set`. A `std::collections::HashMap<u32, u32>` loop
+  whose body writes to storage is no longer reported as caller-driven input, and
+  the report can be suppressed per collection again.
+- `require_auth_in_loop` now detects repeated authorization calls inside iterator closures, including `require_auth_for_args`.
+- `generate-lint-docs` now rejects unknown flags (such as a mistyped `--chek`) and a `--workspace-root` with no value, exiting non-zero instead of rewriting the docs or falling back to the current directory.
+- `cargo-cost-lint --config <DIR>` now errors when the path is a directory instead of silently ignoring it.
+- `cargo-cost-lint --clear-cache --quiet` no longer prints the success line.
+
 ### Added
 
+- New lints `address_equality_via_to_string`, `address_from_string_in_loop`, `bytes_indexed_read_in_loop` and `sort_in_loop` for avoiding allocated Address string comparisons, repeated strkey parsing, per-byte Bytes host reads and sorting Soroban Vec values inside loops.
 - New lint `collection_len_in_loop_condition` detecting `.len()` calls on Soroban `Vec`/`Map` in a `while` loop condition when the collection is not mutated inside the loop, where the length is re-fetched through a metered host call on every iteration.
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
 - New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.
@@ -42,6 +57,7 @@ and this project adheres to Semantic Versioning.
 - Expanded the `require_auth_in_loop`, `storage_write_without_read`, `redundant_require_auth` and `soroban_redundant_storage_read` fixtures, and added unit tests for the extracted passes (method tables, storage-accessor paths, and the read/write pairing analysis) so the reachable branches are pinned before the modules are refactored.
 - New lint `val_conversion_chain` flagging values shuttled through `Val` three or more times across a binding chain (`into_val` / `try_into_val` / `from_val` / `try_from_val`), where converting directly to the final representation would cross the host boundary once instead of once per hop.
 - New lint `storage_read_modify_write` flagging storage keys that complete two or more full read-modify-write cycles (`get` then `set`) within one function body, reported from the second cycle onward, since the value never left the host between cycles and the repeat read and write buy nothing.
+- New UI fixtures `unbounded_input_loop_map_keys`, `unbounded_input_loop_remove`, `unbounded_input_loop_std_hashmap` and `string_concat_in_loop_single_report`, pinning `Map::keys()`/`values()`/`iter()` as caller-driven iteration, `remove` as a metered write, `std` `HashMap`/`HashSet`/`BTreeMap`/`Vec` loops staying silent while the Soroban `Vec`/`Map`/`Bytes` pairs still report, and exactly one `string_concat_in_loop` diagnostic per `String::from_bytes` expression.
 
 ### Changed
 

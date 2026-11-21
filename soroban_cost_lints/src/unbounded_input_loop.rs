@@ -32,13 +32,45 @@
 //! [`higher::ForLoop`] match, step 3 reuses it rather than re-running
 //! `higher::ForLoop::hir` to recover the very same node.
 //!
-//! # A deliberate false-positive bias
+//! # Two type tests, two matching rules
 //!
-//! Both type tests match on a substring of the type's `Debug` name rather than
-//! on an exact def path. That is intentional: see [`COLLECTION_FRAGMENTS`] and
-//! [`STORAGE_TYPE_FRAGMENTS`]. It is also why the `Ty` is formatted once per
-//! query and the resulting `String` is scanned in place, rather than being
-//! re-rendered for each fragment tested.
+//! The collection test matches Soroban definition paths exactly —
+//! [`SOROBAN_COLLECTION_TYPES`] plus the `Bytes` row in
+//! [`SOROBAN_BYTES_TYPES`] — and the storage test keeps the older substring
+//! scan over the type's `Debug` name ([`STORAGE_TYPE_FRAGMENTS`]).
+//!
+//! The split is deliberate. The collection half was a substring scan too, and
+//! that made it unable to tell a caller-supplied `soroban_sdk::Map` from a map
+//! the contract built itself: `std::collections::HashMap<u32, u32>` renders as
+//! `HashMap<u32, u32>`, which contains `Map`, so the loop was reported as
+//! caller-driven as soon as its body wrote. A `#[allow]` on that report silences
+//! every other collection in the function too, so the false positive could not
+//! be suppressed narrowly ([#1036]). An exact def path has the opposite bias — a
+//! caller-supplied collection this table does not name is now a false *negative*
+//! — so the table below lists each accepted type with the SDK module that
+//! declares it.
+//!
+//! The storage half keeps its scan: the four accessor names do not occur inside
+//! any `std` type a method receiver can have, so there was never an unsuppressible
+//! false positive to remove there, and the check stays a single `format!` plus an
+//! in-place scan rather than a `DefId` resolution.
+//!
+//! # What the table accepts, and what it drops
+//!
+//! Accepted, with the module that declares the type in soroban-sdk 26.1.1 and
+//! 28.0.0:
+//!
+//! | type | declaration |
+//! | ---- | ----------- |
+//! | `Vec<T>` | `src/vec.rs:88` |
+//! | `Map<K, V>` | `src/map.rs:103` |
+//! | `Bytes` | `src/bytes.rs:252` |
+//!
+//! Dropped from the old fragment list: `Array` and `Set`. Neither exists —
+//! `grep 'struct Array\|struct Set' src/` over 26.1.1, 28.0.0 and 29.0.1
+//! returns nothing, and there is no `array.rs` or `set.rs` module — so those
+//! two rows could only ever match a `std` or user type whose name happened to
+//! contain them. They were false-positive generators, not coverage.
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::higher;
@@ -48,7 +80,7 @@ use rustc_hir::{BinOpKind, Expr, ExprKind, LoopSource, Node, QPath};
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::UNBOUNDED_INPUT_LOOP;
+use crate::{SOROBAN_COLLECTION_TYPES, UNBOUNDED_INPUT_LOOP, is_type_match};
 
 declare_lint_pass!(UnboundedInputLoop => [UNBOUNDED_INPUT_LOOP]);
 
@@ -69,17 +101,23 @@ const WRITE_METHODS: &[&str] = &["set", "update", "try_update", "remove"];
 /// `iter_combined` was dropped from `Map` and exists in neither version.
 const ITERATING_METHODS: &[&str] = &["iter", "keys", "values"];
 
-/// Type-name fragments identifying a caller-sized collection.
+/// The `Bytes` row the collection test accepts on top of
+/// [`SOROBAN_COLLECTION_TYPES`].
 ///
-/// Substring matching on the rendered type name is deliberate. An exact
-/// def-path check would remove over-reporting on a non-Soroban `Vec`, but the
-/// two failure modes are not symmetric: a false *negative* means the lint
-/// silently stops firing, while a false *positive* costs a developer one
-/// `#[allow]`. The bias is towards reporting.
-const COLLECTION_FRAGMENTS: &[&str] = &["Vec", "Map", "Array", "Bytes", "Set"];
+/// `Bytes` is a caller-sized collection in exactly the same way `Vec` and
+/// `Map` are — `env` receives it as a serialized host object and its length is
+/// chosen by the caller — but it is absent from `SOROBAN_COLLECTION_TYPES`,
+/// which lists only the two types the linear-scan lint reasons about. The
+/// module segment is `bytes` (`bytes.rs:252` in soroban-sdk 28.0.0), the same
+/// shape as the `vec`/`map` rows.
+const SOROBAN_BYTES_TYPES: &[&[&str]] = &[&["soroban_sdk", "bytes", "Bytes"]];
 
-/// Type-name fragments identifying a Soroban storage accessor, matched
-/// substring-wise for the same reason as [`COLLECTION_FRAGMENTS`].
+/// Type-name fragments identifying a Soroban storage accessor.
+///
+/// Deliberately still a substring scan: the four names sit at the end of the
+/// accessor's def path (`soroban_sdk::storage::Persistent`, ...) and do not
+/// occur inside any `std` type a method receiver can have, so there is no
+/// unsuppressible false positive here to remove. See the module docs.
 const STORAGE_TYPE_FRAGMENTS: &[&str] = &["Storage", "Instance", "Persistent", "Temporary"];
 
 /// Message reported for a caller-driven loop that writes to storage.
@@ -244,23 +282,25 @@ fn is_unvalidated_parameter(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
     matches!(cx.tcx.parent_hir_node(binding), Node::Param(_))
 }
 
-/// Conservatively treats any value whose type name matches a known Soroban
-/// collection name as being supplied by the caller.
+/// Whether `expr` is typed as one of the caller-sized Soroban collections.
 ///
-/// The type is rendered once and the resulting `String` is scanned in place.
-/// Note that no `ends_with` check is needed alongside `contains`: a
-/// `contains` hit on `suffix` already implies the name ends with `suffix`, so
-/// testing both would repeat half the work for no additional matches.
+/// An exact definition-path match against [`SOROBAN_COLLECTION_TYPES`] and
+/// [`SOROBAN_BYTES_TYPES`], so a `std::collections::HashMap` — which shares
+/// the `Map` suffix that the previous substring scan keyed on — is not
+/// mistaken for a `soroban_sdk::Map`. `is_type_match` peels references
+/// itself; doing it here as well would only repeat the work.
 fn is_collection(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
-    let ty = cx.typeck_results().expr_ty(expr).peel_refs();
-    type_name_contains_any(ty, COLLECTION_FRAGMENTS)
+    let ty = cx.typeck_results().expr_ty(expr);
+    is_type_match(cx, ty, SOROBAN_COLLECTION_TYPES) || is_type_match(cx, ty, SOROBAN_BYTES_TYPES)
 }
 
 /// Whether the rendered name of `ty` contains any of `fragments`.
 ///
-/// This is the single allocation point of the two type tests in this module,
-/// shared by [`is_collection`] and [`is_storage_receiver`]. The scan itself
-/// lives in [`name_contains_any`], which is the part worth unit-testing.
+/// This is the single allocation point of the storage test, and the only
+/// remaining user of the name scan in this module: [`is_storage_receiver`]
+/// needs it because a storage accessor's `Debug` name is all that is
+/// available without resolving a `DefId`. The scan itself lives in
+/// [`name_contains_any`], which is the part worth unit-testing.
 fn type_name_contains_any(ty: rustc_middle::ty::Ty<'_>, fragments: &[&str]) -> bool {
     name_contains_any(&format!("{ty:?}"), fragments)
 }
@@ -418,17 +458,17 @@ fn is_storage_receiver(cx: &LateContext<'_>, expr: &Expr<'_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        COLLECTION_FRAGMENTS, ITERATING_METHODS, STORAGE_TYPE_FRAGMENTS, WRITE_METHODS,
+        ITERATING_METHODS, SOROBAN_BYTES_TYPES, STORAGE_TYPE_FRAGMENTS, WRITE_METHODS,
         name_contains_any,
     };
+    use crate::SOROBAN_COLLECTION_TYPES;
 
     /// An empty needle makes `str::contains` return `true` for every name,
-    /// which would turn both type tests into a constant `true` and make the
+    /// which would turn the storage test into a constant `true` and make the
     /// lint fire on every `for` loop containing any method call. This is the
     /// cheapest way to catch that class of edit.
     #[test]
     fn no_empty_match_fragments() {
-        assert!(COLLECTION_FRAGMENTS.iter().all(|f| !f.is_empty()));
         assert!(STORAGE_TYPE_FRAGMENTS.iter().all(|f| !f.is_empty()));
     }
 
@@ -459,17 +499,21 @@ mod tests {
         assert!(!name_contains_any("Instance", &[]));
     }
 
-    /// A type that matches neither list must be rejected by both. `bool` and
-    /// `u32` are the renderings of common non-Soroban types, and mistaking
-    /// either for a collection or a storage accessor is the false positive
-    /// this lint is most exposed to.
+    /// A type that matches the storage scan must be a Soroban storage
+    /// accessor. `bool` and `u32` are the renderings of common non-Soroban
+    /// types, and the `std` collection names are here because mistaking one
+    /// of those for a storage accessor would re-open the false positive the
+    /// collection half used to have.
     #[test]
-    fn unrelated_types_match_neither_list() {
-        for name in ["bool", "u32", "i128", "()"] {
-            assert!(
-                !name_contains_any(name, COLLECTION_FRAGMENTS),
-                "{name} must not look like a collection"
-            );
+    fn unrelated_types_are_not_storage_accessors() {
+        for name in [
+            "bool",
+            "u32",
+            "i128",
+            "()",
+            "HashMap<u32, u32>",
+            "HashSet<u32>",
+        ] {
             assert!(
                 !name_contains_any(name, STORAGE_TYPE_FRAGMENTS),
                 "{name} must not look like a storage accessor"
@@ -477,26 +521,11 @@ mod tests {
         }
     }
 
-    /// The positive half of the same contract: every Soroban collection and
-    /// storage name the lint cares about must be recognised. Losing one of
-    /// these is a silent false negative, which is the failure mode the
-    /// substring heuristic is chosen to avoid.
+    /// The positive half of the storage contract: every accessor name the lint
+    /// cares about must be recognised. Losing one is a silent false negative,
+    /// which is the failure mode the substring heuristic is chosen to avoid.
     #[test]
-    fn every_soroban_name_is_recognised() {
-        for name in [
-            "Vec",
-            "Map",
-            "Array",
-            "Bytes",
-            "Set",
-            "Vec<soroban_sdk::map::Map<u32, u32>>",
-        ] {
-            assert!(
-                name_contains_any(name, COLLECTION_FRAGMENTS),
-                "{name} must be recognised as a collection"
-            );
-        }
-
+    fn every_soroban_storage_name_is_recognised() {
         for name in [
             "Storage",
             "Instance",
@@ -511,15 +540,49 @@ mod tests {
         }
     }
 
-    /// A storage accessor name must not be mistaken for a collection, and vice
-    /// versa. The two lists are used by different checks, and a name landing
-    /// in both would make a storage read count as a caller-sized input.
+    /// Every accepted collection row must be rooted at `soroban_sdk` and name
+    /// the declaring module. A single-segment row is how the old
+    /// `["Vec", "Map", "Array", "Bytes", "Set"]` list reached
+    /// `std::collections::HashMap`: the rendered name contains `Map`, so the
+    /// scan matched a type the lint has no opinion about. Requiring the
+    /// `soroban_sdk` root and a module segment makes that shape unrepresentable.
     #[test]
-    fn the_two_fragment_lists_are_disjoint() {
+    fn collection_paths_are_soroban_rooted_and_qualified() {
+        for path in SOROBAN_COLLECTION_TYPES.iter().chain(SOROBAN_BYTES_TYPES) {
+            assert_eq!(path.first().copied(), Some("soroban_sdk"), "{path:?}");
+            assert!(path.len() >= 2, "{path:?} must name a module");
+            assert!(path.iter().all(|segment| !segment.is_empty()), "{path:?}");
+        }
+    }
+
+    /// The collection table is exactly `Vec`, `Map`, `Bytes`. `Array` and
+    /// `Set` must not come back: soroban-sdk 26.1.1, 28.0.0 and 29.0.1 declare
+    /// neither, so those rows could only ever match a non-Soroban type.
+    #[test]
+    fn collection_types_are_exactly_vec_map_bytes() {
+        let mut typed: Vec<&str> = SOROBAN_COLLECTION_TYPES
+            .iter()
+            .chain(SOROBAN_BYTES_TYPES)
+            .map(|path| *path.last().expect("each row ends in a type name"))
+            .collect();
+        typed.sort_unstable();
+        assert_eq!(typed, ["Bytes", "Map", "Vec"]);
+        assert!(!typed.contains(&"Array"));
+        assert!(!typed.contains(&"Set"));
+    }
+
+    /// A storage accessor name must not be mistaken for a collection name, and
+    /// vice versa. The two are used by different checks, and a name landing in
+    /// both would make a storage read count as a caller-sized input.
+    #[test]
+    fn storage_fragments_and_collection_types_are_disjoint() {
         for storage in STORAGE_TYPE_FRAGMENTS {
             assert!(
-                !COLLECTION_FRAGMENTS.contains(storage),
-                "{storage} appears in both fragment lists"
+                SOROBAN_COLLECTION_TYPES
+                    .iter()
+                    .chain(SOROBAN_BYTES_TYPES)
+                    .all(|path| !path.contains(storage)),
+                "{storage} appears in both the storage fragments and the collection paths"
             );
         }
     }

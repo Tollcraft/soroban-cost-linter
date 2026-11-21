@@ -27,7 +27,7 @@ jobs:
     name: Dogfood action (zero-findings fixture)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
@@ -36,7 +36,7 @@ jobs:
       # A push to `main` can run before that cache exists, so a miss is not an
       # error here -- the action builds the driver itself, as it always did.
       - name: Restore dylint driver
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.dylint_drivers
           key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}
@@ -60,12 +60,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
         run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: cache
         with:
           path: ~/.dylint_drivers
@@ -93,7 +93,7 @@ jobs:
     outputs:
       contracts: ${{ steps.list.outputs.contracts }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - id: list
         shell: bash
         run: |
@@ -128,7 +128,7 @@ jobs:
       matrix:
         contract: ${{ fromJSON(needs.discover-corpus.outputs.contracts) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Read pinned toolchain
         id: toolchain
         shell: bash
@@ -137,7 +137,7 @@ jobs:
       # broken cache from silently turning this back into 40 concurrent driver
       # builds.
       - name: Restore dylint driver
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.dylint_drivers
           key: dylint-drivers-${{ runner.os }}-${{ steps.toolchain.outputs.channel }}-${{ env.DYLINT_VERSION }}

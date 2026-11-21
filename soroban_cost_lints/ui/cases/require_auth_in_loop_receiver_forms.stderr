@@ -1,0 +1,27 @@
+warning: authorization call inside a loop
+  --> $DIR/require_auth_in_loop_receiver_forms.rs:47:9
+   |
+LL |         addrs.get(index).unwrap().require_auth();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+   = note: `#[warn(require_auth_in_loop)]` on by default
+
+warning: authorization call inside a loop
+  --> $DIR/require_auth_in_loop_receiver_forms.rs:58:9
+   |
+LL |         env.storage().instance().get(&1).unwrap().require_auth();
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/require_auth_in_loop_receiver_forms.rs:64:9
+   |
+LL |         address.require_auth();
+   |         ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: 3 warnings emitted
+

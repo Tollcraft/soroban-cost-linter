@@ -1,0 +1,19 @@
+warning: authorization call inside a loop
+  --> $DIR/require_auth_in_loop_iterator_closure.rs:12:37
+   |
+LL |     addrs.iter().for_each(|address| address.require_auth());
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+   = note: `#[warn(require_auth_in_loop)]` on by default
+
+warning: authorization call inside a loop
+  --> $DIR/require_auth_in_loop_iterator_closure.rs:18:29
+   |
+LL |         .for_each(|address| address.require_auth_for_args(&[]));
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: 2 warnings emitted
+

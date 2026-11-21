@@ -22,6 +22,9 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`blind_storage_write`](blind_storage_write.md) | `warn` | blind storage write overwrites a previously written key without reading it back |
+| [`storage_write_of_unchanged_value`](storage_write_of_unchanged_value.md) | `warn` | writing an unchanged value back to storage |
+| [`large_value_decoded_for_one_field`](large_value_decoded_for_one_field.md) | `warn` | decoding a large stored value to read only a single field |
+| [`persistent_write_without_ttl_extension`](persistent_write_without_ttl_extension.md) | `warn` | persistent storage write without TTL extension — archival cost cliff |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 | [`duplicate_storage_key_construction`](duplicate_storage_key_construction.md) | `warn` | constructs the same storage key expression in multiple function bodies |
@@ -38,6 +41,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`crypto_hash_of_constant`](crypto_hash_of_constant.md) | `warn` | cryptographic hash of a compile-time constant value |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`map_insert_in_loop`](map_insert_in_loop.md) | `warn` | Map::insert called inside a loop |
+| [`map_iter_then_lookup`](map_iter_then_lookup.md) | `warn` | iterating map keys and looking up each key is quadratic |
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
 | [`formatted_panic_payload`](formatted_panic_payload.md) | `warn` | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract |
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |
@@ -49,6 +53,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
 | [`cross_contract_result_discarded`](cross_contract_result_discarded.md) | `warn` | cross-contract call result discarded |
 | [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | a value converted into the type it already has, or bounced through `Val` and back in one expression |
+| [`bytes_indexed_read_in_loop`](bytes_indexed_read_in_loop.md) | `warn` | per-byte Bytes::get call inside a loop |
+| [`sort_in_loop`](sort_in_loop.md) | `warn` | sorting a Soroban Vec inside a loop |
 
 ## Memory
 
@@ -63,6 +69,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`large_constant_array`](large_constant_array.md) | `warn` | embedding a large constant array in contract code |
+| [`address_equality_via_to_string`](address_equality_via_to_string.md) | `warn` | compares Address values through their string representations |
 
 ## Host
 
@@ -70,7 +77,9 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
+| [`deploy_in_loop`](deploy_in_loop.md) | `warn` | contract deployment inside a loop |
 | [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
+| [`address_from_string_in_loop`](address_from_string_in_loop.md) | `warn` | Address::from_string called inside a loop |
 
 ## Security
 

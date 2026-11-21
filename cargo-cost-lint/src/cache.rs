@@ -207,6 +207,11 @@ pub fn save_cache_entry(
 }
 
 /// Clears all cached entries in `cache_dir`.
+///
+/// Returns the number of JSON cache files successfully removed. If any JSON
+/// file cannot be deleted (locked, read-only, or other filesystem error) the
+/// function returns `Err` describing the first failure so callers can inform
+/// the user that residual cached artifacts remain.
 pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     if !cache_dir.exists() {
         return Ok(0);
@@ -222,7 +227,9 @@ pub fn clear_cache(cache_dir: &Path) -> Result<usize, String> {
     for entry in entries.flatten() {
         let path = entry.path();
         let is_json = path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json");
-        if is_json && fs::remove_file(path).is_ok() {
+        if is_json {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove cache file {}: {}", path.display(), e))?;
             count += 1;
         }
     }

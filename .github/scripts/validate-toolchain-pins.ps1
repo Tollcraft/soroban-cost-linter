@@ -27,7 +27,13 @@ $failed = $false
 function Check-NightlyInFile {
     param([string]$file)
 
-    $content = Get-Content -Raw $file
+    try {
+        $content = Get-Content -Raw $file -ErrorAction Stop
+    } catch {
+        Write-Error "::error file=$file::File not found: $file"
+        $script:failed = $true
+        return
+    }
     $pattern = 'nightly-\d{4}-\d{2}-\d{2}'
     $matches = [regex]::Matches($content, $pattern) | ForEach-Object { $_.Value } | Sort-Object -Unique
 
