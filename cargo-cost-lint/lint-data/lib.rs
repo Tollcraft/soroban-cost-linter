@@ -152,7 +152,6 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
-
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -630,7 +629,7 @@ rustc_session::declare_lint! {
 rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
-    "Symbol::to_string called inside a loop" 
+    "Symbol::to_string called inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -1016,7 +1015,7 @@ pub const LINT_METADATA: &[LintMeta] = &[
         name: "symbol_to_string_in_loop",
         category: LintCategory::Compute,
         description: "Symbol::to_string called inside a loop",
-        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or built once.", 
+        rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or built once.",
     },
 ];
 
