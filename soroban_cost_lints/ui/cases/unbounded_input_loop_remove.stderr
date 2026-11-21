@@ -1,0 +1,23 @@
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_remove.rs:79:5
+   |
+LL | /     for item in items.iter() {
+LL | |         env.storage().persistent().remove(&item); //~ WARNING loop is driven by caller-supplied input and performs storage writes ...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+   = note: `#[warn(unbounded_input_loop)]` on by default
+
+warning: loop is driven by caller-supplied input and performs storage writes inside the loop body
+  --> $DIR/unbounded_input_loop_remove.rs:87:5
+   |
+LL | /     for i in 0..items.len() {
+LL | |         env.storage().instance().remove(&i); //~ WARNING loop is driven by caller-supplied input and performs storage writes insid...
+LL | |     }
+   | |_____^
+   |
+   = help: the number of iterations is controlled by the caller and each iteration performs a storage write; bound the loop (e.g. cap iterations or batch the writes) so a single invocation cannot exhaust the budget
+
+warning: 2 warnings emitted
+
