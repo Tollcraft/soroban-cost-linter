@@ -23,6 +23,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- New lints `address_equality_via_to_string`, `address_from_string_in_loop`, `bytes_indexed_read_in_loop` and `sort_in_loop` for avoiding allocated Address string comparisons, repeated strkey parsing, per-byte Bytes host reads and sorting Soroban Vec values inside loops.
 - New lint `collection_len_in_loop_condition` detecting `.len()` calls on Soroban `Vec`/`Map` in a `while` loop condition when the collection is not mutated inside the loop, where the length is re-fetched through a metered host call on every iteration.
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
 - New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.
