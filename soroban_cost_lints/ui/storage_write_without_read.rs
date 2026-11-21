@@ -129,4 +129,13 @@ fn update_before_set(env: Env) {
     env.storage().instance().set(&1, &2); // Good
 }
 
+// --- Documented false negative: accidental initialiser exemption ---
+
+/// Not an initialiser, but its name contains `init`, so the substring rule in
+/// `is_initialiser` exempts it and this write is never reported. This is the
+/// false negative documented in `docs/lints/storage_write_without_read.md`.
+fn reinitialise_cache(env: Env) {
+    env.storage().instance().set(&1, &2); // Silent — exempt by accident (`init`)
+}
+
 fn main() {}
