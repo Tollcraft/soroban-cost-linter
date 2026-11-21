@@ -71,6 +71,10 @@
   * [storage\_write\_of\_unchanged\_value](lints/storage_write_of_unchanged_value.md)
   * [large\_value\_decoded\_for\_one\_field](lints/large_value_decoded_for_one_field.md)
   * [persistent\_write\_without\_ttl\_extension](lints/persistent_write_without_ttl_extension.md)
+  * [collection\_len\_from\_storage](lints/collection_len_from_storage.md)
+  * [crypto\_hash\_of\_loop\_invariant](lints/crypto_hash_of_loop_invariant.md)
+  * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
+  * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
 
 ## Branding
 

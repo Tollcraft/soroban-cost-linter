@@ -59,5 +59,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `nested_loop_storage_access` | deny | storage operation inside a nested loop — cost is O(n·m) | [Link](lints/nested_loop_storage_access.md) |
 | `persistent_storage_for_ephemeral_data` | warn | persistent storage write is removed on every path through the function | [Link](lints/persistent_storage_for_ephemeral_data.md) |
 | `redundant_address_clone` | warn | redundant clone on Address object | [Link](lints/redundant_address_clone.md) |
+| `collection_len_from_storage` | warn | stored collection loaded from storage only to call len() | [Link](lints/collection_len_from_storage.md) |
+| `crypto_hash_of_loop_invariant` | warn | cryptographic hash of a loop-invariant value inside a loop | [Link](lints/crypto_hash_of_loop_invariant.md) |
+| `string_type_as_storage_key` | warn | String storage key built from a short literal where a Symbol would do | [Link](lints/string_type_as_storage_key.md) |
+| `symbol_to_string_in_loop` | warn | Symbol::to_string called inside a loop | [Link](lints/symbol_to_string_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

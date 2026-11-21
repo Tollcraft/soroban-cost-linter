@@ -32,6 +32,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`instance_storage_write_in_loop`](instance_storage_write_in_loop.md) | `warn` | instance storage written inside a loop |
 | [`nested_loop_storage_access`](nested_loop_storage_access.md) | `deny` | storage operation inside a nested loop — cost is O(n·m) |
 | [`persistent_storage_for_ephemeral_data`](persistent_storage_for_ephemeral_data.md) | `warn` | persistent storage write is removed on every path through the function |
+| [`collection_len_from_storage`](collection_len_from_storage.md) | `warn` | stored collection loaded from storage only to call len() |
+| [`string_type_as_storage_key`](string_type_as_storage_key.md) | `warn` | String storage key built from a short literal where a Symbol would do |
 
 ## Compute
 
@@ -53,6 +55,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
 | [`cross_contract_result_discarded`](cross_contract_result_discarded.md) | `warn` | cross-contract call result discarded |
 | [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | a value converted into the type it already has, or bounced through `Val` and back in one expression |
+| [`crypto_hash_of_loop_invariant`](crypto_hash_of_loop_invariant.md) | `warn` | cryptographic hash of a loop-invariant value inside a loop |
+| [`symbol_to_string_in_loop`](symbol_to_string_in_loop.md) | `warn` | Symbol::to_string called inside a loop |
 
 ## Memory
 
