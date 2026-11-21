@@ -1,7 +1,6 @@
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
-use rustc_hir::def::Res;
-use rustc_hir::{Expr, ExprKind, HirId, PatKind, QPath};
+use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
@@ -21,16 +20,6 @@ const LEDGER_READ_METHODS: &[&str] = &[
     // invariant accessor on the same host object (#871).
     "max_live_until_ledger",
 ];
-
-/// `soroban_sdk::Env` — the def-path form the Env check now requires, so a
-/// local type whose printed name merely contains `Env` no longer satisfies it
-/// (#795).
-const SOROBAN_ENV_TYPES: &[&[&str]] = &[&["soroban_sdk", "Env"]];
-
-/// How many binding hops a receiver may be resolved through: `let l =
-/// env.ledger(); ... l.timestamp()` is one hop. Bounded so a pathological
-/// chain cannot walk the whole body.
-const MAX_BINDINGS_HOPS: usize = 3;
 
 impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {

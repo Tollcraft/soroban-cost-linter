@@ -15,6 +15,8 @@
 //! receiver/key even if they are distinct bindings. That keeps the analysis
 //! cheap and free of HIR-span plumbing at the cost of a known imprecision.
 
+use std::collections::HashSet;
+
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::source::snippet_opt;
 use rustc_hir as hir;
