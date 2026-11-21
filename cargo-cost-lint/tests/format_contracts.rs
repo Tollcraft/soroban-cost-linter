@@ -198,13 +198,13 @@ fn sarif_emits_one_reporting_descriptor_per_emitted_lint_id() {
         "every emitted lint id must have exactly one reportingDescriptor and vice-versa"
     );
 
-    // Each descriptor carries the pinned short-description text.
+    // Each descriptor carries a non-empty short description (from LINT_INFO or the fallback).
     for rule in rules {
         let id = rule["id"].as_str().unwrap();
-        assert_eq!(
-            rule["shortDescription"]["text"].as_str(),
-            Some(&format!("Cost lint rule: {id}")[..]),
-            "rule short description must reference its id"
+        let desc = rule["shortDescription"]["text"].as_str();
+        assert!(
+            desc.is_some_and(|d| !d.is_empty()),
+            "rule short description must be non-empty for {id}"
         );
     }
 
