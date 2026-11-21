@@ -1,0 +1,23 @@
+warning: stored collection loaded from storage only to call len()
+  --> $DIR/collection_len_from_storage.rs:73:29
+   |
+LL |         .get::<_, Vec<u32>>(&key) //~ WARNING stored collection loaded from storage only to call len()
+   |                             ^^^^
+   |
+   = help: use `has` on the key or keep a stored counter instead of decoding the whole collection
+note: the lint level is defined here
+  --> $DIR/collection_len_from_storage.rs:1:9
+   |
+LL | #![warn(collection_len_from_storage)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: stored collection loaded from storage only to call len()
+  --> $DIR/collection_len_from_storage.rs:82:34
+   |
+LL |         .get::<_, Map<u32, u32>>(&key) //~ WARNING stored collection loaded from storage only to call len()
+   |                                  ^^^^
+   |
+   = help: use `has` on the key or keep a stored counter instead of decoding the whole collection
+
+warning: 2 warnings emitted
+

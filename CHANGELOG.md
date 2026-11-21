@@ -24,6 +24,10 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - New lints `address_equality_via_to_string`, `address_from_string_in_loop`, `bytes_indexed_read_in_loop` and `sort_in_loop` for avoiding allocated Address string comparisons, repeated strkey parsing, per-byte Bytes host reads and sorting Soroban Vec values inside loops.
+- New lint `collection_len_from_storage` detecting a stored `Vec`/`Map`/`Bytes` read with `get` that is immediately unwrapped and used only for `len()` or `is_empty()`, where `has` or a stored counter avoids decoding the whole collection.
+- New lint `crypto_hash_of_loop_invariant` detecting `sha256`/`keccak256` calls on `env.crypto()` inside a loop whose argument is a loop-invariant local, so the digest can be computed once before the loop.
+- New lint `string_type_as_storage_key` detecting `get`/`has`/`set` calls whose key is a `String::from_str` of a short literal, suggesting `symbol_short!` or a fixed-width integer key.
+- New lint `symbol_to_string_in_loop` detecting `Symbol::to_string()` calls inside `for`, `while` and `loop` bodies, where comparing symbols directly or hoisting the conversion avoids a host allocation per iteration.
 - New lint `collection_len_in_loop_condition` detecting `.len()` calls on Soroban `Vec`/`Map` in a `while` loop condition when the collection is not mutated inside the loop, where the length is re-fetched through a metered host call on every iteration.
 - New lint `symbol_new_for_short_literal` detecting `Symbol::new(&env, "literal")` calls where the literal is a valid short symbol (≤ 9 chars, alphanumeric + underscore) and suggesting the `symbol_short!` macro for compile-time creation.
 - New lint `bytes_append_in_loop` flagging growth-method calls (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK containers (`Bytes`, `Vec`, `Map`) inside loop bodies.

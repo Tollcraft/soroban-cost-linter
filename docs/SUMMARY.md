@@ -75,6 +75,10 @@
   * [address\_from\_string\_in\_loop](lints/address_from_string_in_loop.md)
   * [bytes\_indexed\_read\_in\_loop](lints/bytes_indexed_read_in_loop.md)
   * [sort\_in\_loop](lints/sort_in_loop.md)
+  * [collection\_len\_from\_storage](lints/collection_len_from_storage.md)
+  * [crypto\_hash\_of\_loop\_invariant](lints/crypto_hash_of_loop_invariant.md)
+  * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
+  * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
 
 ## Branding
 
