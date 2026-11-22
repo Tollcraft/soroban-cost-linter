@@ -111,6 +111,29 @@ fn bad_ufcs_auth_for_args_in_loop(env: Env) {
     }
 }
 
+// --- Negative: test-only code is exempt (harness compiles without --test) ---
+
+#[cfg(test)]
+fn test_helper_auth_in_loop(env: Env) {
+    let addr = Address;
+    for _ in 0..10 {
+        addr.require_auth(); // Good — test helper, not a metered host call
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Address;
+
+    #[test]
+    fn test_module_auth_in_loop() {
+        let addr = Address;
+        for _ in 0..10 {
+            addr.require_auth(); // Good — test module, not a metered host call
+        }
+    }
+}
+
 // --- Negative (should not warn): authorization outside a loop ---
 
 fn good_auth_outside_loop(env: Env) {
@@ -146,6 +169,19 @@ fn allowed_auth_in_loop(env: Env) {
     for _ in 0..10 {
         addr.require_auth(); // Good (allowed)
     }
+}
+
+// --- Negative: closures and iterator adapters are out of scope ---
+
+fn good_for_each_closure(env: Env, addrs: [Address; 5]) {
+    addrs.iter().for_each(|a| a.require_auth()); // Good — closure, not a loop body
+}
+
+// The hoisted equivalent is equally silent: the receiver is out of reach when
+// the closure is defined away from the iterator that invokes it.
+fn good_hoisted_closure(env: Env, addrs: [Address; 5]) {
+    let authorize = |a: &Address| a.require_auth();
+    addrs.iter().for_each(authorize);
 }
 
 fn main() {}

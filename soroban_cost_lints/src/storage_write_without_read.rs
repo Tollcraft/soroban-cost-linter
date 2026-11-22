@@ -45,12 +45,15 @@ const STORAGE_WRITE_WITHOUT_READ_HELP: &str =
     "consider reading the value before writing or using `.has()` to check existence";
 
 /// Function names treated as deliberate initialisers, where writing before any
-/// read is expected: constructors and admin setup. Matching is intentionally
-/// substring-based so `initialize`, `init_owner`, and `set_admin_key` are all
-/// covered by one rule, at the cost of also matching unrelated names that
-/// happen to contain `init` or `set_admin`.
+/// read is expected: constructors and admin setup. `init` and `set_admin` are
+/// substring-matched so `initialize`, `init_owner` and `set_admin_key` are all
+/// covered; Soroban constructors `__constructor` and hand-written factories
+/// named `new` are matched exactly, so `new_user` and `renew` stay in scope.
 fn is_initialiser(fn_name: &str) -> bool {
-    fn_name.contains("init") || fn_name.contains("set_admin")
+    fn_name.contains("init")
+        || fn_name.contains("set_admin")
+        || fn_name == "__constructor"
+        || fn_name == "new"
 }
 
 /// Whether `receiver` is one of the Soroban storage accessor types
@@ -180,10 +183,17 @@ mod tests {
 
     #[test]
     fn initialisers_are_recognised_by_substring() {
-        for name in ["initialize", "init_owner", "set_admin", "set_admin_key"] {
+        for name in [
+            "initialize",
+            "init_owner",
+            "set_admin",
+            "set_admin_key",
+            "__constructor",
+            "new",
+        ] {
             assert!(is_initialiser(name), "{name} should be an initialiser");
         }
-        for name in ["transfer", "record_set", "read_admin_flag"] {
+        for name in ["transfer", "record_set", "read_admin_flag", "new_user"] {
             assert!(!is_initialiser(name), "{name} should not be an initialiser");
         }
     }

@@ -13,6 +13,11 @@
 //! `soroban_cost_lints/ui/require_auth_in_loop.rs` so a future change to the
 //! analysis has to make a deliberate decision about it.
 //!
+//! Test code is exempt: authorization in `#[cfg(test)]` helpers and test
+//! modules exercises stubs, so a warning there is noise rather than a metered
+//! cost finding. The guard uses `clippy_utils::is_in_test` and runs before the
+//! enclosing-loop walk.
+//!
 //! Call syntax
 //! -----------
 //!
@@ -22,11 +27,12 @@
 //! `Address::require_auth(some_addr)` must still be flagged.
 
 use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::is_in_test;
 use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::{REQUIRE_AUTH_IN_LOOP, enclosing_loop_or_closure, is_type_match};
+use crate::{REQUIRE_AUTH_IN_LOOP, enclosing_loop, is_type_match};
 
 declare_lint_pass!(RequireAuthInLoop => [REQUIRE_AUTH_IN_LOOP]);
 
@@ -110,8 +116,8 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
     ///
     /// The conditions are checked in cost order, cheapest first: the method name
     /// is read straight off the segment (or path), the receiver type needs a
-    /// typeck lookup, and [`enclosing_loop_or_closure`] walks the HIR to the
-    /// surrounding loop or multi-call closure only for matching calls.
+    /// typeck lookup, and [`enclosing_loop`] walks the HIR to the surrounding
+    /// loop only for matching calls.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         let is_auth_call = match expr.kind {
             hir::ExprKind::MethodCall(path_segment, receiver, _, _) => {
@@ -124,7 +130,10 @@ impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
         if !is_auth_call {
             return;
         }
-        if enclosing_loop_or_closure(cx, expr).is_none() {
+        if is_in_test(cx.tcx, expr.hir_id) {
+            return;
+        }
+        if enclosing_loop(cx, expr).is_none() {
             return;
         }
         span_lint_and_help(
