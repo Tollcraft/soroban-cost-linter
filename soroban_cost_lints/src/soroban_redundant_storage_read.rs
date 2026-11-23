@@ -233,6 +233,9 @@ mod tests {
         assert!(!is_storage_accessor_path("core::option::Option"));
     }
 
+    // Note: try_get is tracked in STORAGE_READ_METHODS, but in the fixture
+    // try_get(&k); set(&k, ..); get(&k), the intervening set clears the read,
+    // so no redundant read warning is emitted.
     #[test]
     fn anchored_paths_require_a_soroban_root() {
         assert!(is_storage_accessor_path(
