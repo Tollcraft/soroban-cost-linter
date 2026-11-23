@@ -24,7 +24,15 @@ LL |         addr.req$DIRre_auth(); // Should Warn — same address every iterat
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:59:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:61:9
+   |
+LL |         item.req$DIRre_auth(); // Should Warn — authorization inside the loop body
+   |         ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: collect distinct addresses first and authorize each once before the loop
+
+warning: authorization call inside a loop
+  --> $DIR/req$DIRre_auth_in_loop.rs:81:9
    |
 LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -32,7 +40,7 @@ LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:68:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:90:9
    |
 LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -40,7 +48,7 @@ LL |         addr.req$DIRre_auth_for_args(&[i]); // Should Warn
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:78:13
+  --> $DIR/req$DIRre_auth_in_loop.rs:100:13
    |
 LL |             addr.req$DIRre_auth(); // Should Warn
    |             ^^^^^^^^^^^^^^^^^^^
@@ -48,7 +56,7 @@ LL |             addr.req$DIRre_auth(); // Should Warn
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:90:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:112:9
    |
 LL |         addr.req$DIRre_auth(); // False positive — each iteration authorizes a different address
    |         ^^^^^^^^^^^^^^^^^^^
@@ -56,7 +64,7 @@ LL |         addr.req$DIRre_auth(); // False positive — each iteration authori
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:102:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:124:9
    |
 LL |         Address::req$DIRre_auth(&addr); // Should Warn — UFCS form in a loop
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -64,12 +72,12 @@ LL |         Address::req$DIRre_auth(&addr); // Should Warn — UFCS form in a l
    = help: collect distinct addresses first and authorize each once before the loop
 
 warning: authorization call inside a loop
-  --> $DIR/req$DIRre_auth_in_loop.rs:110:9
+  --> $DIR/req$DIRre_auth_in_loop.rs:132:9
    |
 LL |         Address::req$DIRre_auth_for_args(&addr, &[i]); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: collect distinct addresses first and authorize each once before the loop
 
-warning: 9 warnings emitted
+warning: 10 warnings emitted
 
