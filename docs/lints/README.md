@@ -99,6 +99,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`require_auth_in_loop`](require_auth_in_loop.md) | `warn` | Address::require_auth or require_auth_for_args called inside a loop |
 | [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
+| [`hardcoded_network_id`](hardcoded_network_id.md) | `warn` | hardcoded testnet network id in contract code |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).

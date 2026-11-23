@@ -14,7 +14,11 @@ pub mod soroban_sdk {
         }
     }
 
+    #[derive(Clone)]
     pub struct Address;
+    impl Clone for Address {
+        fn clone(&self) -> Self { Address }
+    }
     impl Address {
         pub fn require_auth(&self) {}
         pub fn require_auth_for_args(&self, _args: &[i32]) {}
@@ -41,11 +45,18 @@ fn bad_double_require_auth(env: Env) {
     addr.require_auth(); //~ WARNING require_auth already called on this address
 }
 
-/// Same address, `require_auth_for_args` called twice.
+/// Same address, `require_auth_for_args` called twice with the same arguments.
 fn bad_double_require_auth_for_args(env: Env) {
     let addr = Address;
     addr.require_auth_for_args(&[1]); // first — no warning
-    addr.require_auth_for_args(&[2]); //~ WARNING require_auth already called on this address
+    addr.require_auth_for_args(&[1]); //~ WARNING require_auth already called on this address
+}
+
+/// Same address, `require_auth_for_args` called with different arguments.
+fn good_double_require_auth_for_args_different(env: Env) {
+    let addr = Address;
+    addr.require_auth_for_args(&[1]);
+    addr.require_auth_for_args(&[2]); // Good — different args
 }
 
 /// Same address, mixed `require_auth` and `require_auth_for_args`. Both are
@@ -167,6 +178,28 @@ fn bad_user_mock_env_does_not_reset_tracking() {
     addr.require_auth();
     env.invoke_contract();
     addr.require_auth(); //~ WARNING require_auth already called on this address
+}
+
+// Reference and clone address normalization cases
+fn bad_ref_address(env: Env) {
+    let addr = Address;
+    addr.require_auth();
+    (&addr).require_auth(); //~ WARNING require_auth already called on this address
+}
+
+fn bad_cloned_address(env: Env) {
+    let addr = Address;
+    addr.require_auth();
+    addr.clone().require_auth(); //~ WARNING require_auth already called on this address
+}
+
+fn get_address() -> Address {
+    Address
+}
+
+fn bad_unresolved_expression_fallback() {
+    get_address().require_auth();
+    get_address().require_auth(); //~ WARNING require_auth already called on this address
 }
 
 fn main() {}

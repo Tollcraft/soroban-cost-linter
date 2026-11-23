@@ -50,6 +50,7 @@ mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
 mod formatted_assert_payload;
+mod hardcoded_network_id;
 mod host_container_clone_in_loop;
 mod include_bytes_in_contract;
 mod instance_storage_write_in_loop;
@@ -169,7 +170,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         FORMATTED_ASSERT_PAYLOAD,
         STRING_FROM_STR_IN_LOOP,
         VEC_REMOVE_FRONT_IN_LOOP,
-        TOKEN_TRANSFER_IN_LOOP,
+        HARDCODED_NETWORK_ID,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -287,7 +288,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
-    lint_store.register_late_pass(|_| Box::new(token_transfer_in_loop::TokenTransferInLoop));
+    lint_store.register_late_pass(|_| Box::new(hardcoded_network_id::HardcodedNetworkId));
     lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
     lint_store.register_late_pass(|_| {
         Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
@@ -720,9 +721,9 @@ rustc_session::declare_lint! {
 }
 
 rustc_session::declare_lint! {
-    pub TOKEN_TRANSFER_IN_LOOP,
+    pub HARDCODED_NETWORK_ID,
     Warn,
-    "token transfer called through a contract client inside a loop"
+    "a network id or passphrase compared against a hardcoded literal"
 }
 
 pub struct SorobanCostLints;
@@ -1159,10 +1160,10 @@ pub const LINT_METADATA: &[LintMeta] = &[
         rationale: "Removing the first element shifts every remaining element in the host Vec, so a drain costs O(n^2) copies; accumulating in a native Vec and rebuilding once avoids the repeated shifts.",
     },
     LintMeta {
-        name: "token_transfer_in_loop",
-        category: LintCategory::Host,
-        description: "token transfer called through a contract client inside a loop",
-        rationale: "A token transfer is a cross-contract invocation plus at least two storage writes, the most expensive shape a contract has; repeating it in a loop multiplies that cost by a caller-controlled factor, so it belongs batched or replaced by a claim pattern.",
+        name: "hardcoded_network_id",
+        category: LintCategory::Security,
+        description: "a network id or passphrase compared against a hardcoded literal",
+        rationale: "A literal network id or passphrase binds the contract to one network and to the value that network had when it was written; reading it from the ledger keeps a single build correct on public, testnet and any future network instead of failing safely only on the one it was compiled against.",
     },
 ];
 
@@ -1236,7 +1237,7 @@ dylint_lint_impl! {
         FORMATTED_ASSERT_PAYLOAD,
         STRING_FROM_STR_IN_LOOP,
         VEC_REMOVE_FRONT_IN_LOOP,
-        TOKEN_TRANSFER_IN_LOOP,
+        HARDCODED_NETWORK_ID,
     ]
 }
 
@@ -1390,8 +1391,33 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 ];
 
 /// Methods on [`SOROBAN_CONTAINER_TYPES`] that grow the container's backing
-/// buffer, causing increasingly expensive host-side work per call.
-const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
+/// buffer, typed per container so each method is only watched on the types
+/// that define it.
+const BYTES_APPEND_METHODS: &[(&[&str], &[&str])] = &[
+    (
+        SOROBAN_CONTAINER_TYPES[0],
+        &[
+            "append",
+            "push_back",
+            "insert",
+            "extend_from_array",
+            "extend_from_slice",
+        ],
+    ),
+    (
+        SOROBAN_CONTAINER_TYPES[1],
+        &[
+            "append",
+            "push_back",
+            "push_front",
+            "insert",
+            "extend_from_array",
+            "extend_from_slice",
+            "concat",
+        ],
+    ),
+    (SOROBAN_CONTAINER_TYPES[2], &["insert"]),
+];
 
 pub(crate) fn matches_any_path<'tcx>(
     cx: &LateContext<'tcx>,
@@ -2090,7 +2116,8 @@ rustc_session::impl_lint_pass!(ContractCallInLoop => [CONTRACT_CALL_IN_LOOP]);
 impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "invoke_contract"
+            && (path_segment.ident.name.as_str() == "invoke_contract"
+                || path_segment.ident.name.as_str() == "try_invoke_contract")
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
@@ -2183,34 +2210,33 @@ pub struct BytesAppendInLoop;
 
 rustc_session::impl_lint_pass!(BytesAppendInLoop => [BYTES_APPEND_IN_LOOP]);
 
-/// Detection: for every `MethodCall` whose segment is one of
-/// [`BYTES_APPEND_METHODS`], peel references off the receiver and confirm
-/// the ADT belongs to [`SOROBAN_CONTAINER_TYPES`]. A match is reported
-/// only when [`enclosing_loop`] returns `Some`. We deliberately do **not**
+/// Detection: for every `MethodCall`, check if the receiver ADT matches a container
+/// in [`BYTES_APPEND_METHODS`] and the method is one of its associated growth methods.
+/// A match is reported only when [`enclosing_loop`] returns `Some`. We deliberately do **not**
 /// attempt to detect whether the loop could be batched — that reasoning
 /// is runtime-dependent and would inflate the false-positive rate.
 impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
     /// Flags a growth-method call on a container type inside a loop.
     ///
     /// The receiver type is matched against [`SOROBAN_CONTAINER_TYPES`] and
-    /// the method name against [`BYTES_APPEND_METHODS`].  Only syntactic
-    /// loops are considered; multi-call closures are not flagged here.
+    /// the method name against the methods defined in [`BYTES_APPEND_METHODS`].
+    /// Only syntactic loops are considered; multi-call closures are not flagged here.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
-            if !BYTES_APPEND_METHODS.contains(&method_name) {
-                return;
-            }
 
-            let is_container = if let Some(adt_def) =
+            let is_container_growth = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
+                BYTES_APPEND_METHODS.iter().any(|(container, methods)| {
+                    methods.contains(&method_name)
+                        && match_soroban_def_path(cx, adt_def.did(), container)
+                })
             } else {
                 false
             };
 
-            if is_container && enclosing_loop(cx, expr).is_some() {
+            if is_container_growth && enclosing_loop(cx, expr).is_some() {
                 span_lint_and_help(
                     cx,
                     BYTES_APPEND_IN_LOOP,

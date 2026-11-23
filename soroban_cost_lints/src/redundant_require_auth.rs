@@ -29,7 +29,7 @@
 //! false positives. The reasoning for the reset lives on the call site in
 //! [`AuthVisitor::check_stmt_expr`].
 
-use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::diagnostics::span_lint_and_then;
 use clippy_utils::source::snippet_opt;
 use rustc_hir::intravisit::{Visitor, walk_expr, walk_stmt};
 use rustc_hir::{self as hir, ExprKind, StmtKind};
@@ -41,6 +41,12 @@ use std::collections::HashMap;
 use crate::{REDUNDANT_REQUIRE_AUTH, match_soroban_def_path, ty_adt_def};
 
 declare_lint_pass!(RedundantRequireAuth => [REDUNDANT_REQUIRE_AUTH]);
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+enum AddressKey {
+    Local(hir::HirId),
+    Snippet(String),
+}
 
 /// Address authorization methods that are equivalent for this lint's purpose.
 /// `require_auth_for_args` authorizes the same address for a specific argument
@@ -68,8 +74,9 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
         _span: rustc_span::Span,
         _id: LocalDefId,
     ) {
-        // Address source text -> span of the first authorization call on it.
-        let mut first_auth: HashMap<String, rustc_span::Span> = HashMap::new();
+        // Address -> (span of first authorization call on it, optional arg text)
+        let mut first_auth: HashMap<AddressKey, (rustc_span::Span, Option<String>)> =
+            HashMap::new();
         let mut visitor = AuthVisitor {
             cx,
             first_auth: &mut first_auth,
@@ -81,7 +88,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
 /// Walks one function body, tracking authorizations in a caller-provided map.
 struct AuthVisitor<'v, 'tcx> {
     cx: &'v LateContext<'tcx>,
-    first_auth: &'v mut HashMap<String, rustc_span::Span>,
+    first_auth: &'v mut HashMap<AddressKey, (rustc_span::Span, Option<String>)>,
 }
 
 impl<'v, 'tcx> AuthVisitor<'v, 'tcx> {
@@ -90,7 +97,7 @@ impl<'v, 'tcx> AuthVisitor<'v, 'tcx> {
     /// inside a larger expression is out of scope, which keeps the pass a
     /// single linear scan with no dataflow.
     fn check_stmt_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        let ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind else {
+        let ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind else {
             return;
         };
         let method = path_segment.ident.name.as_str();
@@ -103,26 +110,37 @@ impl<'v, 'tcx> AuthVisitor<'v, 'tcx> {
             return;
         }
 
-        // `require_auth` / `require_auth_for_args` on an `Address`. The
-        // address is keyed by its printed source text.
+        // `require_auth` / `require_auth_for_args` on an `Address`.
         if REQUIRE_AUTH_METHODS.contains(&method)
             && is_address_receiver(self.cx, receiver)
-            && let Some(key_text) = snippet_opt(self.cx, receiver.span)
+            && let Some(key) = normalize_address_receiver(self.cx, receiver)
         {
-            if let Some(&_prev_span) = self.first_auth.get(&key_text) {
-                span_lint_and_help(
-                    self.cx,
-                    REDUNDANT_REQUIRE_AUTH,
-                    expr.span,
-                    "require_auth already called on this address in this function",
-                    None,
-                    "remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation",
-                );
+            let current_args = if method == "require_auth_for_args" && !args.is_empty() {
+                snippet_opt(self.cx, args[0].span)
             } else {
-                // `entry(..).or_insert(..)` keeps the first span, but a
-                // plain insert would be equivalent here since the key
-                // is only absent on this branch.
-                self.first_auth.entry(key_text).or_insert(expr.span);
+                None
+            };
+
+            if let Some(&(prev_span, ref prev_args)) = self.first_auth.get(&key) {
+                let is_different_args = match (prev_args, &current_args) {
+                    (Some(prev), Some(curr)) => prev != curr,
+                    _ => false,
+                };
+
+                if !is_different_args {
+                    span_lint_and_then(
+                        self.cx,
+                        REDUNDANT_REQUIRE_AUTH,
+                        expr.span,
+                        "require_auth already called on this address in this function",
+                        |diag| {
+                            diag.span_note(prev_span, "first authorization of this address");
+                            diag.help("remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation");
+                        },
+                    );
+                }
+            } else {
+                self.first_auth.insert(key, (expr.span, current_args));
             }
         }
     }
@@ -172,4 +190,31 @@ fn is_address_receiver<'tcx>(cx: &LateContext<'tcx>, receiver: &'tcx hir::Expr<'
     ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs()).is_some_and(|adt_def| {
         match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
     })
+}
+
+/// Normalizes an address receiver expression by peeling references and `clone()`
+/// calls, resolving local variables to their `HirId`, and falling back to snippet text.
+fn normalize_address_receiver<'tcx>(
+    cx: &LateContext<'tcx>,
+    mut expr: &'tcx hir::Expr<'tcx>,
+) -> Option<AddressKey> {
+    loop {
+        match expr.kind {
+            ExprKind::AddrOf(_, _, inner) => {
+                expr = inner;
+            }
+            ExprKind::MethodCall(path_segment, receiver, args, _)
+                if path_segment.ident.name.as_str() == "clone" && args.is_empty() =>
+            {
+                expr = receiver;
+            }
+            _ => break,
+        }
+    }
+    if let ExprKind::Path(ref qpath) = expr.kind
+        && let rustc_hir::def::Res::Local(hir_id) = cx.qpath_res(qpath, expr.hir_id)
+    {
+        return Some(AddressKey::Local(hir_id));
+    }
+    snippet_opt(cx, expr.span).map(AddressKey::Snippet)
 }
