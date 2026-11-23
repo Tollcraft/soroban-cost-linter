@@ -27,7 +27,7 @@ impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
             }
             // Get the type of the value argument (second arg)
             let value_expr = &args[1];
-            let value_ty = cx.typeck_results().expr_ty(value_expr);
+            let value_ty = cx.typeck_results().expr_ty(value_expr).peel_refs();
             // Check if the value type is Option<T> at the top level
             if is_option_type(cx, value_ty) {
                 let help = "storage already models absence (missing key = None); \
