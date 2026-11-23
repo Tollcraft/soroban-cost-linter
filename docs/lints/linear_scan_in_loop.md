@@ -12,11 +12,13 @@ loop body when the scanned collection does not change between iterations.
 
 The following methods are flagged when called on a Soroban collection:
 
-| Method       | Type        | Cost      |
-| ------------ | ----------- | --------- |
-| `.contains`  | `Vec`       | O(n) scan |
-| `.position`  | `Vec`       | O(n) scan |
-| `.find`      | `Vec`       | O(n) scan |
+| Method            | Type        | Cost      |
+| ----------------- | ----------- | --------- |
+| `.contains`       | `Vec`       | O(n) scan |
+| `.first_index_of` | `Vec`       | O(n) scan |
+| `.last_index_of`  | `Vec`       | O(n) scan |
+| `.binary_search`  | `Vec`       | O(log n)  |
+| `.contains_key`   | `Map`       | O(n) scan |
 
 ## Why is this bad?
 

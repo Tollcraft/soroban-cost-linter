@@ -1223,7 +1223,13 @@ const SOROBAN_COLLECTION_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "map", "Map"],
 ];
 
-const LINEAR_SCAN_METHODS: &[&str] = &["contains", "position", "find"];
+const LINEAR_SCAN_METHODS: &[&str] = &[
+    "contains",
+    "first_index_of",
+    "last_index_of",
+    "binary_search",
+    "contains_key",
+];
 
 /// Host calls that live directly on `Env` rather than on an accessor type, and
 /// whose result is constant for the whole invocation.
@@ -2521,7 +2527,22 @@ impl<'tcx> LateLintPass<'tcx> for LinearScanInLoop {
             let peeled_ty = receiver_ty.peel_refs();
 
             let is_collection = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                matches_any_path(cx, adt_def.did(), SOROBAN_COLLECTION_TYPES)
+                let did = adt_def.did();
+                match method_name {
+                    "contains" | "first_index_of" | "last_index_of" | "binary_search" => {
+                        matches_any_path(
+                            cx,
+                            did,
+                            &[&["soroban_sdk", "vec", "Vec"], &["soroban_sdk", "Vec"]],
+                        )
+                    }
+                    "contains_key" => matches_any_path(
+                        cx,
+                        did,
+                        &[&["soroban_sdk", "map", "Map"], &["soroban_sdk", "Map"]],
+                    ),
+                    _ => false,
+                }
             } else {
                 false
             };
