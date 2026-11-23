@@ -9,6 +9,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `string_concat_in_loop` now sees a byte buffer grow through a path call such as `Vec::append(&mut bytes, &mut piece)`, `Vec::push(&mut bytes, b)` or `<Vec<u8> as Extend<u8>>::extend(&mut bytes, ..)`, matching the method-call form, and treats `Vec::clear(&mut bytes)` as a reset like `bytes.clear()`.
 - `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
 - `unbounded_input_loop` now identifies caller-sized collections by exact Soroban
   definition path (`soroban_sdk::vec::Vec`, `soroban_sdk::map::Map`,
