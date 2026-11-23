@@ -77,6 +77,7 @@ mod string_concat_in_loop;
 mod string_from_str_in_loop;
 mod string_type_as_storage_key;
 mod symbol_to_string_in_loop;
+mod token_transfer_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
 mod val_conversion_chain;
@@ -1362,7 +1363,13 @@ const SOROBAN_COLLECTION_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "map", "Map"],
 ];
 
-const LINEAR_SCAN_METHODS: &[&str] = &["contains", "position", "find"];
+const LINEAR_SCAN_METHODS: &[&str] = &[
+    "contains",
+    "first_index_of",
+    "last_index_of",
+    "binary_search",
+    "contains_key",
+];
 
 /// Host calls that live directly on `Env` rather than on an accessor type, and
 /// whose result is constant for the whole invocation.
@@ -2322,23 +2329,37 @@ pub struct MapInsertInLoop;
 rustc_session::impl_lint_pass!(MapInsertInLoop => [MAP_INSERT_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
-    /// Flags a `.insert()` method call whose receiver is a
-    /// `soroban_sdk::Map` when it appears inside a syntactic loop.
+    /// Flags a `.set()` or `.insert()` method call whose receiver is a
+    /// `soroban_sdk::Map` (or `Vec::insert`) when it appears inside a syntactic loop.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = &expr.kind {
-            if path_segment.ident.name.as_str() != "insert" {
-                return;
-            }
-
-            let is_map = if let Some(adt_def) =
+            let method_name = path_segment.ident.name.as_str();
+            let is_matched = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Map"])
+                match method_name {
+                    "set" => matches_any_path(
+                        cx,
+                        adt_def.did(),
+                        &[&["soroban_sdk", "map", "Map"], &["soroban_sdk", "Map"]],
+                    ),
+                    "insert" => matches_any_path(
+                        cx,
+                        adt_def.did(),
+                        &[
+                            &["soroban_sdk", "map", "Map"],
+                            &["soroban_sdk", "Map"],
+                            &["soroban_sdk", "vec", "Vec"],
+                            &["soroban_sdk", "Vec"],
+                        ],
+                    ),
+                    _ => false,
+                }
             } else {
                 false
             };
 
-            if is_map && enclosing_loop(cx, expr).is_some() {
+            if is_matched && enclosing_loop(cx, expr).is_some() {
                 span_lint_and_help(
                     cx,
                     MAP_INSERT_IN_LOOP,
@@ -2671,7 +2692,22 @@ impl<'tcx> LateLintPass<'tcx> for LinearScanInLoop {
             let peeled_ty = receiver_ty.peel_refs();
 
             let is_collection = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
-                matches_any_path(cx, adt_def.did(), SOROBAN_COLLECTION_TYPES)
+                let did = adt_def.did();
+                match method_name {
+                    "contains" | "first_index_of" | "last_index_of" | "binary_search" => {
+                        matches_any_path(
+                            cx,
+                            did,
+                            &[&["soroban_sdk", "vec", "Vec"], &["soroban_sdk", "Vec"]],
+                        )
+                    }
+                    "contains_key" => matches_any_path(
+                        cx,
+                        did,
+                        &[&["soroban_sdk", "map", "Map"], &["soroban_sdk", "Map"]],
+                    ),
+                    _ => false,
+                }
             } else {
                 false
             };

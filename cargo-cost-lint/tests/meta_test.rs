@@ -121,6 +121,18 @@ fn count_word(count: usize) -> String {
 }
 
 #[test]
+fn test_count_word() {
+    assert_eq!(count_word(21), "Twenty-one");
+    assert_eq!(count_word(30), "Thirty");
+    assert_eq!(count_word(40), "Forty");
+    assert_eq!(count_word(41), "Forty-one");
+    assert_eq!(count_word(45), "Forty-five");
+    assert_eq!(count_word(55), "Fifty-five");
+    assert_eq!(count_word(57), "Fifty-seven");
+    assert_eq!(count_word(60), "Sixty");
+}
+
+#[test]
 fn test_severity_rationale_lint_count() {
     let ws = workspace_dir();
     let doc = fs::read_to_string(ws.join("docs/severity_rationale.md"))
