@@ -44,6 +44,7 @@ mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
 mod host_container_clone_in_loop;
+mod include_bytes_in_contract;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod ledger_context_read_in_loop;
@@ -134,6 +135,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         AUTHS_READ_IN_LOOP,
         REPEATED_INSTANCE_WRITE_SAME_KEY,
         HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -226,6 +228,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     });
     lint_store
         .register_late_pass(|_| Box::new(host_container_clone_in_loop::HostContainerCloneInLoop));
+    lint_store.register_late_pass(|_| Box::new(include_bytes_in_contract::IncludeBytesInContract));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -383,6 +386,12 @@ rustc_session::declare_lint! {
     pub HOST_CONTAINER_CLONE_IN_LOOP,
     Warn,
     "cloning a host container inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub INCLUDE_BYTES_IN_CONTRACT,
+    Warn,
+    "include_bytes! or include_str! data embedded in contract code"
 }
 
 rustc_session::declare_lint! {
@@ -874,6 +883,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "cloning a host container inside a loop",
         rationale: "Cloning a host container (Vec, Map, Bytes, String) deep-copies the host object every iteration; borrowing the container or hoisting the clone avoids repeated host allocations.",
     },
+    LintMeta {
+        name: "include_bytes_in_contract",
+        category: LintCategory::Memory,
+        description: "include_bytes! or include_str! data embedded in contract code",
+        rationale: "Embedding data files into the contract using include_bytes! or include_str! inflates Wasm bytecode size and increases deployment fees; load the data from storage or pass it as an invocation argument instead.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -929,6 +944,7 @@ dylint_lint_impl! {
         AUTHS_READ_IN_LOOP,
         REPEATED_INSTANCE_WRITE_SAME_KEY,
         HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
     ]
 }
 

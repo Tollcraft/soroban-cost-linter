@@ -70,6 +70,7 @@
   * [auths\_read\_in\_loop](lints/auths_read_in_loop.md)
   * [repeated\_instance\_write\_same\_key](lints/repeated_instance_write_same_key.md)
   * [host\_container\_clone\_in\_loop](lints/host_container_clone_in_loop.md)
+  * [include\_bytes\_in\_contract](lints/include_bytes_in_contract.md)
 
 ## Branding
 
