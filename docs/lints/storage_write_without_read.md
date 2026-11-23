@@ -11,7 +11,19 @@ sidebar_position: 20
 
 ## What it does
 
-Flags storage writes (`.set()`) on a storage object when the same key is never read back with `.get()` or checked with `.has()` — indicating a write whose value is never used.
+Flags storage writes (`.set()`) on a storage object when the same key was not observed first on the same storage object. Any of `.get()`, `.try_get()`, `.has()`, `.remove()` or `.update()` earlier in the function body counts as observing the key, so a `.set()` after one of them is not reported.
+
+## Initialiser exemption
+
+Functions whose name marks them as initialisers are skipped entirely, because writing before any read is expected there. The rule is a plain substring test on the function name:
+
+```rust
+fn_name.contains("init") || fn_name.contains("set_admin")
+```
+
+So `initialize`, `init_owner`, `set_admin` and `set_admin_key` are all exempt by one rule.
+
+> **Warning:** because the match is a substring test, it also exempts unrelated functions whose names happen to contain `init` or `set_admin`. For example, `reinitialise_cache` contains `init` and is never reported, even when it writes a key it never read. This false negative is pinned by the `reinitialise_cache` case in the UI fixture.
 
 ## Why is this bad
 

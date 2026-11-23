@@ -1,0 +1,27 @@
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs.rs:34:17
+   |
+LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn — imported path
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+   = note: `#[warn(string_concat_in_loop)]` on by default
+
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs.rs:35:17
+   |
+LL |         let _ = soroban_sdk::String::from_bytes(&env, &bytes); // Should Warn — fully qualified
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs.rs:36:17
+   |
+LL |         let _ = <String>::from_bytes(&env, &bytes); // Should Warn — type-relative
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+
+warning: 3 warnings emitted
+
