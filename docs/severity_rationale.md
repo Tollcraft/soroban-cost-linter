@@ -31,7 +31,7 @@ This means a `deny` in `budget.toml` overrides the default, and an `#[allow]` at
 
 ## Why `soroban_storage_in_loop` Defaults to `deny`
 
-This linter ships **59 lints**: **57** default to `warn`, and exactly two — `soroban_storage_in_loop` and `nested_loop_storage_access` — default to `deny`.
+This linter ships **63 lints**: **61** default to `warn`, and exactly two — `soroban_storage_in_loop` and `nested_loop_storage_access` — default to `deny`.
 
 That is a deliberate decision, not an oversight. The reasoning comes directly from the [Cost Rationale](cost_rationale.md):
 
@@ -63,7 +63,7 @@ A storage write in a loop, by contrast, is the most expensive structural pattern
 
 ### Why not `deny` everything else?
 
-The remaining 57 lints flag patterns that are *inefficient* but not necessarily *budget-breaking*. A `warn` is appropriate because:
+The remaining 61 lints flag patterns that are *inefficient* but not necessarily *budget-breaking*. A `warn` is appropriate because:
 
 1. **Context matters.** A host function call inside a loop is wasteful *unless* it's reading ledger state that changes each iteration. The tool cannot always prove the call is unnecessary.
 2. **False positives are possible.** Some detections are heuristic (e.g., `linear_scan_in_loop`). A hard failure would be frustrating for code that is actually fine.

@@ -36,6 +36,7 @@ use std::collections::HashSet;
 
 mod address_equality_via_to_string;
 mod address_from_string_in_loop;
+mod auths_read_in_loop;
 mod blind_storage_write;
 mod bytes_indexed_read_in_loop;
 mod bytes_slice_copy_in_loop;
@@ -47,6 +48,8 @@ mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
+mod host_container_clone_in_loop;
+mod include_bytes_in_contract;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod large_value_decoded_for_one_field;
@@ -60,6 +63,7 @@ mod persistent_write_without_ttl_extension;
 mod redundant_address_clone;
 mod redundant_require_auth;
 mod redundant_val_conversion;
+mod repeated_instance_write_same_key;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
 mod sort_in_loop;
@@ -152,6 +156,10 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -261,6 +269,13 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
+    lint_store.register_late_pass(|_| {
+        Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(host_container_clone_in_loop::HostContainerCloneInLoop));
+    lint_store.register_late_pass(|_| Box::new(include_bytes_in_contract::IncludeBytesInContract));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -630,6 +645,30 @@ rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
     "Symbol::to_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub AUTHS_READ_IN_LOOP,
+    Warn,
+    "calling env.auths() inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub REPEATED_INSTANCE_WRITE_SAME_KEY,
+    Warn,
+    "repeated instance storage write to the same key"
+}
+
+rustc_session::declare_lint! {
+    pub HOST_CONTAINER_CLONE_IN_LOOP,
+    Warn,
+    "cloning a host container inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub INCLUDE_BYTES_IN_CONTRACT,
+    Warn,
+    "include_bytes! or include_str! data embedded in contract code"
 }
 
 pub struct SorobanCostLints;
@@ -1017,6 +1056,30 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Symbol::to_string called inside a loop",
         rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
     },
+    LintMeta {
+        name: "auths_read_in_loop",
+        category: LintCategory::Host,
+        description: "calling env.auths() inside a loop",
+        rationale: "env.auths() copies the authorization tree per call even though the authorized set is fixed before execution; calling it inside a loop multiplies host costs unnecessarily.",
+    },
+    LintMeta {
+        name: "repeated_instance_write_same_key",
+        category: LintCategory::Storage,
+        description: "repeated instance storage write to the same key",
+        rationale: "Each instance storage write rewrites the entire instance storage map and incurs ledger write costs; writing to the same key multiple times in a single function wastes fees on intermediate values that are overwritten before the invocation finishes.",
+    },
+    LintMeta {
+        name: "host_container_clone_in_loop",
+        category: LintCategory::Memory,
+        description: "cloning a host container inside a loop",
+        rationale: "Cloning a host container (Vec, Map, Bytes, String) deep-copies the host object every iteration; borrowing the container or hoisting the clone avoids repeated host allocations.",
+    },
+    LintMeta {
+        name: "include_bytes_in_contract",
+        category: LintCategory::Memory,
+        description: "include_bytes! or include_str! data embedded in contract code",
+        rationale: "Embedding data files into the contract using include_bytes! or include_str! inflates Wasm bytecode size and increases deployment fees; load the data from storage or pass it as an invocation argument instead.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -1081,6 +1144,10 @@ dylint_lint_impl! {
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
 
     ]
 }
