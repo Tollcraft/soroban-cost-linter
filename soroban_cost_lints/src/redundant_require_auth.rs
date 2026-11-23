@@ -78,6 +78,38 @@ impl<'tcx> LateLintPass<'tcx> for RedundantRequireAuth {
     }
 }
 
+fn peel_receiver<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    loop {
+        match expr.kind {
+            hir::ExprKind::AddrOf(_, _, inner) => {
+                expr = inner;
+            }
+            hir::ExprKind::MethodCall(segment, receiver, args, _)
+                if segment.ident.name.as_str() == "clone" && args.is_empty() =>
+            {
+                expr = receiver;
+            }
+            _ => break,
+        }
+    }
+    expr
+}
+
+fn address_identity_key<'tcx>(
+    cx: &LateContext<'tcx>,
+    receiver: &'tcx hir::Expr<'tcx>,
+) -> Option<String> {
+    let peeled = peel_receiver(receiver);
+    if let hir::ExprKind::Path(ref qpath) = peeled.kind {
+        let res = cx.qpath_res(qpath, peeled.hir_id);
+        if let rustc_hir::def::Res::Local(binding_hir_id) = res {
+            let ty = cx.typeck_results().expr_ty(peeled).peel_refs();
+            return Some(format!("{binding_hir_id:?}:{ty:?}"));
+        }
+    }
+    snippet_opt(cx, receiver.span)
+}
+
 /// Walks one function body, tracking authorizations in a caller-provided map.
 struct AuthVisitor<'v, 'tcx> {
     cx: &'v LateContext<'tcx>,
@@ -104,10 +136,11 @@ impl<'v, 'tcx> AuthVisitor<'v, 'tcx> {
         }
 
         // `require_auth` / `require_auth_for_args` on an `Address`. The
-        // address is keyed by its printed source text.
+        // address is keyed by its resolved binding identity plus type,
+        // with printed source text as fallback.
         if REQUIRE_AUTH_METHODS.contains(&method)
             && is_address_receiver(self.cx, receiver)
-            && let Some(key_text) = snippet_opt(self.cx, receiver.span)
+            && let Some(key_text) = address_identity_key(self.cx, receiver)
         {
             if let Some(&_prev_span) = self.first_auth.get(&key_text) {
                 span_lint_and_help(

@@ -14,6 +14,7 @@ pub mod soroban_sdk {
         }
     }
 
+    #[derive(Clone)]
     pub struct Address;
     impl Address {
         pub fn require_auth(&self) {}
