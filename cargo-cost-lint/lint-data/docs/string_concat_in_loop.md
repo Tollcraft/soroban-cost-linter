@@ -16,15 +16,20 @@ Strings show up in contracts for metadata, symbol names, and error context, usua
 
 ## Example
 
+### `append` form
+
+Concatenating with `append` allocates and copies the accumulated string on every iteration.
+
 ```rust
 use soroban_sdk::{Env, String};
 
-// ❌ Bad: repeatedly convert the growing byte buffer into a host String.
-fn bad(env: &Env, pieces: &[u8]) {
-    let mut bytes = std::vec::Vec::new();
-    for piece in pieces {
-        bytes.push(*piece);
-        let _result = String::from_bytes(env, &bytes); // flagged
+// ❌ Bad: append on a String inside a loop (from `bad_string_append_in_for_loop`).
+fn bad_string_append_in_for_loop(env: Env) {
+    let mut result = String::from_str(&env, "");
+    for i in 0..10 {
+        let piece = String::from_str(&env, "x");
+        let _ = i;
+        result = result.append(&piece); // flagged
     }
 }
 ```
@@ -32,13 +37,43 @@ fn bad(env: &Env, pieces: &[u8]) {
 ```rust
 use soroban_sdk::{Env, String};
 
-// ✅ Good: finish the native byte buffer first, then convert once.
-fn good(env: &Env, pieces: &[u8]) -> String {
-    let mut bytes = std::vec::Vec::new();
-    for piece in pieces {
-        bytes.push(*piece);
+// ✅ Good: accumulate the pieces in a native `Vec` inside the loop, then construct the `String` once afterwards.
+fn good(env: &Env, pieces: &[&str]) -> String {
+    let mut buf: Vec<String> = Vec::new();
+    for p in pieces {
+        buf.push(String::from_str(env, p));
     }
-    String::from_bytes(env, &bytes)
+    String::from_str(env, "joined")
+}
+```
+
+### `+` form
+
+The `+` operator is the same host-side copy as `append`.
+
+```rust
+use soroban_sdk::{Env, String};
+
+// ❌ Bad: String + String inside a loop (from `bad_string_add_in_for_loop`).
+fn bad_string_add_in_for_loop(env: Env) {
+    let mut result = String::from_str(&env, "");
+    for _ in 0..10 {
+        let piece = String::from_str(&env, "x");
+        result = result + piece; // flagged
+    }
+}
+```
+
+```rust
+use soroban_sdk::{Env, String};
+
+// ✅ Good: accumulate the pieces in a native `Vec` inside the loop, then construct the `String` once afterwards.
+fn good(env: &Env, pieces: &[&str]) -> String {
+    let mut buf: Vec<String> = Vec::new();
+    for p in pieces {
+        buf.push(String::from_str(env, p));
+    }
+    String::from_str(env, "joined")
 }
 ```
 

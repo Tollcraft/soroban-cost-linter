@@ -1,0 +1,19 @@
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read_nested_positions.rs:33:9
+   |
+LL |         env.storage().instance().get::<u32, i32>(&1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read_nested_positions.rs:40:9
+   |
+LL |         env.storage().instance().get::<u32, i32>(&1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+
+warning: 2 warnings emitted
+

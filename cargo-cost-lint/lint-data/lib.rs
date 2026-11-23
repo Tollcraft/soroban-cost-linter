@@ -36,7 +36,9 @@ use std::collections::HashSet;
 
 mod address_equality_via_to_string;
 mod address_from_string_in_loop;
+mod auths_read_in_loop;
 mod blind_storage_write;
+mod bytes_comparison_via_allocvec;
 mod bytes_indexed_read_in_loop;
 mod bytes_slice_copy_in_loop;
 mod collection_len_from_storage;
@@ -47,6 +49,9 @@ mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
+mod formatted_assert_payload;
+mod host_container_clone_in_loop;
+mod include_bytes_in_contract;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod large_value_decoded_for_one_field;
@@ -60,6 +65,7 @@ mod persistent_write_without_ttl_extension;
 mod redundant_address_clone;
 mod redundant_require_auth;
 mod redundant_val_conversion;
+mod repeated_instance_write_same_key;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
 mod sort_in_loop;
@@ -67,11 +73,13 @@ mod storage_read_modify_write;
 mod storage_write_of_unchanged_value;
 mod storage_write_without_read;
 mod string_concat_in_loop;
+mod string_from_str_in_loop;
 mod string_type_as_storage_key;
 mod symbol_to_string_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
 mod val_conversion_chain;
+mod vec_remove_front_in_loop;
 
 dylint_linting::dylint_library!();
 
@@ -152,6 +160,14 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
+        BYTES_COMPARISON_VIA_ALLOCVEC,
+        FORMATTED_ASSERT_PAYLOAD,
+        STRING_FROM_STR_IN_LOOP,
+        VEC_REMOVE_FRONT_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -205,6 +221,14 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass({
         let format_args_storage = format_args_storage.clone();
         move |_| Box::new(FormattedPanicPayload::new(format_args_storage.clone()))
+    });
+    lint_store.register_late_pass({
+        let format_args_storage = format_args_storage.clone();
+        move |_| {
+            Box::new(formatted_assert_payload::FormattedAssertPayload::new(
+                format_args_storage.clone(),
+            ))
+        }
     });
 
     lint_store.register_late_pass(|_| Box::new(discarded_storage_read::DiscardedStorageRead));
@@ -261,6 +285,18 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
+    lint_store.register_late_pass(|_| {
+        Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
+    });
+    lint_store
+        .register_late_pass(|_| Box::new(host_container_clone_in_loop::HostContainerCloneInLoop));
+    lint_store.register_late_pass(|_| Box::new(include_bytes_in_contract::IncludeBytesInContract));
+    lint_store.register_late_pass(|_| {
+        Box::new(bytes_comparison_via_allocvec::BytesComparisonViaAllocvec)
+    });
+    lint_store.register_late_pass(|_| Box::new(string_from_str_in_loop::StringFromStrInLoop));
+    lint_store.register_late_pass(|_| Box::new(vec_remove_front_in_loop::VecRemoveFrontInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -630,6 +666,54 @@ rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
     "Symbol::to_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub AUTHS_READ_IN_LOOP,
+    Warn,
+    "calling env.auths() inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub REPEATED_INSTANCE_WRITE_SAME_KEY,
+    Warn,
+    "repeated instance storage write to the same key"
+}
+
+rustc_session::declare_lint! {
+    pub HOST_CONTAINER_CLONE_IN_LOOP,
+    Warn,
+    "cloning a host container inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub INCLUDE_BYTES_IN_CONTRACT,
+    Warn,
+    "include_bytes! or include_str! data embedded in contract code"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_COMPARISON_VIA_ALLOCVEC,
+    Warn,
+    "comparing Bytes values through to_allocvec allocates both operands"
+}
+
+rustc_session::declare_lint! {
+    pub FORMATTED_ASSERT_PAYLOAD,
+    Warn,
+    "assert macro formats its failure message eagerly"
+}
+
+rustc_session::declare_lint! {
+    pub STRING_FROM_STR_IN_LOOP,
+    Warn,
+    "String::from_str with a constant value inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub VEC_REMOVE_FRONT_IN_LOOP,
+    Warn,
+    "Vec::remove(0) inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -1017,6 +1101,54 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Symbol::to_string called inside a loop",
         rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
     },
+    LintMeta {
+        name: "auths_read_in_loop",
+        category: LintCategory::Host,
+        description: "calling env.auths() inside a loop",
+        rationale: "env.auths() copies the authorization tree per call even though the authorized set is fixed before execution; calling it inside a loop multiplies host costs unnecessarily.",
+    },
+    LintMeta {
+        name: "repeated_instance_write_same_key",
+        category: LintCategory::Storage,
+        description: "repeated instance storage write to the same key",
+        rationale: "Each instance storage write rewrites the entire instance storage map and incurs ledger write costs; writing to the same key multiple times in a single function wastes fees on intermediate values that are overwritten before the invocation finishes.",
+    },
+    LintMeta {
+        name: "host_container_clone_in_loop",
+        category: LintCategory::Memory,
+        description: "cloning a host container inside a loop",
+        rationale: "Cloning a host container (Vec, Map, Bytes, String) deep-copies the host object every iteration; borrowing the container or hoisting the clone avoids repeated host allocations.",
+    },
+    LintMeta {
+        name: "include_bytes_in_contract",
+        category: LintCategory::Memory,
+        description: "include_bytes! or include_str! data embedded in contract code",
+        rationale: "Embedding data files into the contract using include_bytes! or include_str! inflates Wasm bytecode size and increases deployment fees; load the data from storage or pass it as an invocation argument instead.",
+    },
+    LintMeta {
+        name: "bytes_comparison_via_allocvec",
+        category: LintCategory::Memory,
+        description: "comparing Bytes values through to_allocvec allocates both operands",
+        rationale: "Converting both Bytes values to guest Vec<u8> copies them into two new heap buffers for one comparison; a direct Bytes comparison stays on the host and allocates nothing.",
+    },
+    LintMeta {
+        name: "formatted_assert_payload",
+        category: LintCategory::Compute,
+        description: "assert macro formats its failure message eagerly",
+        rationale: "A formatted assertion expands to core::fmt machinery that is linked into the contract and run on every check, even though the message is only needed on failure; a plain assertion or panic_with_error! with a contract error code avoids both costs.",
+    },
+    LintMeta {
+        name: "string_from_str_in_loop",
+        category: LintCategory::Host,
+        description: "String::from_str with a constant value inside a loop",
+        rationale: "Building a host String from the same literal or constant on every iteration repeats metered encoding and validation; the value can be built once before the loop.",
+    },
+    LintMeta {
+        name: "vec_remove_front_in_loop",
+        category: LintCategory::Compute,
+        description: "Vec::remove(0) inside a loop",
+        rationale: "Removing the first element shifts every remaining element in the host Vec, so a drain costs O(n^2) copies; accumulating in a native Vec and rebuilding once avoids the repeated shifts.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -1081,7 +1213,14 @@ dylint_lint_impl! {
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
-
+        AUTHS_READ_IN_LOOP,
+        REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
+        INCLUDE_BYTES_IN_CONTRACT,
+        BYTES_COMPARISON_VIA_ALLOCVEC,
+        FORMATTED_ASSERT_PAYLOAD,
+        STRING_FROM_STR_IN_LOOP,
+        VEC_REMOVE_FRONT_IN_LOOP,
     ]
 }
 
@@ -3148,7 +3287,7 @@ fn is_range<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
     expr.span.is_desugaring(DesugaringKind::RangeExpr)
 }
 
-fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+pub(crate) fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
     match expr.kind {
         hir::ExprKind::Lit(_) => true,
         hir::ExprKind::Array(elems) => elems.iter().all(|e| is_const_expr(e)),

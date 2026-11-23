@@ -1,4 +1,5 @@
 use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::is_in_test;
 use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty::{self, Ty};
@@ -30,6 +31,9 @@ impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
             let value_ty = cx.typeck_results().expr_ty(value_expr);
             // Check if the value type is Option<T> at the top level
             if is_option_type(cx, value_ty) {
+                if is_in_test(cx.tcx, expr.hir_id) {
+                    return;
+                }
                 let help = "storage already models absence (missing key = None); \
                     store the inner type T directly and remove the key instead of wrapping in Option";
                 span_lint_and_help(

@@ -9,7 +9,7 @@
 //! author can confirm the overwrite is intended.
 //!
 //! Detection is per function body. A write is reported only when none of the
-//! observing methods in [`STORAGE_READ_METHODS`] touched the *same* receiver and
+//! observing methods in [`STORAGE_OBSERVING_METHODS`] touched the *same* receiver and
 //! key earlier in the body. Receiver and key are compared by their source text,
 //! so two expressions that print identically are treated as the same
 //! receiver/key even if they are distinct bindings. That keeps the analysis
@@ -32,7 +32,7 @@ declare_lint_pass!(StorageWriteWithoutRead => [STORAGE_WRITE_WITHOUT_READ]);
 /// follows one of these on the same receiver-key pair is intentional and is not
 /// reported: `remove` and `update` are included because both read the current
 /// value before acting on it.
-const STORAGE_READ_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
+const STORAGE_OBSERVING_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
 
 /// The write method this lint pairs with a preceding read.
 const STORAGE_WRITE_METHOD: &str = "set";
@@ -105,7 +105,7 @@ impl<'tcx> Visitor<'tcx> for OrderedAccessVisitor<'_, 'tcx> {
             && is_storage_receiver(self.cx, receiver)
         {
             let method = path_segment.ident.name.as_str();
-            if STORAGE_READ_METHODS.contains(&method) {
+            if STORAGE_OBSERVING_METHODS.contains(&method) {
                 if let Some(pair) = access_pair(self.cx, receiver, args) {
                     self.seen_reads.insert(pair);
                 }
@@ -164,19 +164,19 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
 #[cfg(test)]
 mod tests {
     use super::{
-        STORAGE_READ_METHODS, STORAGE_WRITE_METHOD, STORAGE_WRITE_WITHOUT_READ_HELP,
+        STORAGE_OBSERVING_METHODS, STORAGE_WRITE_METHOD, STORAGE_WRITE_WITHOUT_READ_HELP,
         STORAGE_WRITE_WITHOUT_READ_MSG, is_initialiser,
     };
 
     #[test]
-    fn read_methods_cover_every_observing_access() {
+    fn observing_methods_cover_every_observing_access() {
         for method in ["get", "try_get", "has", "remove", "update"] {
             assert!(
-                STORAGE_READ_METHODS.contains(&method),
-                "{method} should count as a read",
+                STORAGE_OBSERVING_METHODS.contains(&method),
+                "{method} should count as an observing access",
             );
         }
-        assert!(!STORAGE_READ_METHODS.contains(&"set"));
+        assert!(!STORAGE_OBSERVING_METHODS.contains(&"set"));
     }
 
     #[test]
