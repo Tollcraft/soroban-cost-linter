@@ -1158,6 +1158,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Vec::remove(0) inside a loop",
         rationale: "Removing the first element shifts every remaining element in the host Vec, so a drain costs O(n^2) copies; accumulating in a native Vec and rebuilding once avoids the repeated shifts.",
     },
+    LintMeta {
+        name: "hardcoded_network_id",
+        category: LintCategory::Security,
+        description: "a network id or passphrase compared against a hardcoded literal",
+        rationale: "A literal network id or passphrase binds the contract to one network and to the value that network had when it was written; reading it from the ledger keeps a single build correct on public, testnet and any future network instead of failing safely only on the one it was compiled against.",
+    },
 ];
 
 dylint_lint_impl! {
