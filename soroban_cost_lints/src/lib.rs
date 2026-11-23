@@ -1158,6 +1158,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Vec::remove(0) inside a loop",
         rationale: "Removing the first element shifts every remaining element in the host Vec, so a drain costs O(n^2) copies; accumulating in a native Vec and rebuilding once avoids the repeated shifts.",
     },
+    LintMeta {
+        name: "token_transfer_in_loop",
+        category: LintCategory::Host,
+        description: "token transfer called through a contract client inside a loop",
+        rationale: "A token transfer is a cross-contract invocation plus at least two storage writes, the most expensive shape a contract has; repeating it in a loop multiplies that cost by a caller-controlled factor, so it belongs batched or replaced by a claim pattern.",
+    },
 ];
 
 dylint_lint_impl! {
