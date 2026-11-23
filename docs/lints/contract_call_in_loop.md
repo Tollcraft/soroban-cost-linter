@@ -6,8 +6,9 @@
 
 ## What it does
 
-Flags cross-contract invocations made through `env.invoke_contract(...)` when the
-call site sits inside a loop body (`for`, `while`, or `loop`).
+Flags cross-contract invocations made through `env.invoke_contract(...)` or
+`env.try_invoke_contract(...)` when the call site sits inside a loop body (`for`,
+`while`, or `loop`).
 
 ## Why is this bad?
 
@@ -41,20 +42,17 @@ Prefer a bulk endpoint on the callee contract that accepts the whole batch of in
 
 ## What is not reported
 
-- Calls to `invoke_contract` outside of a loop body.
+- Calls to `invoke_contract` or `try_invoke_contract` outside of a loop body.
 - Calls suppressed with `#[allow(contract_call_in_loop)]`.
 
 ## Deliberately not covered
 
-This lint starts from the directly detectable case and leaves two related patterns
-as documented follow-ups:
+This lint covers direct invocations (`invoke_contract` and `try_invoke_contract`). A related pattern is left as a documented follow-up:
 
-- **`env.try_invoke_contract(...)`** — the fallible counterpart of `invoke_contract`
-  is not yet matched. It shares the same cost profile and is a natural extension.
 - **Generated contract clients** — types produced by `contractimport!` /
   `contractclient!` (conventionally `*Client` structs) wrap `invoke_contract`
   internally, so calling `token_client.transfer(...)` inside a loop has the same
   cost profile as calling `env.invoke_contract(...)` directly, but is not
   currently detected. Resolving this requires recognizing generated client types
-  by structural convention rather than a fixed path, which is left for a
-  follow-up once the type-resolution approach is settled.
+  by structural convention rather than a fixed path; client detection is tracked
+  by the `token_transfer_in_loop` issue (with overlap details documented under #811).

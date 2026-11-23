@@ -1954,7 +1954,8 @@ rustc_session::impl_lint_pass!(ContractCallInLoop => [CONTRACT_CALL_IN_LOOP]);
 impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
-            && path_segment.ident.name.as_str() == "invoke_contract"
+            && (path_segment.ident.name.as_str() == "invoke_contract"
+                || path_segment.ident.name.as_str() == "try_invoke_contract")
         {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
