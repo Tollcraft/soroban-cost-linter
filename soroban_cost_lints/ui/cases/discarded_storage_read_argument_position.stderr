@@ -1,0 +1,11 @@
+warning: storage read result is discarded
+  --> $DIR/discarded_storage_read_argument_position.rs:50:5
+   |
+LL |     env.storage().instance().get::<i32, i32>(&1);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: delete the storage read or use its returned value
+   = note: `#[warn(discarded_storage_read)]` on by default
+
+warning: 1 warning emitted
+
