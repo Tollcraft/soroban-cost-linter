@@ -67,5 +67,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `crypto_hash_of_loop_invariant` | warn | cryptographic hash of a loop-invariant value inside a loop | [Link](lints/crypto_hash_of_loop_invariant.md) |
 | `string_type_as_storage_key` | warn | String storage key uses a short literal where a Symbol would do | [Link](lints/string_type_as_storage_key.md) |
 | `symbol_to_string_in_loop` | warn | Symbol::to_string called inside a loop | [Link](lints/symbol_to_string_in_loop.md) |
+| `hardcoded_network_id` | warn | hardcoded testnet network id in contract code | [Link](lints/hardcoded_network_id.md) |
 
 *Severities can be overridden via `budget.toml`.*

@@ -47,6 +47,7 @@ mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
+mod hardcoded_network_id;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod large_value_decoded_for_one_field;
@@ -152,6 +153,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        HARDCODED_NETWORK_ID,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -261,6 +263,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(hardcoded_network_id::HardcodedNetworkId));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -630,6 +633,12 @@ rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
     "Symbol::to_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub HARDCODED_NETWORK_ID,
+    Warn,
+    "hardcoded testnet network id in contract code"
 }
 
 pub struct SorobanCostLints;
@@ -1017,6 +1026,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Symbol::to_string called inside a loop",
         rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
     },
+    LintMeta {
+        name: "hardcoded_network_id",
+        category: LintCategory::Security,
+        description: "hardcoded testnet network id in contract code",
+        rationale: "Comparing or initialising with a literal testnet network id or passphrase pins contract code to a specific network at compile time, causing network mismatch failures and meter-expensive branch failures on different networks.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -1081,6 +1096,7 @@ dylint_lint_impl! {
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        HARDCODED_NETWORK_ID,
 
     ]
 }

@@ -79,6 +79,7 @@
   * [crypto\_hash\_of\_loop\_invariant](lints/crypto_hash_of_loop_invariant.md)
   * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
   * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
+  * [hardcoded\_network\_id](lints/hardcoded_network_id.md)
 
 ## Branding
 

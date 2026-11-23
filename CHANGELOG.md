@@ -23,6 +23,8 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- New lint `hardcoded_network_id` detecting hardcoded 32-byte network IDs or testnet passphrases in contract code, suggesting dynamic retrieval via `env.ledger().network_id()`.
+
 - New lints `address_equality_via_to_string`, `address_from_string_in_loop`, `bytes_indexed_read_in_loop` and `sort_in_loop` for avoiding allocated Address string comparisons, repeated strkey parsing, per-byte Bytes host reads and sorting Soroban Vec values inside loops.
 - New lint `collection_len_from_storage` detecting a stored `Vec`/`Map`/`Bytes` read with `get` that is immediately unwrapped and used only for `len()` or `is_empty()`, where `has` or a stored counter avoids decoding the whole collection.
 - New lint `crypto_hash_of_loop_invariant` detecting `sha256`/`keccak256` calls on `env.crypto()` inside a loop whose argument is a loop-invariant local, so the digest can be computed once before the loop.
