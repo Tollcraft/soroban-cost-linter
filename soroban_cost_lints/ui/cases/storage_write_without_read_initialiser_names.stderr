@@ -1,0 +1,22 @@
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read_initialiser_names.rs:46:5
+   |
+LL |     env.storage().instance().set(&1, &100);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+note: the lint level is defined here
+  --> $DIR/storage_write_without_read_initialiser_names.rs:2:9
+   |
+LL | #![warn(storage_write_without_read)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: storage write without a corresponding read
+  --> $DIR/storage_write_without_read_initialiser_names.rs:50:5
+   |
+LL |     env.storage().instance().set(&1, &100);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: 2 warnings emitted
