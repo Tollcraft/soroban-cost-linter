@@ -10,6 +10,11 @@ declare_lint_pass!(LargeConstantArray => [LARGE_CONSTANT_ARRAY]);
 
 const LARGE_ARRAY_THRESHOLD: u64 = 4096;
 
+pub const LARGE_CONSTANT_ARRAY_MSG: &str =
+    "embedding a large array in contract code increases Wasm size";
+pub const LARGE_CONSTANT_ARRAY_HELP: &str =
+    "consider using host-managed `Bytes` or persistent storage for large data";
+
 impl<'tcx> LateLintPass<'tcx> for LargeConstantArray {
     /// Flags an array literal whose element count exceeds
     /// [`LARGE_ARRAY_THRESHOLD`].
@@ -32,10 +37,32 @@ impl<'tcx> LateLintPass<'tcx> for LargeConstantArray {
                 cx,
                 LARGE_CONSTANT_ARRAY,
                 expr.span,
-                "embedding a large array in contract code increases Wasm size",
+                LARGE_CONSTANT_ARRAY_MSG,
                 None,
-                "consider using host-managed `Bytes` or persistent storage for large data",
+                LARGE_CONSTANT_ARRAY_HELP,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LARGE_CONSTANT_ARRAY_HELP, LARGE_CONSTANT_ARRAY_MSG};
+
+    #[test]
+    fn message_and_help_text_are_pinned() {
+        assert_eq!(
+            LARGE_CONSTANT_ARRAY_MSG,
+            "embedding a large array in contract code increases Wasm size"
+        );
+        assert_eq!(
+            LARGE_CONSTANT_ARRAY_HELP,
+            "consider using host-managed `Bytes` or persistent storage for large data"
+        );
+    }
+
+    #[test]
+    fn help_is_a_single_sentence() {
+        assert!(!LARGE_CONSTANT_ARRAY_HELP.contains(". "));
     }
 }
