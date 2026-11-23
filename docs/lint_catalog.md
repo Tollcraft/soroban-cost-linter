@@ -67,5 +67,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `crypto_hash_of_loop_invariant` | warn | cryptographic hash of a loop-invariant value inside a loop | [Link](lints/crypto_hash_of_loop_invariant.md) |
 | `string_type_as_storage_key` | warn | String storage key uses a short literal where a Symbol would do | [Link](lints/string_type_as_storage_key.md) |
 | `symbol_to_string_in_loop` | warn | Symbol::to_string called inside a loop | [Link](lints/symbol_to_string_in_loop.md) |
+| `bytes_comparison_via_allocvec` | warn | comparing Bytes values through to_allocvec allocates both operands | [Link](lints/bytes_comparison_via_allocvec.md) |
+| `formatted_assert_payload` | warn | assert macro formats its failure message eagerly | [Link](lints/formatted_assert_payload.md) |
+| `string_from_str_in_loop` | warn | String::from_str with a constant value inside a loop | [Link](lints/string_from_str_in_loop.md) |
+| `vec_remove_front_in_loop` | warn | Vec::remove(0) inside a loop | [Link](lints/vec_remove_front_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

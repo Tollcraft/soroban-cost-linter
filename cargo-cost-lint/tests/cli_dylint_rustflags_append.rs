@@ -37,6 +37,7 @@ fn cost_lint(cwd: &Path) -> Command {
     cmd.arg("--verbose")
         .arg("--no-cache")
         .current_dir(cwd)
+        .env("CARGO_TARGET_DIR", cwd.join("target"))
         .env("DYLINT_RUSTFLAGS", PRE_EXISTING);
     cmd
 }

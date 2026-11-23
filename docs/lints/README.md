@@ -59,6 +59,8 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`sort_in_loop`](sort_in_loop.md) | `warn` | sorting a Soroban Vec inside a loop |
 | [`crypto_hash_of_loop_invariant`](crypto_hash_of_loop_invariant.md) | `warn` | cryptographic hash of a loop-invariant value inside a loop |
 | [`symbol_to_string_in_loop`](symbol_to_string_in_loop.md) | `warn` | Symbol::to_string called inside a loop |
+| [`formatted_assert_payload`](formatted_assert_payload.md) | `warn` | assert macro formats its failure message eagerly |
+| [`vec_remove_front_in_loop`](vec_remove_front_in_loop.md) | `warn` | Vec::remove(0) inside a loop |
 
 ## Memory
 
@@ -74,6 +76,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`large_constant_array`](large_constant_array.md) | `warn` | embedding a large constant array in contract code |
 | [`address_equality_via_to_string`](address_equality_via_to_string.md) | `warn` | compares Address values through their string representations |
+| [`bytes_comparison_via_allocvec`](bytes_comparison_via_allocvec.md) | `warn` | comparing Bytes values through to_allocvec allocates both operands |
 
 ## Host
 
@@ -84,6 +87,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`deploy_in_loop`](deploy_in_loop.md) | `warn` | contract deployment inside a loop |
 | [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
 | [`address_from_string_in_loop`](address_from_string_in_loop.md) | `warn` | Address::from_string called inside a loop |
+| [`string_from_str_in_loop`](string_from_str_in_loop.md) | `warn` | String::from_str with a constant value inside a loop |
 
 ## Security
 

@@ -79,6 +79,10 @@
   * [crypto\_hash\_of\_loop\_invariant](lints/crypto_hash_of_loop_invariant.md)
   * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
   * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
+  * [bytes\_comparison\_via\_allocvec](lints/bytes_comparison_via_allocvec.md)
+  * [formatted\_assert\_payload](lints/formatted_assert_payload.md)
+  * [string\_from\_str\_in\_loop](lints/string_from_str_in_loop.md)
+  * [vec\_remove\_front\_in\_loop](lints/vec_remove_front_in_loop.md)
 
 ## Branding
 
