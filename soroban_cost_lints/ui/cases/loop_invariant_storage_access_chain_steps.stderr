@@ -1,0 +1,27 @@
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_chain_steps.rs:80:17
+   |
+LL |         let _ = env.storage(); let _ = env.storage().instance(); let _ = env.storage().instance().get::<i32, i32>(&1);
+   |                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_chain_steps.rs:80:40
+   |
+LL |         let _ = env.storage(); let _ = env.storage().instance(); let _ = env.storage().instance().get::<i32, i32>(&1);
+   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_chain_steps.rs:80:74
+   |
+LL |         let _ = env.storage(); let _ = env.storage().instance(); let _ = env.storage().instance().get::<i32, i32>(&1);
+   |                                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: 3 warnings emitted
+
