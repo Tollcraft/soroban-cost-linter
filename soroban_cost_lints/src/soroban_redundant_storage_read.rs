@@ -6,8 +6,8 @@
 //! reusing it is free.
 //!
 //! Detection is per block and only looks at top-level statements: the tracker
-//! remembers the last read as `(storage accessor, key)`, clears it on a `set`,
-//! and reports a read that matches what is already remembered. Expressions
+//! remembers every read as `(storage accessor, key)`, reports a read whose key
+//! is already present, and clears all remembered keys on a `set`. Expressions
 //! nested deeper than the block's statement list are not tracked, which keeps
 //! the analysis linear in the number of statements without a full dataflow
 //! pass.
@@ -104,19 +104,15 @@ fn storage_accessor_def_id<'tcx>(cx: &LateContext<'tcx>, ty: ty::Ty<'tcx>) -> Op
 /// A storage access found in a block, classified by whether it observes or
 /// overwrites the key.
 enum StorageOp {
-    /// A `get`/`has` on `storage_def_id` whose key prints as `key_text`.
+    /// A `get`/`try_get`/`has` on `storage_def_id` whose key prints as
+    /// `key_text`.
     Read {
         storage_def_id: DefId,
         key_text: String,
     },
-    /// A `set`, which invalidates the tracked read for this specific key.
-    /// `key_text` is `None` when the key expression is too complex to extract
-    /// as source text; in that case the entire read-set for this accessor is
-    /// conservatively cleared.
-    Write {
-        storage_def_id: DefId,
-        key_text: Option<String>,
-    },
+    /// A `set`, which overwrites state and therefore invalidates every read
+    /// remembered in the current block.
+    Write,
 }
 
 /// Classifies a top-level expression as a storage read or write, or `None` when
@@ -137,19 +133,7 @@ fn extract_storage_op<'tcx>(
     let storage_def_id = storage_accessor_def_id(cx, cx.typeck_results().expr_ty(receiver))?;
 
     if method_name == STORAGE_WRITE_METHOD {
-        // Extract the write key so only that key's cached read is cleared.
-        let key_text = args.first().and_then(|key_arg| {
-            let key_inner = if let hir::ExprKind::AddrOf(_, _, inner) = key_arg.kind {
-                inner
-            } else {
-                key_arg
-            };
-            snippet_opt(cx, key_inner.span)
-        });
-        return Some(StorageOp::Write {
-            storage_def_id,
-            key_text,
-        });
+        return Some(StorageOp::Write);
     }
 
     // `get`/`has` take the key by reference; strip the `&` so the text of the
@@ -169,17 +153,17 @@ fn extract_storage_op<'tcx>(
 
 /// Late pass backing [`SOROBAN_REDUNDANT_STORAGE_READ`].
 impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
-    /// Walks a block's top-level statements, tracking all previously seen reads
-    /// per `(accessor, key)` pair and reporting a read whose key was already
-    /// read without an intervening write to that same key.
+    /// Walks a block's top-level statements, tracking every read by its
+    /// `(accessor, key)` pair and reporting each read whose key was already
+    /// seen since the last write.
     ///
-    /// A write to key B leaves any tracked read of key A undisturbed, so a
-    /// subsequent read of A is still flagged as redundant. Only a write to the
-    /// exact key A removes A's entry from the active-read set.
+    /// Interleaved keys are tracked independently, so `get(a); get(b); get(a)`
+    /// reports the third read. Any `set` clears the whole active-read set,
+    /// matching the conservative model that a write may change any key.
     fn check_block(&mut self, cx: &LateContext<'tcx>, block: &'tcx hir::Block<'tcx>) {
-        // Maps (accessor DefId, key source text) -> () for every key that has
-        // been read but not yet overwritten in this block.
-        let mut active_reads: HashMap<(DefId, String), ()> = HashMap::new();
+        // Maps (accessor DefId, key source text) -> span of the read that
+        // established the key since the last write.
+        let mut active_reads: HashMap<(DefId, String), rustc_span::Span> = HashMap::new();
 
         let exprs = block
             .stmts
@@ -201,11 +185,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
                         key_text,
                     } => {
                         let key = (storage_def_id, key_text);
-                        if let std::collections::hash_map::Entry::Vacant(e) =
-                            active_reads.entry(key)
-                        {
-                            e.insert(());
-                        } else {
+                        if active_reads.insert(key, expr.span).is_some() {
                             span_lint_and_help(
                                 cx,
                                 SOROBAN_REDUNDANT_STORAGE_READ,
@@ -216,19 +196,7 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
                             );
                         }
                     }
-                    StorageOp::Write {
-                        storage_def_id,
-                        key_text,
-                    } => match key_text {
-                        Some(k) => {
-                            active_reads.remove(&(storage_def_id, k));
-                        }
-                        None => {
-                            // Unknown write key — conservatively clear all
-                            // tracked reads for this accessor.
-                            active_reads.retain(|k, _| k.0 != storage_def_id);
-                        }
-                    },
+                    StorageOp::Write => active_reads.clear(),
                 }
             }
         }

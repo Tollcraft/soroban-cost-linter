@@ -8,6 +8,10 @@
 
 Detects calls to `Address::require_auth()` or `Address::require_auth_for_args()` whose receiver type is `soroban_sdk::Address` and that appear inside a loop body (`for`, `while`, or `loop`).
 
+## Limits
+
+Calls made inside a closure or an iterator adapter such as `for_each` are out of scope: only the three loop forms above are reported. The closure may be defined elsewhere, so its receiver is out of reach for the enclosing-loop analysis. Authorize the addresses before entering the iterator chain instead.
+
 ## Why is this bad?
 
 {% hint style="danger" %}

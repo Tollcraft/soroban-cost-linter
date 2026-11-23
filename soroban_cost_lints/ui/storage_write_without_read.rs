@@ -90,6 +90,21 @@ fn set_admin(env: Env) {
     env.storage().persistent().set(&1, &2); // Good
 }
 
+// --- Negative: exact constructor names are also exempt ---
+
+fn __constructor(env: Env) {
+    env.storage().instance().set(&1, &2); // Good
+}
+
+fn new(env: Env) {
+    env.storage().persistent().set(&1, &2); // Good
+}
+
+// Near-miss: only the exact name `new` is exempt, not names starting with it.
+fn new_user(env: Env) {
+    env.storage().instance().set(&1, &2); // Should Warn
+}
+
 // --- Negative: every observing method counts as a preceding read ---
 
 /// `get` before `set` on the same receiver and key.
