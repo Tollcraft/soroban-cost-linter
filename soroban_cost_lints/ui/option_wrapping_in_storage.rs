@@ -127,4 +127,26 @@ fn allowed_option_in_storage(env: Env) {
     env.storage().instance().set(&"key", &val); // Good (allowed)
 }
 
+// ===========================================================================
+// Test code — storing Option<T> in test functions or test modules should not
+// warn, as test setups frequently construct option fixtures. Note that the
+// `#[cfg(test)]` module is compiled out of the binary fixture.
+// ===========================================================================
+
+#[test]
+fn test_option_storage(env: Env) {
+    let _ = env.storage().instance().has(&1);
+    env.storage().instance().set(&1, &Some(10u32));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_in_mod(env: Env) {
+        let _ = env.storage().instance().has(&1);
+        env.storage().instance().set(&1, &Some(20u32));
+    }
+}
+
 fn main() {}
