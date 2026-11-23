@@ -1,0 +1,43 @@
+warning: token transfer inside a loop
+  --> $DIR/token_transfer_in_loop.rs:33:9
+   |
+LL |         client.transfer(&from, &to, &100); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing
+   = note: `#[warn(token_transfer_in_loop)]` on by default
+
+warning: token transfer inside a loop
+  --> $DIR/token_transfer_in_loop.rs:43:9
+   |
+LL |         client.transfer(&from, &to, &100); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing
+
+warning: token transfer inside a loop
+  --> $DIR/token_transfer_in_loop.rs:53:9
+   |
+LL |         client.transfer(&from, &to, &100); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing
+
+warning: token transfer inside a loop
+  --> $DIR/token_transfer_in_loop.rs:64:9
+   |
+LL |         client.transfer_from(&spender, &from, &to, &50); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing
+
+warning: token transfer inside a loop
+  --> $DIR/token_transfer_in_loop.rs:73:9
+   |
+LL |         client.transfer(&from, &to, &100); // Should Warn — closure in loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing
+
+warning: 5 warnings emitted
+

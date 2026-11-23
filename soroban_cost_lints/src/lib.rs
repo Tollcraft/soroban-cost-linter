@@ -69,6 +69,7 @@ mod storage_write_without_read;
 mod string_concat_in_loop;
 mod string_type_as_storage_key;
 mod symbol_to_string_in_loop;
+mod token_transfer_in_loop;
 mod unbounded_input_loop;
 mod unwrap_on_storage_get;
 mod val_conversion_chain;
@@ -152,6 +153,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -261,6 +263,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(token_transfer_in_loop::TokenTransferInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -630,6 +633,12 @@ rustc_session::declare_lint! {
     pub SYMBOL_TO_STRING_IN_LOOP,
     Warn,
     "Symbol::to_string called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub TOKEN_TRANSFER_IN_LOOP,
+    Warn,
+    "token transfer (transfer / transfer_from) on a contract client inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -1017,6 +1026,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Symbol::to_string called inside a loop",
         rationale: "Symbol::to_string allocates a fresh host String on every call, so converting inside a loop allocates once per iteration for a value that can usually be compared directly or created once.",
     },
+    LintMeta {
+        name: "token_transfer_in_loop",
+        category: LintCategory::Compute,
+        description: "token transfer (transfer / transfer_from) on a contract client inside a loop",
+        rationale: "Token transfers are cross-contract calls plus at least two storage writes; repeating them inside a loop multiplies costs by a caller-influenced factor.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -1081,6 +1096,7 @@ dylint_lint_impl! {
         CRYPTO_HASH_OF_LOOP_INVARIANT,
         STRING_TYPE_AS_STORAGE_KEY,
         SYMBOL_TO_STRING_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
 
     ]
 }

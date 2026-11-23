@@ -59,6 +59,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`sort_in_loop`](sort_in_loop.md) | `warn` | sorting a Soroban Vec inside a loop |
 | [`crypto_hash_of_loop_invariant`](crypto_hash_of_loop_invariant.md) | `warn` | cryptographic hash of a loop-invariant value inside a loop |
 | [`symbol_to_string_in_loop`](symbol_to_string_in_loop.md) | `warn` | Symbol::to_string called inside a loop |
+| [`token_transfer_in_loop`](token_transfer_in_loop.md) | `warn` | token transfer (transfer / transfer_from) on a contract client inside a loop |
 
 ## Memory
 
