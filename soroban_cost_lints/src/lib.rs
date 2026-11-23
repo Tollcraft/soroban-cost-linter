@@ -169,6 +169,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         FORMATTED_ASSERT_PAYLOAD,
         STRING_FROM_STR_IN_LOOP,
         VEC_REMOVE_FRONT_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -286,6 +287,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         .register_late_pass(|_| Box::new(crypto_hash_of_loop_invariant::CryptoHashOfLoopInvariant));
     lint_store.register_late_pass(|_| Box::new(string_type_as_storage_key::StringTypeAsStorageKey));
     lint_store.register_late_pass(|_| Box::new(symbol_to_string_in_loop::SymbolToStringInLoop));
+    lint_store.register_late_pass(|_| Box::new(token_transfer_in_loop::TokenTransferInLoop));
     lint_store.register_late_pass(|_| Box::new(auths_read_in_loop::AuthsReadInLoop));
     lint_store.register_late_pass(|_| {
         Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
@@ -715,6 +717,12 @@ rustc_session::declare_lint! {
     pub VEC_REMOVE_FRONT_IN_LOOP,
     Warn,
     "Vec::remove(0) inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub TOKEN_TRANSFER_IN_LOOP,
+    Warn,
+    "token transfer called through a contract client inside a loop"
 }
 
 pub struct SorobanCostLints;
@@ -1222,6 +1230,7 @@ dylint_lint_impl! {
         FORMATTED_ASSERT_PAYLOAD,
         STRING_FROM_STR_IN_LOOP,
         VEC_REMOVE_FRONT_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
     ]
 }
 
