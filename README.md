@@ -87,7 +87,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full setup details, including a manua
 
 Since `soroban-cost-linter` hooks directly into Rust's HIR, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library pins Dylint `=6.3.0`: 6.4.0 raised its MSRV to rustc 1.98 and cannot install on the pinned nightly.
 
-1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
+1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-11-16`).
 
    ```bash
    rustup toolchain install <channel-from-rust-toolchain>

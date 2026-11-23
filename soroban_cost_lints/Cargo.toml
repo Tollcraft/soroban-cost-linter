@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 # is the rust-clippy snapshot (Clippy 0.1.97, "Rust 1.95" era) that matches
 # `nightly-2026-04-16` (the toolchain pinned in rust-toolchain). See
 # docs/NIGHTLY_UPGRADE_RUNBOOK.md for how to bump both together.
-clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "f9c23c1fcb96fb42e8706fa9c61043dc70423ba9" }
+clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "008669182d1bc7f648750866b09dbac01aed3635" }
 dylint_linting = "6.0.1"
 
 [dev-dependencies]

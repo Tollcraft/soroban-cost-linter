@@ -69,8 +69,8 @@ If you prefer to set up the toolchain on your machine directly:
 1. **Install the Rust toolchain.** Use [rustup](https://rustup.rs/) to install the nightly toolchain with the required components:
 
    ```powershell
-   rustup toolchain install nightly-2026-04-16 --component rustc-dev llvm-tools-preview rustfmt clippy
-   rustup default nightly-2026-04-16
+   rustup toolchain install nightly-2026-11-16 --component rustc-dev llvm-tools-preview rustfmt clippy
+   rustup default nightly-2026-11-16
    ```
 
    The `rust-toolchain` file in the repository root will pin the correct nightly automatically once the toolchain is installed, but running the command above ensures the required components are present.
@@ -217,9 +217,9 @@ cargo deny check
 
 The pinned nightly is declared once in `rust-toolchain` (the single source of truth) and must stay in sync across multiple files. Upgrading is a multi-step, order-dependent process. The complete procedure—including identification of the matching `clippy_utils` revision, common breakages, and how to verify success—is documented in the [Nightly Upgrade Runbook](./docs/NIGHTLY_UPGRADE_RUNBOOK.md).
 
-**TL;DR:** The critical relationship is between the nightly channel in `rust-toolchain` and the `clippy_utils` git revision in `soroban_cost_lints/Cargo.toml`. As of the current pin, `clippy_utils` rev `f9c23c1fcb96fb42e8706fa9c61043dc70423ba9` (Clippy 0.1.97) maps to `nightly-2026-04-16`; the mapping is recorded next to the dependency in `soroban_cost_lints/Cargo.toml`. See the runbook for guidance on finding the matching revision from `rust-lang/rust-clippy`'s `master` branch.
+**TL;DR:** The critical relationship is between the nightly channel in `rust-toolchain` and the `clippy_utils` git revision in `soroban_cost_lints/Cargo.toml`. As of the current pin, `clippy_utils` rev `f9c23c1fcb96fb42e8706fa9c61043dc70423ba9` (Clippy 0.1.97) maps to `nightly-2026-11-16`; the mapping is recorded next to the dependency in `soroban_cost_lints/Cargo.toml`. See the runbook for guidance on finding the matching revision from `rust-lang/rust-clippy`'s `master` branch.
 
-1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-04-16`).
+1. Update `rust-toolchain` with the new nightly date (e.g. `nightly-2026-11-16`).
 2. Find the matching `clippy_utils` commit from the [`rust-lang/rust-clippy`](https://github.com/rust-lang/rust-clippy) repository's `master` branch, dated on or before the target nightly, and update the `rev` field in `soroban_cost_lints/Cargo.toml` (keeping the recorded nightly link comment in sync).
 3. Update `action.yml` (the `toolchain` input default), `templates/github-action.yml` and `docs/integration.md` with the new nightly date. The workflows under `.github/workflows/` need no edit: they read the channel from `rust-toolchain` at run time.
 4. Run the drift guard to confirm everything agrees:
