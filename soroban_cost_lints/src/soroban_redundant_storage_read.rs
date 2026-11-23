@@ -6,8 +6,8 @@
 //! reusing it is free.
 //!
 //! Detection is per block and only looks at top-level statements: the tracker
-//! remembers the last read as `(storage accessor, key)`, clears it on a `set`,
-//! and reports a read that matches what is already remembered. Expressions
+//! remembers every read as `(storage accessor, key)`, reports a read whose key
+//! is already present, and clears all remembered keys on a `set`. Expressions
 //! nested deeper than the block's statement list are not tracked, which keeps
 //! the analysis linear in the number of statements without a full dataflow
 //! pass.
@@ -19,6 +19,7 @@ use rustc_lint::{LateContext, LateLintPass};
 use rustc_middle::ty;
 use rustc_session::declare_lint_pass;
 use rustc_span::def_id::DefId;
+use std::collections::HashMap;
 
 use crate::{SOROBAN_REDUNDANT_STORAGE_READ, cached_def_path_str};
 
@@ -103,12 +104,14 @@ fn storage_accessor_def_id<'tcx>(cx: &LateContext<'tcx>, ty: ty::Ty<'tcx>) -> Op
 /// A storage access found in a block, classified by whether it observes or
 /// overwrites the key.
 enum StorageOp {
-    /// A `get`/`has` on `storage_def_id` whose key prints as `key_text`.
+    /// A `get`/`try_get`/`has` on `storage_def_id` whose key prints as
+    /// `key_text`.
     Read {
         storage_def_id: DefId,
         key_text: String,
     },
-    /// A `set`, which invalidates any tracked read.
+    /// A `set`, which overwrites state and therefore invalidates every read
+    /// remembered in the current block.
     Write,
 }
 
@@ -150,10 +153,17 @@ fn extract_storage_op<'tcx>(
 
 /// Late pass backing [`SOROBAN_REDUNDANT_STORAGE_READ`].
 impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
-    /// Walks a block's top-level statements, remembering the most recent read
-    /// and reporting a read that repeats it without an intervening `set`.
+    /// Walks a block's top-level statements, tracking every read by its
+    /// `(accessor, key)` pair and reporting each read whose key was already
+    /// seen since the last write.
+    ///
+    /// Interleaved keys are tracked independently, so `get(a); get(b); get(a)`
+    /// reports the third read. Any `set` clears the whole active-read set,
+    /// matching the conservative model that a write may change any key.
     fn check_block(&mut self, cx: &LateContext<'tcx>, block: &'tcx hir::Block<'tcx>) {
-        let mut last_read: Option<(DefId, String)> = None;
+        // Maps (accessor DefId, key source text) -> span of the read that
+        // established the key since the last write.
+        let mut active_reads: HashMap<(DefId, String), rustc_span::Span> = HashMap::new();
 
         let exprs = block
             .stmts
@@ -174,10 +184,8 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
                         storage_def_id,
                         key_text,
                     } => {
-                        if let Some((last_def_id, ref last_key)) = last_read
-                            && last_def_id == storage_def_id
-                            && *last_key == key_text
-                        {
+                        let key = (storage_def_id, key_text);
+                        if active_reads.insert(key, expr.span).is_some() {
                             span_lint_and_help(
                                 cx,
                                 SOROBAN_REDUNDANT_STORAGE_READ,
@@ -187,11 +195,8 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
                                 SOROBAN_REDUNDANT_STORAGE_READ_HELP,
                             );
                         }
-                        last_read = Some((storage_def_id, key_text));
                     }
-                    StorageOp::Write => {
-                        last_read = None;
-                    }
+                    StorageOp::Write => active_reads.clear(),
                 }
             }
         }

@@ -82,6 +82,34 @@ fn redundant_try_get(env: Env) {
     let _: Option<i32> = env.storage().instance().try_get(&1); // Should Warn
 }
 
+// --- Interleaved keys: each key is tracked independently ---
+
+fn interleaved_keys(env: Env) {
+    let a1: Option<i32> = env.storage().instance().get(&1);
+    let b1: Option<i32> = env.storage().instance().get(&2);
+    let a2: Option<i32> = env.storage().instance().get(&1); // Should Warn
+    let b2: Option<i32> = env.storage().instance().get(&2); // Should Warn
+    let _ = (a1, b1, a2, b2);
+}
+
+// Near-miss: three different keys interleave without a single repeat.
+fn three_distinct_keys(env: Env) {
+    let a: Option<i32> = env.storage().instance().get(&1);
+    let b: Option<i32> = env.storage().instance().get(&2);
+    let c: Option<i32> = env.storage().instance().get(&3);
+    let _ = (a, b, c);
+}
+
+// Near-miss: a `set` clears every tracked key, so the second read of key 2 is
+// not a repeat even though the write targeted key 1.
+fn write_clears_all_tracked_keys(env: Env) {
+    let a: Option<i32> = env.storage().instance().get(&1);
+    let b: Option<i32> = env.storage().instance().get(&2);
+    env.storage().instance().set(&1, &3);
+    let b2: Option<i32> = env.storage().instance().get(&2); // Should NOT warn
+    let _ = (a, b, b2);
+}
+
 // Fires: a `get` followed by `try_get` is still the same read, just observed by a
 // different accessor method.
 fn redundant_get_then_try_get(env: Env) {

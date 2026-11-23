@@ -45,30 +45,85 @@ impl<'tcx> LateLintPass<'tcx> for OptionWrappingInStorage {
     }
 }
 
-/// Returns `true` if `expr` is the receiver of a storage `.set()` call
-/// (i.e. the receiver is one of Instance, Persistent, or Temporary).
+/// Returns `true` if `expr` is the receiver of a storage `.set()` call,
+/// verified by matching against canonical [`SOROBAN_STORAGE_TYPES`] definition
+/// paths after peeling any references.
 fn is_storage_set_receiver<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
-    is_storage_type(cx, cx.typeck_results().expr_ty(expr))
+    let ty = cx.typeck_results().expr_ty(expr).peel_refs();
+    is_storage_type(cx, ty)
 }
 
-/// Returns `true` if `ty` is one of the Soroban storage container types
-/// (`soroban_sdk::storage::{Storage, Instance, Persistent, Temporary}`), after
-/// peeling references so `&Persistent` behaves like `Persistent`. The def-path
-/// match replaces the old Debug-printed substring test, which over-matched any
-/// user type whose printed name contained one of those words (#796).
+/// Returns `true` if `ty` is one of the Soroban storage accessor types
+/// by checking its canonical definition path against [`SOROBAN_STORAGE_TYPES`].
+/// This avoids false positives on user-defined types whose names happen to
+/// contain "Instance", "Persistent", "Temporary", or "Storage".
 fn is_storage_type<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
-    ty_adt_def(ty.peel_refs())
-        .is_some_and(|adt_def| matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES))
+    ty_adt_def(ty).is_some_and(|adt_def| matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES))
 }
 
-/// Returns `true` if `ty` is exactly `Option<T>` (not a struct that merely
-/// contains an Option field).
+/// Returns `true` if `ty` is `Option<T>` (not a struct that merely contains
+/// an Option field). References are peeled before the check so that `&Option<T>`
+/// and `&&Option<T>` are handled the same as `Option<T>`.
 fn is_option_type(cx: &LateContext<'_>, ty: Ty<'_>) -> bool {
-    match ty.kind() {
-        ty::Adt(adt, args) if cx.tcx.is_diagnostic_item(sym::Option, adt.did()) => {
-            // Verify we have a single generic argument (Option<T> has one)
-            args.len() == 1
+    if let ty::Adt(adt, _) = ty.peel_refs().kind() {
+        cx.tcx.is_diagnostic_item(sym::Option, adt.did())
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::SOROBAN_STORAGE_TYPES;
+
+    /// Every SOROBAN_STORAGE_TYPES path starts with `soroban_sdk` so that
+    /// `match_soroban_def_path` can verify the crate root when matching.
+    #[test]
+    fn storage_type_paths_start_with_soroban_sdk() {
+        for path in SOROBAN_STORAGE_TYPES {
+            assert_eq!(
+                path[0], "soroban_sdk",
+                "SOROBAN_STORAGE_TYPES entry {:?} must start with 'soroban_sdk'",
+                path
+            );
         }
-        _ => false,
+    }
+
+    /// All four canonical Soroban storage accessor types are present.
+    #[test]
+    fn storage_types_cover_all_four_accessors() {
+        let last_segments: Vec<&str> = SOROBAN_STORAGE_TYPES
+            .iter()
+            .map(|path| *path.last().unwrap())
+            .collect();
+        for name in &["Storage", "Instance", "Persistent", "Temporary"] {
+            assert!(
+                last_segments.contains(name),
+                "SOROBAN_STORAGE_TYPES must include '{name}'"
+            );
+        }
+    }
+
+    /// User-defined type names that happen to contain storage substrings must
+    /// NOT be listed in SOROBAN_STORAGE_TYPES — they differ in def-path and
+    /// the canonical path match rejects them.
+    #[test]
+    fn false_positive_names_are_not_in_storage_types() {
+        let false_positive_names = [
+            "InstanceConfiguration",
+            "PersistentBuffer",
+            "StorageManager",
+            "TemporaryData",
+        ];
+        let last_segments: Vec<&str> = SOROBAN_STORAGE_TYPES
+            .iter()
+            .map(|path| *path.last().unwrap())
+            .collect();
+        for name in &false_positive_names {
+            assert!(
+                !last_segments.contains(name),
+                "'{name}' should not be in SOROBAN_STORAGE_TYPES"
+            );
+        }
     }
 }

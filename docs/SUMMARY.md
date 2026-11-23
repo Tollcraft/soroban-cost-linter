@@ -67,10 +67,18 @@
   * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
   * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
   * [deploy\_in\_loop](lints/deploy_in_loop.md)
-  * [auths\_read\_in\_loop](lints/auths_read_in_loop.md)
-  * [repeated\_instance\_write\_same\_key](lints/repeated_instance_write_same_key.md)
-  * [host\_container\_clone\_in\_loop](lints/host_container_clone_in_loop.md)
-  * [include\_bytes\_in\_contract](lints/include_bytes_in_contract.md)
+  * [map\_iter\_then\_lookup](lints/map_iter_then_lookup.md)
+  * [storage\_write\_of\_unchanged\_value](lints/storage_write_of_unchanged_value.md)
+  * [large\_value\_decoded\_for\_one\_field](lints/large_value_decoded_for_one_field.md)
+  * [persistent\_write\_without\_ttl\_extension](lints/persistent_write_without_ttl_extension.md)
+  * [address\_equality\_via\_to\_string](lints/address_equality_via_to_string.md)
+  * [address\_from\_string\_in\_loop](lints/address_from_string_in_loop.md)
+  * [bytes\_indexed\_read\_in\_loop](lints/bytes_indexed_read_in_loop.md)
+  * [sort\_in\_loop](lints/sort_in_loop.md)
+  * [collection\_len\_from\_storage](lints/collection_len_from_storage.md)
+  * [crypto\_hash\_of\_loop\_invariant](lints/crypto_hash_of_loop_invariant.md)
+  * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
+  * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
 
 ## Branding
 
