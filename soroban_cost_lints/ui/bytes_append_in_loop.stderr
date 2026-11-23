@@ -1,14 +1,5 @@
-warning: inefficient Bytes concatenation inside a loop
-  --> $DIR/bytes_append_in_loop.rs:13:9
-   |
-LL |         b.append(other); //~ WARNING repeatedly growing SDK container inside a loop
-   |         ^^^^^^^^^^^^^^^
-   |
-   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
-   = note: `#[warn(soroban_inefficient_bytes_concat)]` on by default
-
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/bytes_append_in_loop.rs:13:9
+  --> $DIR/bytes_append_in_loop.rs:39:9
    |
 LL |         b.append(other); //~ WARNING repeatedly growing SDK container inside a loop
    |         ^^^^^^^^^^^^^^^
@@ -20,13 +11,101 @@ note: the lint level is defined here
 LL | #![warn(bytes_append_in_loop)]
    |         ^^^^^^^^^^^^^^^^^^^^
 
-warning: inefficient Bytes concatenation inside a loop
-  --> $DIR/bytes_append_in_loop.rs:21:9
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:45:9
    |
-LL |         b.append(other);
+LL |         b.push_back(i as u8); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:51:9
+   |
+LL |         b.insert(0, i as u8); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:57:9
+   |
+LL |         b.extend_from_array([1, 2, 3]); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:63:9
+   |
+LL |         out.extend_from_slice(chunk); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:69:9
+   |
+LL |         v.append(other); //~ WARNING repeatedly growing SDK container inside a loop
    |         ^^^^^^^^^^^^^^^
    |
-   = help: accumulate bytes in a Vec<u8> inside the loop and convert to Bytes once outside the loop via Bytes::from_slice
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 3 warnings emitted
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:75:9
+   |
+LL |         v.push_back(i); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:81:9
+   |
+LL |         v.push_front(i); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:87:9
+   |
+LL |         v.insert(0, i); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:93:9
+   |
+LL |         v.extend_from_array([1, 2, 3]); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:99:9
+   |
+LL |         out.extend_from_slice(chunk); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:105:17
+   |
+LL |         let _ = a.concat(b); //~ WARNING repeatedly growing SDK container inside a loop
+   |                 ^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/bytes_append_in_loop.rs:111:9
+   |
+LL |         m.insert(i, i); //~ WARNING repeatedly growing SDK container inside a loop
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: 13 warnings emitted
 

@@ -1229,8 +1229,33 @@ const SOROBAN_CONTAINER_TYPES: &[&[&str]] = &[
 ];
 
 /// Methods on [`SOROBAN_CONTAINER_TYPES`] that grow the container's backing
-/// buffer, causing increasingly expensive host-side work per call.
-const BYTES_APPEND_METHODS: &[&str] = &["append", "push_back", "insert", "extend_from_array"];
+/// buffer, typed per container so each method is only watched on the types
+/// that define it.
+const BYTES_APPEND_METHODS: &[(&[&str], &[&str])] = &[
+    (
+        SOROBAN_CONTAINER_TYPES[0],
+        &[
+            "append",
+            "push_back",
+            "insert",
+            "extend_from_array",
+            "extend_from_slice",
+        ],
+    ),
+    (
+        SOROBAN_CONTAINER_TYPES[1],
+        &[
+            "append",
+            "push_back",
+            "push_front",
+            "insert",
+            "extend_from_array",
+            "extend_from_slice",
+            "concat",
+        ],
+    ),
+    (SOROBAN_CONTAINER_TYPES[2], &["insert"]),
+];
 
 pub(crate) fn matches_any_path<'tcx>(
     cx: &LateContext<'tcx>,
@@ -2022,34 +2047,33 @@ pub struct BytesAppendInLoop;
 
 rustc_session::impl_lint_pass!(BytesAppendInLoop => [BYTES_APPEND_IN_LOOP]);
 
-/// Detection: for every `MethodCall` whose segment is one of
-/// [`BYTES_APPEND_METHODS`], peel references off the receiver and confirm
-/// the ADT belongs to [`SOROBAN_CONTAINER_TYPES`]. A match is reported
-/// only when [`enclosing_loop`] returns `Some`. We deliberately do **not**
+/// Detection: for every `MethodCall`, check if the receiver ADT matches a container
+/// in [`BYTES_APPEND_METHODS`] and the method is one of its associated growth methods.
+/// A match is reported only when [`enclosing_loop`] returns `Some`. We deliberately do **not**
 /// attempt to detect whether the loop could be batched — that reasoning
 /// is runtime-dependent and would inflate the false-positive rate.
 impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
     /// Flags a growth-method call on a container type inside a loop.
     ///
     /// The receiver type is matched against [`SOROBAN_CONTAINER_TYPES`] and
-    /// the method name against [`BYTES_APPEND_METHODS`].  Only syntactic
-    /// loops are considered; multi-call closures are not flagged here.
+    /// the method name against the methods defined in [`BYTES_APPEND_METHODS`].
+    /// Only syntactic loops are considered; multi-call closures are not flagged here.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let method_name = path_segment.ident.name.as_str();
-            if !BYTES_APPEND_METHODS.contains(&method_name) {
-                return;
-            }
 
-            let is_container = if let Some(adt_def) =
+            let is_container_growth = if let Some(adt_def) =
                 ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
             {
-                matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
+                BYTES_APPEND_METHODS.iter().any(|(container, methods)| {
+                    methods.contains(&method_name)
+                        && match_soroban_def_path(cx, adt_def.did(), container)
+                })
             } else {
                 false
             };
 
-            if is_container && enclosing_loop(cx, expr).is_some() {
+            if is_container_growth && enclosing_loop(cx, expr).is_some() {
                 span_lint_and_help(
                     cx,
                     BYTES_APPEND_IN_LOOP,
