@@ -4,7 +4,7 @@ use rustc_hir::Expr;
 use rustc_lint::{LateContext, LateLintPass};
 use rustc_session::declare_lint_pass;
 
-use crate::{LEDGER_CONTEXT_READ_IN_LOOP, match_soroban_def_path, ty_adt_def};
+use crate::{LEDGER_CONTEXT_READ_IN_LOOP, match_soroban_def_path};
 
 /// Canonical Soroban ledger accessor type path.
 const LEDGER_TYPE_PATH: &[&str] = &["soroban_sdk", "ledger", "Ledger"];
@@ -66,6 +66,8 @@ impl<'tcx> LateLintPass<'tcx> for LedgerContextReadInLoop {
 /// by inspecting the expression shape. This catches both forms uniformly.
 fn is_ledger_receiver<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
     let ty = cx.typeck_results().expr_ty(expr).peel_refs();
-    ty_adt_def(ty)
-        .is_some_and(|adt_def| match_soroban_def_path(cx, adt_def.did(), LEDGER_TYPE_PATH))
+    let rustc_middle::ty::Adt(adt_def, _) = ty.kind() else {
+        return false;
+    };
+    match_soroban_def_path(cx, adt_def.did(), LEDGER_TYPE_PATH)
 }
