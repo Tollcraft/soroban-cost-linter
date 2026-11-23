@@ -71,5 +71,9 @@ This document provides a concise reference for all lints supported by **soroban-
 | `repeated_instance_write_same_key` | warn | repeated instance storage write to the same key | [Link](lints/repeated_instance_write_same_key.md) |
 | `host_container_clone_in_loop` | warn | cloning a host container inside a loop | [Link](lints/host_container_clone_in_loop.md) |
 | `include_bytes_in_contract` | warn | include_bytes! or include_str! data embedded in contract code | [Link](lints/include_bytes_in_contract.md) |
+| `bytes_comparison_via_allocvec` | warn | comparing Bytes values through to_allocvec allocates both operands | [Link](lints/bytes_comparison_via_allocvec.md) |
+| `formatted_assert_payload` | warn | assert macro formats its failure message eagerly | [Link](lints/formatted_assert_payload.md) |
+| `string_from_str_in_loop` | warn | String::from_str with a constant value inside a loop | [Link](lints/string_from_str_in_loop.md) |
+| `vec_remove_front_in_loop` | warn | Vec::remove(0) inside a loop | [Link](lints/vec_remove_front_in_loop.md) |
 
 *Severities can be overridden via `budget.toml`.*

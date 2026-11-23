@@ -80,9 +80,13 @@
   * [string\_type\_as\_storage\_key](lints/string_type_as_storage_key.md)
   * [symbol\_to\_string\_in\_loop](lints/symbol_to_string_in_loop.md)
   * [auths\_read\_in\_loop](lints/auths_read_in_loop.md)
-  * [repeated\_instance\_write\_same_key](lints/repeated_instance_write_same_key.md)
+  * [repeated\_instance\_write\_same\_key](lints/repeated_instance_write_same_key.md)
   * [host\_container\_clone\_in\_loop](lints/host_container_clone_in_loop.md)
   * [include\_bytes\_in\_contract](lints/include_bytes_in_contract.md)
+  * [bytes\_comparison\_via\_allocvec](lints/bytes_comparison_via_allocvec.md)
+  * [formatted\_assert\_payload](lints/formatted_assert_payload.md)
+  * [string\_from\_str\_in\_loop](lints/string_from_str_in_loop.md)
+  * [vec\_remove\_front\_in\_loop](lints/vec_remove_front_in_loop.md)
 
 ## Branding
 
