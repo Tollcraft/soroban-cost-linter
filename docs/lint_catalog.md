@@ -32,6 +32,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `deploy_in_loop` | warn | contract deployment inside a loop | [Link](lints/deploy_in_loop.md) |
 | `auths_read_in_loop` | warn | calling env.auths() inside a loop | [Link](lints/auths_read_in_loop.md) |
 | `repeated_instance_write_same_key` | warn | repeated instance storage write to the same key | [Link](lints/repeated_instance_write_same_key.md) |
+| `host_container_clone_in_loop` | warn | cloning a host container inside a loop | [Link](lints/host_container_clone_in_loop.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
 | `extend_ttl_in_loop` | warn | extend_ttl called inside a loop | [Link](lints/extend_ttl_in_loop.md) |

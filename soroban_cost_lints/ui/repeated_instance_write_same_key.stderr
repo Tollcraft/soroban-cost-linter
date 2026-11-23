@@ -12,3 +12,4 @@ LL | #![warn(repeated_instance_write_same_key)]
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: 1 warning emitted
+

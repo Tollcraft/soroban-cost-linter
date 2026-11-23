@@ -60,6 +60,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
 | [`bytes_slice_copy_in_loop`](bytes_slice_copy_in_loop.md) | `warn` | repeatedly copying a sub-slice of `Bytes` inside a loop |
 | [`excessive_vec_capacity`](excessive_vec_capacity.md) | `warn` | excessive pre-allocation capacity in Soroban Vec |
+| [`host_container_clone_in_loop`](host_container_clone_in_loop.md) | `warn` | cloning a host container inside a loop |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |

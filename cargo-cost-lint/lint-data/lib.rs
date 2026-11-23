@@ -43,6 +43,7 @@ mod deploy_in_loop;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
 mod excessive_vec_capacity;
+mod host_container_clone_in_loop;
 mod instance_storage_write_in_loop;
 mod large_constant_array;
 mod ledger_context_read_in_loop;
@@ -132,6 +133,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         DEPLOY_IN_LOOP,
         AUTHS_READ_IN_LOOP,
         REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -222,6 +224,8 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(repeated_instance_write_same_key::RepeatedInstanceWriteSameKey)
     });
+    lint_store
+        .register_late_pass(|_| Box::new(host_container_clone_in_loop::HostContainerCloneInLoop));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -373,6 +377,12 @@ rustc_session::declare_lint! {
     pub REPEATED_INSTANCE_WRITE_SAME_KEY,
     Warn,
     "repeated instance storage write to the same key"
+}
+
+rustc_session::declare_lint! {
+    pub HOST_CONTAINER_CLONE_IN_LOOP,
+    Warn,
+    "cloning a host container inside a loop"
 }
 
 rustc_session::declare_lint! {
@@ -858,6 +868,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "repeated instance storage write to the same key",
         rationale: "Each instance storage write rewrites the entire instance storage map and incurs ledger write costs; writing to the same key multiple times in a single function wastes fees on intermediate values that are overwritten before the invocation finishes.",
     },
+    LintMeta {
+        name: "host_container_clone_in_loop",
+        category: LintCategory::Memory,
+        description: "cloning a host container inside a loop",
+        rationale: "Cloning a host container (Vec, Map, Bytes, String) deep-copies the host object every iteration; borrowing the container or hoisting the clone avoids repeated host allocations.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -912,6 +928,7 @@ dylint_lint_impl! {
         DEPLOY_IN_LOOP,
         AUTHS_READ_IN_LOOP,
         REPEATED_INSTANCE_WRITE_SAME_KEY,
+        HOST_CONTAINER_CLONE_IN_LOOP,
     ]
 }
 
