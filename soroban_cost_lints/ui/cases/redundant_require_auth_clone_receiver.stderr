@@ -1,0 +1,22 @@
+warning: require_auth already called on this address in this function
+  --> $DIR/redundant_require_auth_clone_receiver.rs:22:5
+   |
+LL |     addr.clone().require_auth();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation
+note: the lint level is defined here
+  --> $DIR/redundant_require_auth_clone_receiver.rs:2:9
+   |
+LL | #![warn(redundant_require_auth)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: require_auth already called on this address in this function
+  --> $DIR/redundant_require_auth_clone_receiver.rs:28:5
+   |
+LL |     (&addr).require_auth();
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: remove this duplicate authorization call; the first require_auth on an address already establishes authorization for the entire invocation
+
+warning: 2 warnings emitted

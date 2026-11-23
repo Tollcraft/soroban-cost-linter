@@ -1,0 +1,14 @@
+warning: embedding a large array in contract code increases Wasm size
+  --> $DIR/large_constant_array_threshold_boundary.rs:5:35
+   |
+LL | const BOUNDARY_4097: [u8; 4097] = [0; 4097];
+   |                                   ^^^^^^^^^
+   |
+   = help: consider using host-managed `Bytes` or persistent storage for large data
+note: the lint level is defined here
+  --> $DIR/large_constant_array_threshold_boundary.rs:2:9
+   |
+LL | #![warn(large_constant_array)]
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: 1 warning emitted

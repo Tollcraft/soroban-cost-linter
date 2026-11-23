@@ -15,32 +15,58 @@ pub const LARGE_CONSTANT_ARRAY_MSG: &str =
 pub const LARGE_CONSTANT_ARRAY_HELP: &str =
     "consider using host-managed `Bytes` or persistent storage for large data";
 
+/// Size of one element in bytes, for the element types a constant array can name.
+///
+/// Returns `None` for anything this pass cannot size without asking the layout
+/// machinery, which is the signal to compare the element count instead.
+fn element_bytes<'tcx>(cx: &LateContext<'tcx>, ty: ty::Ty<'tcx>) -> Option<u64> {
+    match ty.kind() {
+        ty::Bool => Some(1),
+        ty::Char => Some(4),
+        ty::Int(int_ty) => int_ty.bit_width().map(|width| width / 8),
+        ty::Uint(uint_ty) => uint_ty.bit_width().map(|width| width / 8),
+        ty::Float(float_ty) => Some(float_ty.bit_width() / 8),
+        ty::Array(inner, len) => {
+            let width = element_bytes(cx, *inner)?;
+            let count = len.try_to_target_usize(cx.tcx)?;
+            width.checked_mul(count)
+        }
+        _ => None,
+    }
+}
+
 impl<'tcx> LateLintPass<'tcx> for LargeConstantArray {
-    /// Flags an array literal whose element count exceeds
-    /// [`LARGE_ARRAY_THRESHOLD`].
+    /// Flags an array literal or repeat expression whose total byte size
+    /// exceeds [`LARGE_ARRAY_THRESHOLD`].
     ///
-    /// Only a *literal* is reported. An array literal lists every element, so
-    /// all of them end up in the contract's data section and the deployed
-    /// Wasm binary grows with the array. A repeated fill such as
-    /// `[0u8; 8192]` is not reported: it lowers to a zeroed region and adds
-    /// nothing to the binary.
+    /// For types with a known layout, the size is computed as element count
+    /// multiplied by element size in bytes. For generic elements with no layout,
+    /// it falls back to element count and notes this in the diagnostic help.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
-        if !matches!(expr.kind, ExprKind::Array(_)) {
+        if !matches!(expr.kind, ExprKind::Array(_) | ExprKind::Repeat(..)) {
             return;
         }
         let ty = cx.typeck_results().expr_ty(expr);
-        if let ty::Array(_elem_ty, len) = ty.kind()
+        if let ty::Array(elem_ty, len) = ty.kind()
             && let Some(n) = len.try_to_target_usize(cx.tcx)
-            && n > LARGE_ARRAY_THRESHOLD
         {
-            span_lint_and_help(
-                cx,
-                LARGE_CONSTANT_ARRAY,
-                expr.span,
-                LARGE_CONSTANT_ARRAY_MSG,
-                None,
-                LARGE_CONSTANT_ARRAY_HELP,
-            );
+            // The threshold is bytes, not elements: `[u32; 1200]` is 4800 bytes and
+            // belongs in the report while `[u32; 1024]` is exactly 4096 and does not.
+            // An element whose layout this pass cannot name falls back to its count,
+            // which is what the lint measured before layouts were consulted.
+            let bytes = element_bytes(cx, *elem_ty)
+                .and_then(|width| width.checked_mul(n))
+                .unwrap_or(n);
+            if bytes > LARGE_ARRAY_THRESHOLD {
+                span_lint_and_help(
+                    cx,
+                    LARGE_CONSTANT_ARRAY,
+                    expr.span,
+                    LARGE_CONSTANT_ARRAY_MSG,
+                    None,
+                    LARGE_CONSTANT_ARRAY_HELP,
+                );
+            }
         }
     }
 }

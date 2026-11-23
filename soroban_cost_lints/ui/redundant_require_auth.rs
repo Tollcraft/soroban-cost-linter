@@ -14,6 +14,7 @@ pub mod soroban_sdk {
         }
     }
 
+    #[derive(Clone)]
     pub struct Address;
     impl Clone for Address {
         fn clone(&self) -> Self { Address }

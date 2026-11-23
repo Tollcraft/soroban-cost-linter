@@ -45,15 +45,18 @@ const STORAGE_WRITE_WITHOUT_READ_HELP: &str =
     "consider reading the value before writing or using `.has()` to check existence";
 
 /// Function names treated as deliberate initialisers, where writing before any
-/// read is expected: constructors and admin setup. `init` and `set_admin` are
-/// substring-matched so `initialize`, `init_owner` and `set_admin_key` are all
-/// covered; Soroban constructors `__constructor` and hand-written factories
-/// named `new` are matched exactly, so `new_user` and `renew` stay in scope.
+/// read is expected: constructors and admin setup. Initialisers are matched by
+/// prefix (`init_`, `initialize`, `set_admin`), while Soroban constructors
+/// `__constructor`, hand-written factories named `new`, and exact `init` are
+/// matched exactly. This ensures false initialisers such as `initiate_auction`
+/// or `reinitialise` stay in scope.
 fn is_initialiser(fn_name: &str) -> bool {
-    fn_name.contains("init")
-        || fn_name.contains("set_admin")
-        || fn_name == "__constructor"
+    fn_name == "__constructor"
         || fn_name == "new"
+        || fn_name == "init"
+        || fn_name.starts_with("init_")
+        || fn_name.starts_with("initialize")
+        || fn_name.starts_with("set_admin")
 }
 
 /// Whether `receiver` is one of the Soroban storage accessor types
@@ -182,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn initialisers_are_recognised_by_substring() {
+    fn initialisers_are_recognised_by_prefix_and_exact_match() {
         for name in [
             "initialize",
             "init_owner",
@@ -190,10 +193,19 @@ mod tests {
             "set_admin_key",
             "__constructor",
             "new",
+            "init",
         ] {
             assert!(is_initialiser(name), "{name} should be an initialiser");
         }
-        for name in ["transfer", "record_set", "read_admin_flag", "new_user"] {
+        for name in [
+            "transfer",
+            "record_set",
+            "read_admin_flag",
+            "new_user",
+            "initiate_auction",
+            "reinitialise",
+            "renew",
+        ] {
             assert!(!is_initialiser(name), "{name} should not be an initialiser");
         }
     }
