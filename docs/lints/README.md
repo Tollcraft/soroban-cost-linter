@@ -34,6 +34,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`persistent_storage_for_ephemeral_data`](persistent_storage_for_ephemeral_data.md) | `warn` | persistent storage write is removed on every path through the function |
 | [`collection_len_from_storage`](collection_len_from_storage.md) | `warn` | stored collection loaded from storage only to call len() |
 | [`string_type_as_storage_key`](string_type_as_storage_key.md) | `warn` | String storage key uses a short literal where a Symbol would do |
+| [`repeated_instance_write_same_key`](repeated_instance_write_same_key.md) | `warn` | repeated instance storage write to the same key |
 
 ## Compute
 
@@ -69,13 +70,13 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unnecessary_string_to_bytes`](unnecessary_string_to_bytes.md) | `warn` | performs unnecessary string to bytes conversion |
 | [`bytes_slice_copy_in_loop`](bytes_slice_copy_in_loop.md) | `warn` | repeatedly copying a sub-slice of `Bytes` inside a loop |
 | [`excessive_vec_capacity`](excessive_vec_capacity.md) | `warn` | excessive pre-allocation capacity in Soroban Vec |
-| [`host_container_clone_in_loop`](host_container_clone_in_loop.md) | `warn` | cloning a host container inside a loop |
-| [`include_bytes_in_contract`](include_bytes_in_contract.md) | `warn` | include_bytes! or include_str! data embedded in contract code |
 | [`inefficient_bytes_concat`](inefficient_bytes_concat.md) | `warn` | inefficient bytes concatenation |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn` | inefficient Bytes concatenation inside a loop |
 | [`large_constant_array`](large_constant_array.md) | `warn` | embedding a large constant array in contract code |
 | [`address_equality_via_to_string`](address_equality_via_to_string.md) | `warn` | compares Address values through their string representations |
+| [`host_container_clone_in_loop`](host_container_clone_in_loop.md) | `warn` | cloning a host container inside a loop |
+| [`include_bytes_in_contract`](include_bytes_in_contract.md) | `warn` | include_bytes! or include_str! data embedded in contract code |
 
 ## Host
 
@@ -84,9 +85,9 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_env_clone`](redundant_env_clone.md) | `warn` | redundant clone on Env object |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`deploy_in_loop`](deploy_in_loop.md) | `warn` | contract deployment inside a loop |
-| [`auths_read_in_loop`](auths_read_in_loop.md) | `warn` | calling env.auths() inside a loop |
 | [`redundant_address_clone`](redundant_address_clone.md) | `warn` | redundant clone on Address object |
 | [`address_from_string_in_loop`](address_from_string_in_loop.md) | `warn` | Address::from_string called inside a loop |
+| [`auths_read_in_loop`](auths_read_in_loop.md) | `warn` | calling env.auths() inside a loop |
 
 ## Security
 
