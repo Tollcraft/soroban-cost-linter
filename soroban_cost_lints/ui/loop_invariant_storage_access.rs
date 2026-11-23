@@ -63,6 +63,18 @@ fn invariant_get(env: Env) {
     }
 }
 
+fn invariant_set_literal(env: Env) {
+    for _ in 0..10 {
+        env.storage().instance().set(&1, &42); // Should Warn
+    }
+}
+
+fn varying_set_value(env: Env) {
+    for i in 0..10 {
+        env.storage().instance().set(&1, &i);
+    }
+}
+
 // Fires: a two-step chain is reported once as well, with the span of the
 // whole chain.
 fn invariant_two_step_chain(env: Env) {
