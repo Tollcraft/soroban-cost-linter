@@ -62,4 +62,20 @@ fn bad_extend_from_slice(env: Env, chunks: &[&[u8]]) {
     }
 }
 
+fn per_iteration_accumulator_in_closure(env: Env) {
+    let mut bytes = std::vec::Vec::new();
+    (0..10u8).for_each(|byte| {
+        bytes.push(byte);
+        let _ = String::from_bytes(&env, bytes.as_slice());
+    });
+}
+
+fn fresh_accumulator_in_loop(env: Env) {
+    let mut bytes = std::vec::Vec::new();
+    for byte in 0..10u8 {
+        bytes.push(byte);
+        let _ = String::from_bytes(&env, bytes.as_slice()); // Should Warn
+    }
+}
+
 fn main() {}
