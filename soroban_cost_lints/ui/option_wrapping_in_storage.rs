@@ -91,6 +91,16 @@ fn good_plain_bool(env: Env) {
     env.storage().instance().set(&"flag", &true); // Good — bool
 }
 
+fn good_vec_of_option(env: Env) {
+    let val: std::vec::Vec<Option<u32>> = std::vec::Vec::new();
+    env.storage().instance().set(&1, &val); // Good
+}
+
+fn good_tuple_with_option(env: Env) {
+    let val: (Option<u32>, bool) = (Some(1), true);
+    env.storage().instance().set(&1, &val); // Good
+}
+
 // --- Non-triggering: a user type whose printed name merely CONTAINS a
 // storage word. The old Debug-substring heuristic treated any such receiver
 // as a storage accessor and warned on the Option value (#796).
