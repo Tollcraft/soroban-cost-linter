@@ -162,4 +162,28 @@ fn different_accessor_same_key(env: Env) {
     let _: Option<i32> = env.storage().persistent().get(&1); // Should NOT warn
 }
 
+// Near-miss: the read inside the `if` arm lives in its own block with a fresh
+// tracker, so the repeat of the same key in the enclosing block is never
+// compared to it and must NOT be flagged.
+fn nested_if_arm(env: Env, cond: bool) {
+    if cond {
+        let inner: Option<i32> = env.storage().instance().get(&1);
+        let _ = inner;
+    }
+    let outer: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+    let _ = outer;
+}
+
+// Near-miss: the read inside the loop body lives in its own block with a fresh
+// tracker, so the repeat of the same key after the loop is never compared to
+// it and must NOT be flagged.
+fn nested_loop_body(env: Env) {
+    for _ in 0..2 {
+        let inner: Option<i32> = env.storage().instance().get(&1);
+        let _ = inner;
+    }
+    let outer: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+    let _ = outer;
+}
+
 fn main() {}

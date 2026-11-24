@@ -37,4 +37,5 @@ let b: Option<i32> = a; // reuse the first read
 - Fires on sequential `get` and `has` calls on `Instance`, `Persistent`, and `Temporary` storage types.
 - A `set` (write) resets the tracking, so reads before and after a write are not flagged.
 - Reads of different keys (even on the same storage type) are not flagged.
-- Only tracks reads at the top level of statements within the same block. Nested block tracking is not yet supported.
+- Tracking restarts at every block: each block gets a fresh tracker covering only that block's top-level statements, so a read inside a nested block (such as an `if` arm or loop body) is never compared to reads in the enclosing block.
+- The block's tail expression is included in the tracked statements.
