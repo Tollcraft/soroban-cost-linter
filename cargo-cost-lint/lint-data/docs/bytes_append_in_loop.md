@@ -6,7 +6,7 @@
 
 ## What it does
 
-Detects calls to growth methods (`append`, `push_back`, `insert`, `extend_from_array`) on Soroban SDK container types (`Bytes`, `Vec`, `Map`) inside loop bodies (`for`, `while`, or `loop`).
+Detects calls to growth methods (`append`, `push_back`, `push_front`, `insert`, `extend_from_array`, `extend_from_slice`, `concat`) on Soroban SDK container types (`Bytes`, `Vec`, `Map`) inside loop bodies (`for`, `while`, or `loop`).
 
 ## Why is this bad?
 
@@ -78,4 +78,4 @@ A loop with a small, fixed number of iterations (e.g. 2–3) is usually inexpens
 
 - Calls made outside a loop body.
 - Calls on types that are not `soroban_sdk::Bytes`, `soroban_sdk::Vec`, or `soroban_sdk::Map`.
-- Methods other than `append`, `push_back`, `insert`, and `extend_from_array`.
+- Methods other than `append`, `push_back`, `push_front`, `insert`, `extend_from_array`, `extend_from_slice`, and `concat`.

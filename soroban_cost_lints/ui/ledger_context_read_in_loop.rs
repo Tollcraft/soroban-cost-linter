@@ -15,6 +15,7 @@ pub mod soroban_sdk {
             pub fn sequence(&self) -> u32 { 0 }
             pub fn timestamp(&self) -> u64 { 0 }
             pub fn network_id(&self) -> [u8; 32] { [0u8; 32] }
+            pub fn protocol_version(&self) -> u32 { 0 }
             // soroban-sdk 26.1.1 ledger.rs:73 and 28.0.0 ledger.rs:73 expose
             // this fifth invariant accessor; contract code uses it to clamp
             // TTL extensions.
@@ -76,6 +77,7 @@ fn bad_all_accessors_in_loop(env: Env) {
         let _seq = env.ledger().sequence(); // Should Warn
         let _ts = env.ledger().timestamp(); // Should Warn
         let _nid = env.ledger().network_id(); // Should Warn
+        let _pv = env.ledger().protocol_version(); // Should Warn
     }
 }
 

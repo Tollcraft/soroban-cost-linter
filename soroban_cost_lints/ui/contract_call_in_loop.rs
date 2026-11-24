@@ -22,6 +22,12 @@ pub mod soroban_sdk {
         {
             T::default()
         }
+        pub fn try_invoke_contract<T>(&self, _contract: &Address, _func: &Symbol, _args: ()) -> Result<T, ()>
+        where
+            T: Default,
+        {
+            Ok(T::default())
+        }
         pub fn host(&self) -> soroban_env_host::Host {
             soroban_env_host::Host
         }
@@ -47,6 +53,14 @@ fn bad_contract_call_in_for_loop(env: Env) {
     let sym = soroban_sdk::Symbol;
     for _ in 0..10 {
         let _: () = env.invoke_contract(&addr, &sym, ()); // Should Warn
+    }
+}
+
+fn bad_try_invoke_contract_in_for_loop(env: Env) {
+    let addr = soroban_sdk::Address;
+    let sym = soroban_sdk::Symbol;
+    for _ in 0..10 {
+        let _ = env.try_invoke_contract::<()>(&addr, &sym, ()); // Should Warn
     }
 }
 
@@ -84,6 +98,12 @@ fn good_contract_call_outside_loop(env: Env) {
     let addr = soroban_sdk::Address;
     let sym = soroban_sdk::Symbol;
     let _: () = env.invoke_contract(&addr, &sym, ()); // Good — outside any loop
+}
+
+fn good_try_invoke_contract_outside_loop(env: Env) {
+    let addr = soroban_sdk::Address;
+    let sym = soroban_sdk::Symbol;
+    let _ = env.try_invoke_contract::<()>(&addr, &sym, ()); // Good — outside any loop
 }
 
 #[allow(contract_call_in_loop)]

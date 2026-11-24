@@ -9,6 +9,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `string_concat_in_loop` now sees a byte buffer grow through a path call such as `Vec::append(&mut bytes, &mut piece)`, `Vec::push(&mut bytes, b)` or `<Vec<u8> as Extend<u8>>::extend(&mut bytes, ..)`, matching the method-call form, and treats `Vec::clear(&mut bytes)` as a reset like `bytes.clear()`.
 - `unwrap_on_storage_get` now also flags the UFCS spelling `Instance::get(&storage, &key).unwrap()`, matching the method-call form.
 - `unbounded_input_loop` now identifies caller-sized collections by exact Soroban
   definition path (`soroban_sdk::vec::Vec`, `soroban_sdk::map::Map`,
@@ -23,6 +24,10 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- New lint `bytes_comparison_via_allocvec` detecting `==`/`!=` on two `Bytes::to_allocvec()` conversions, which copies both host values into guest memory for one comparison.
+- New lint `formatted_assert_payload` detecting `assert!`, `debug_assert!`, `assert_eq!` and `assert_ne!` calls with formatted failure messages, which pull `core::fmt` into the contract.
+- New lint `string_from_str_in_loop` detecting repeated `String::from_str` calls on a literal or `const` inside loops.
+- New lint `vec_remove_front_in_loop` detecting `Vec::remove(0)` inside loops, whose repeated element shifts make a drain quadratic.
 - New lints `address_equality_via_to_string`, `address_from_string_in_loop`, `bytes_indexed_read_in_loop` and `sort_in_loop` for avoiding allocated Address string comparisons, repeated strkey parsing, per-byte Bytes host reads and sorting Soroban Vec values inside loops.
 - New lint `collection_len_from_storage` detecting a stored `Vec`/`Map`/`Bytes` read with `get` that is immediately unwrapped and used only for `len()` or `is_empty()`, where `has` or a stored counter avoids decoding the whole collection.
 - New lint `crypto_hash_of_loop_invariant` detecting `sha256`/`keccak256` calls on `env.crypto()` inside a loop whose argument is a loop-invariant local, so the digest can be computed once before the loop.

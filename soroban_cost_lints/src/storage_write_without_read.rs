@@ -9,7 +9,7 @@
 //! author can confirm the overwrite is intended.
 //!
 //! Detection is per function body. A write is reported only when none of the
-//! observing methods in [`STORAGE_READ_METHODS`] touched the *same* receiver and
+//! observing methods in [`STORAGE_OBSERVING_METHODS`] touched the *same* receiver and
 //! key earlier in the body. Receiver and key are compared by their source text,
 //! so two expressions that print identically are treated as the same
 //! receiver/key even if they are distinct bindings. That keeps the analysis
@@ -32,7 +32,7 @@ declare_lint_pass!(StorageWriteWithoutRead => [STORAGE_WRITE_WITHOUT_READ]);
 /// follows one of these on the same receiver-key pair is intentional and is not
 /// reported: `remove` and `update` are included because both read the current
 /// value before acting on it.
-const STORAGE_READ_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
+const STORAGE_OBSERVING_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
 
 /// The write method this lint pairs with a preceding read.
 const STORAGE_WRITE_METHOD: &str = "set";
@@ -45,15 +45,18 @@ const STORAGE_WRITE_WITHOUT_READ_HELP: &str =
     "consider reading the value before writing or using `.has()` to check existence";
 
 /// Function names treated as deliberate initialisers, where writing before any
-/// read is expected: constructors and admin setup. `init` and `set_admin` are
-/// substring-matched so `initialize`, `init_owner` and `set_admin_key` are all
-/// covered; Soroban constructors `__constructor` and hand-written factories
-/// named `new` are matched exactly, so `new_user` and `renew` stay in scope.
+/// read is expected: constructors and admin setup. Initialisers are matched by
+/// prefix (`init_`, `initialize`, `set_admin`), while Soroban constructors
+/// `__constructor`, hand-written factories named `new`, and exact `init` are
+/// matched exactly. This ensures false initialisers such as `initiate_auction`
+/// or `reinitialise` stay in scope.
 fn is_initialiser(fn_name: &str) -> bool {
-    fn_name.contains("init")
-        || fn_name.contains("set_admin")
-        || fn_name == "__constructor"
+    fn_name == "__constructor"
         || fn_name == "new"
+        || fn_name == "init"
+        || fn_name.starts_with("init_")
+        || fn_name.starts_with("initialize")
+        || fn_name.starts_with("set_admin")
 }
 
 /// Whether `receiver` is one of the Soroban storage accessor types
@@ -102,7 +105,7 @@ impl<'tcx> Visitor<'tcx> for OrderedAccessVisitor<'_, 'tcx> {
             && is_storage_receiver(self.cx, receiver)
         {
             let method = path_segment.ident.name.as_str();
-            if STORAGE_READ_METHODS.contains(&method) {
+            if STORAGE_OBSERVING_METHODS.contains(&method) {
                 if let Some(pair) = access_pair(self.cx, receiver, args) {
                     self.seen_reads.insert(pair);
                 }
@@ -161,19 +164,19 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
 #[cfg(test)]
 mod tests {
     use super::{
-        STORAGE_READ_METHODS, STORAGE_WRITE_METHOD, STORAGE_WRITE_WITHOUT_READ_HELP,
+        STORAGE_OBSERVING_METHODS, STORAGE_WRITE_METHOD, STORAGE_WRITE_WITHOUT_READ_HELP,
         STORAGE_WRITE_WITHOUT_READ_MSG, is_initialiser,
     };
 
     #[test]
-    fn read_methods_cover_every_observing_access() {
+    fn observing_methods_cover_every_observing_access() {
         for method in ["get", "try_get", "has", "remove", "update"] {
             assert!(
-                STORAGE_READ_METHODS.contains(&method),
-                "{method} should count as a read",
+                STORAGE_OBSERVING_METHODS.contains(&method),
+                "{method} should count as an observing access",
             );
         }
-        assert!(!STORAGE_READ_METHODS.contains(&"set"));
+        assert!(!STORAGE_OBSERVING_METHODS.contains(&"set"));
     }
 
     #[test]
@@ -182,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn initialisers_are_recognised_by_substring() {
+    fn initialisers_are_recognised_by_prefix_and_exact_match() {
         for name in [
             "initialize",
             "init_owner",
@@ -190,10 +193,19 @@ mod tests {
             "set_admin_key",
             "__constructor",
             "new",
+            "init",
         ] {
             assert!(is_initialiser(name), "{name} should be an initialiser");
         }
-        for name in ["transfer", "record_set", "read_admin_flag", "new_user"] {
+        for name in [
+            "transfer",
+            "record_set",
+            "read_admin_flag",
+            "new_user",
+            "initiate_auction",
+            "reinitialise",
+            "renew",
+        ] {
             assert!(!is_initialiser(name), "{name} should not be an initialiser");
         }
     }

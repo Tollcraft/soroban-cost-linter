@@ -1,0 +1,27 @@
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs_growth.rs:35:17
+   |
+LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn — Vec::append
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+   = note: `#[warn(string_concat_in_loop)]` on by default
+
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs_growth.rs:45:17
+   |
+LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn — Vec::push, Vec::extend_from_slice
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop_ufcs_growth.rs:54:17
+   |
+LL |         let _ = String::from_bytes(&env, &bytes); // Should Warn — <Vec<u8> as Extend<u8>>::extend
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: build the byte buffer inside the loop and construct the String once afterwards
+
+warning: 3 warnings emitted
+

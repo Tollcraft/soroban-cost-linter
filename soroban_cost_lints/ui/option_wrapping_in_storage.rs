@@ -91,6 +91,16 @@ fn good_plain_bool(env: Env) {
     env.storage().instance().set(&"flag", &true); // Good — bool
 }
 
+fn good_vec_of_option(env: Env) {
+    let val: std::vec::Vec<Option<u32>> = std::vec::Vec::new();
+    env.storage().instance().set(&1, &val); // Good
+}
+
+fn good_tuple_with_option(env: Env) {
+    let val: (Option<u32>, bool) = (Some(1), true);
+    env.storage().instance().set(&1, &val); // Good
+}
+
 // --- Non-triggering: a user type whose printed name merely CONTAINS a
 // storage word. The old Debug-substring heuristic treated any such receiver
 // as a storage accessor and warned on the Option value (#796).
@@ -125,6 +135,28 @@ fn good_temporary_namesake(_env: Env) {
 fn allowed_option_in_storage(env: Env) {
     let val: Option<u32> = Some(42);
     env.storage().instance().set(&"key", &val); // Good (allowed)
+}
+
+// ===========================================================================
+// Test code — storing Option<T> in test functions or test modules should not
+// warn, as test setups frequently construct option fixtures. Note that the
+// `#[cfg(test)]` module is compiled out of the binary fixture.
+// ===========================================================================
+
+#[test]
+fn test_option_storage(env: Env) {
+    let _ = env.storage().instance().has(&1);
+    env.storage().instance().set(&1, &Some(10u32));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_in_mod(env: Env) {
+        let _ = env.storage().instance().has(&1);
+        env.storage().instance().set(&1, &Some(20u32));
+    }
 }
 
 fn main() {}

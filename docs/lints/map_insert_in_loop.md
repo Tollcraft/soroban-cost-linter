@@ -11,7 +11,7 @@ sidebar_position: 10
 
 ## What it does
 
-Flags `Map::insert` calls executed inside loop bodies.
+Flags `Map::set` and `Map::insert` calls executed inside loop bodies.
 
 ## Why is this bad
 

@@ -6,19 +6,35 @@ pub mod soroban_sdk {
                 Self(std::vec::Vec::with_capacity(capacity))
             }
 
-            pub fn contains(&self, _item: &T) -> bool { false }
-            pub fn position(&self, _f: impl FnMut(&T) -> bool) -> Option<usize> { None }
+            pub fn contains(&self, _item: &T) -> bool {
+                false
+            }
+            pub fn first_index_of(&self, _item: &T) -> Option<u32> {
+                None
+            }
+            pub fn last_index_of(&self, _item: &T) -> Option<u32> {
+                None
+            }
+            pub fn binary_search(&self, _item: &T) -> Result<u32, u32> {
+                Ok(0)
+            }
         }
     }
 
     pub mod map {
         pub struct Map<K, V>(std::marker::PhantomData<(K, V)>);
         impl<K, V> Map<K, V> {
-            pub fn contains_key(&self, _k: &K) -> bool { false }
+            pub fn new() -> Self {
+                Self(std::marker::PhantomData)
+            }
+            pub fn contains_key(&self, _k: &K) -> bool {
+                false
+            }
         }
     }
 }
 
+use soroban_sdk::map::Map as SorobanMap;
 use soroban_sdk::vec::Vec as SorobanVec;
 
 // The fixtures only need a small container. Reserving its single mock slot
@@ -81,12 +97,21 @@ fn near_miss_scan_impure_argument() {
     }
 }
 
-// Firing: position with a loop-invariant closure body.
-fn bad_position_in_loop() {
+// Firing: first_index_of with a loop-invariant target.
+fn bad_first_index_of_in_loop() {
     let v: SorobanVec<i32> = fixture_vec();
     let target = 5;
     for _ in 0..10 {
-        let _ = v.position(|x| *x == target); // Should Warn
+        let _ = v.first_index_of(&target); // Should Warn
+    }
+}
+
+// Firing: Map::contains_key with a loop-invariant key.
+fn bad_map_contains_key_in_loop() {
+    let map: SorobanMap<i32, i32> = SorobanMap::new();
+    let target = 5;
+    for _ in 0..10 {
+        let _ = map.contains_key(&target); // Should Warn
     }
 }
 

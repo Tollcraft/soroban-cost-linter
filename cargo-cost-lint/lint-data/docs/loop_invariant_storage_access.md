@@ -36,6 +36,16 @@ for _i in 0..10 {
 }
 ```
 
+### Storage chain step reporting
+
+A storage access is typically a chain of method calls: `env.storage().instance().get(&1)` consists of three call steps:
+
+1. `env.storage()`
+2. `env.storage().instance()`
+3. `env.storage().instance().get(&1)`
+
+When written as a single nested chain, only the outermost step that actually reaches the host is reported — one host call equals one diagnostic. However, if individual intermediate steps are evaluated as separate statements in a loop, each independent invariant step is flagged separately.
+
 ## Suggested Fix
 
 {% hint style="success" %}

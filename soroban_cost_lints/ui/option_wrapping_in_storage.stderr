@@ -97,12 +97,28 @@ LL |     env.storage().instance().set(&"flag", &true); // Good — bool
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage write without a corresponding read
-  --> $DIR/option_wrapping_in_storage.rs:127:30
+  --> $DIR/option_wrapping_in_storage.rs:96:30
+   |
+LL |     env.storage().instance().set(&1, &val); // Good
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:101:30
+   |
+LL |     env.storage().instance().set(&1, &val); // Good
+   |                              ^^^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage write without a corresponding read
+  --> $DIR/option_wrapping_in_storage.rs:137:30
    |
 LL |     env.storage().instance().set(&"key", &val); // Good (allowed)
    |                              ^^^^^^^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
-warning: 13 warnings emitted
+warning: 15 warnings emitted
 

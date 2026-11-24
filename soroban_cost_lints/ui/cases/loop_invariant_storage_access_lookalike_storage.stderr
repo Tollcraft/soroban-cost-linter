@@ -1,0 +1,11 @@
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/loop_invariant_storage_access_lookalike_storage.rs:103:9
+   |
+LL |         env.storage().persistent().set(&1, &2); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+   = note: `#[warn(loop_invariant_storage_access)]` on by default
+
+warning: 1 warning emitted
+

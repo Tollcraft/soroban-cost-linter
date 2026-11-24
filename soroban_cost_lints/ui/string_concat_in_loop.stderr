@@ -15,5 +15,13 @@ LL |         let _ = String::from_bytes(&env, bytes.as_slice()); // Should Warn
    |
    = help: b$DIRld the byte buffer inside the loop and construct the String once afterwards
 
-warning: 2 warnings emitted
+warning: repeatedly constructing a Soroban String from bytes inside a loop
+  --> $DIR/string_concat_in_loop.rs:77:17
+   |
+LL |         let _ = String::from_bytes(&env, bytes.as_slice()); // Should Warn
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: b$DIRld the byte buffer inside the loop and construct the String once afterwards
+
+warning: 3 warnings emitted
 
