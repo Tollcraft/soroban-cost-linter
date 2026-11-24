@@ -3,9 +3,14 @@
 //! Soroban SDK 28 does not expose `String::append` or `String + String`. A
 //! supported way to rebuild a growing string is `String::from_bytes`, which
 //! copies and converts the byte slice into a host-backed string each time.
+//!
+//! The buffer counts as growing whether its growth method is called as a
+//! method (`bytes.append(&mut piece)`) or through its path
+//! (`Vec::append(&mut bytes, &mut piece)`): both call the same associated
+//! function, so the path form is matched by its resolved definition.
 
 use clippy_utils::diagnostics::span_lint_and_help;
-use rustc_hir::def::Res;
+use rustc_hir::def::{DefKind, Res};
 use rustc_hir::intravisit::{Visitor, walk_expr, walk_stmt};
 use rustc_hir::{Expr, ExprKind, HirId, PatKind, QPath, StmtKind};
 use rustc_lint::{LateContext, LateLintPass};
@@ -27,7 +32,7 @@ impl<'tcx> LateLintPass<'tcx> for StringConcatInLoop {
             && let ExprKind::Call(_, args) = expr.kind
             && let Some(bytes) = args.get(1)
             && let Some(binding) = buffer_binding(bytes)
-            && buffer_grows_before_call(loop_expr, expr.hir_id, binding)
+            && buffer_grows_before_call(cx, loop_expr, expr.hir_id, binding)
         {
             span_lint_and_help(
                 cx,
@@ -57,7 +62,12 @@ fn buffer_binding(expr: &Expr<'_>) -> Option<HirId> {
     }
 }
 
-fn buffer_grows_before_call(loop_expr: &Expr<'_>, call_id: HirId, binding: HirId) -> bool {
+fn buffer_grows_before_call<'tcx>(
+    cx: &LateContext<'tcx>,
+    loop_expr: &'tcx Expr<'tcx>,
+    call_id: HirId,
+    binding: HirId,
+) -> bool {
     let mut declarations = LoopBindingVisitor {
         binding,
         declared_in_loop: false,
@@ -68,6 +78,7 @@ fn buffer_grows_before_call(loop_expr: &Expr<'_>, call_id: HirId, binding: HirId
     }
 
     let mut growth = BufferGrowthVisitor {
+        cx,
         binding,
         call_id,
         grew_since_reset: false,
@@ -103,7 +114,8 @@ impl<'hir> Visitor<'hir> for LoopBindingVisitor {
     }
 }
 
-struct BufferGrowthVisitor {
+struct BufferGrowthVisitor<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
     binding: HirId,
     call_id: HirId,
     grew_since_reset: bool,
@@ -111,7 +123,7 @@ struct BufferGrowthVisitor {
     reached_call: bool,
 }
 
-impl BufferGrowthVisitor {
+impl BufferGrowthVisitor<'_, '_> {
     fn receiver_is_buffer(&self, receiver: &Expr<'_>) -> bool {
         buffer_binding(receiver) == Some(self.binding)
     }
@@ -120,10 +132,36 @@ impl BufferGrowthVisitor {
         matches!(target.kind, ExprKind::Path(QPath::Resolved(None, path))
             if matches!(path.res, Res::Local(id) if id == self.binding))
     }
+
+    /// Records a call of the buffer's method `name`, however it was spelled.
+    fn record_method(&mut self, name: &str) {
+        match name {
+            "clear" => {
+                self.grew_since_reset = false;
+                self.reset_seen = true;
+            }
+            method if BUFFER_GROWTH_METHODS.contains(&method) && !self.reset_seen => {
+                self.grew_since_reset = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// The name of the associated function a path call such as
+    /// `Vec::append(&mut bytes, ..)` resolves to. Free functions resolve to
+    /// `None`, so a helper that happens to be called `push` is not a method.
+    fn associated_fn_name(&self, callee: &Expr<'_>) -> Option<String> {
+        let ExprKind::Path(ref qpath) = callee.kind else {
+            return None;
+        };
+        let def_id = self.cx.qpath_res(qpath, callee.hir_id).opt_def_id()?;
+        (self.cx.tcx.def_kind(def_id) == DefKind::AssocFn)
+            .then(|| self.cx.tcx.item_name(def_id).to_string())
+    }
 }
 
-impl<'hir> Visitor<'hir> for BufferGrowthVisitor {
-    fn visit_expr(&mut self, expr: &'hir Expr<'hir>) {
+impl<'tcx> Visitor<'tcx> for BufferGrowthVisitor<'_, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
         if self.reached_call || matches!(expr.kind, ExprKind::Closure(..)) {
             return;
         }
@@ -133,15 +171,15 @@ impl<'hir> Visitor<'hir> for BufferGrowthVisitor {
         }
         match expr.kind {
             ExprKind::MethodCall(segment, receiver, _, _) if self.receiver_is_buffer(receiver) => {
-                match segment.ident.as_str() {
-                    "clear" => {
-                        self.grew_since_reset = false;
-                        self.reset_seen = true;
-                    }
-                    method if BUFFER_GROWTH_METHODS.contains(&method) && !self.reset_seen => {
-                        self.grew_since_reset = true;
-                    }
-                    _ => {}
+                self.record_method(segment.ident.as_str());
+            }
+            ExprKind::Call(callee, args)
+                if args
+                    .first()
+                    .is_some_and(|first| self.receiver_is_buffer(first)) =>
+            {
+                if let Some(name) = self.associated_fn_name(callee) {
+                    self.record_method(&name);
                 }
             }
             ExprKind::Assign(target, _, _) if self.target_is_buffer(target) => {
