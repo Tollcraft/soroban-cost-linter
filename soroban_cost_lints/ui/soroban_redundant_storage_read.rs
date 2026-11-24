@@ -32,6 +32,7 @@ pub mod soroban_sdk {
             pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
         }
 
         pub struct Persistent;
@@ -40,6 +41,7 @@ pub mod soroban_sdk {
             pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
             pub fn extend_ttl<K>(&self, _k: &K, _ttl: &()) {}
         }
 
@@ -49,6 +51,7 @@ pub mod soroban_sdk {
             pub fn try_get<K, V>(&self, _k: &K) -> Option<V> { None }
             pub fn set<K, V>(&self, _k: &K, _v: &V) {}
             pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn remove<K>(&self, _k: &K) {}
         }
     }
 }
@@ -90,6 +93,27 @@ fn interleaved_keys(env: Env) {
     let a2: Option<i32> = env.storage().instance().get(&1); // Should Warn
     let b2: Option<i32> = env.storage().instance().get(&2); // Should Warn
     let _ = (a1, b1, a2, b2);
+}
+
+// --- A `remove` invalidates a tracked read just like a `set` ---
+
+// Near-miss: the removal changed the observable value, so re-reading the key is
+// new work and must NOT be flagged.
+fn remove_clears_tracked_key(env: Env) {
+    let first: Option<i32> = env.storage().instance().get(&1);
+    env.storage().instance().remove(&1);
+    let second: Option<i32> = env.storage().instance().get(&1); // Should NOT warn
+    let _ = (first, second);
+}
+
+// Fires: after the removal the first re-read is new state, so the second one is
+// redundant again -- exactly one warning, on the final read.
+fn remove_then_repeated_read(env: Env) {
+    let first: Option<i32> = env.storage().persistent().get(&1);
+    env.storage().persistent().remove(&1);
+    let second: Option<i32> = env.storage().persistent().get(&1); // Should NOT warn
+    let third: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+    let _ = (first, second, third);
 }
 
 // Near-miss: three different keys interleave without a single repeat.

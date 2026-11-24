@@ -47,13 +47,16 @@ const STORAGE_ACCESSOR_SUFFIXES: &[(&str, &str)] = &[
 
 /// Observing methods this lint tracks. `get`, `try_get`, and `has` all meter a
 /// read of the key without changing it, so a following read of the same key is
-/// redundant. `remove`/`update` are mutating writes in the SDK and intentionally
-/// do not participate in this remembered-read set; they clear the tracked read
-/// instead of acting like a second read.
+/// redundant. `update` is a mutating write in the SDK and does not participate
+/// in this remembered-read set; it is not tracked at all.
 const STORAGE_READ_METHODS: &[&str] = &["get", "try_get", "has"];
 
 /// The write method that clears a tracked read.
 const STORAGE_WRITE_METHOD: &str = "set";
+
+/// The removal method. It changes the observable value of the key, so a read
+/// after it is new work rather than a repeat of the tracked one.
+const STORAGE_REMOVE_METHOD: &str = "remove";
 
 /// Message reported for a repeat read of an unchanged key.
 const SOROBAN_REDUNDANT_STORAGE_READ_MSG: &str =
@@ -110,8 +113,11 @@ enum StorageOp {
         storage_def_id: DefId,
         key_text: String,
     },
-    /// A `set`, which overwrites state and therefore invalidates every read
-    /// remembered in the current block.
+    /// A `set` or `remove`, which overwrites state and therefore invalidates
+    /// every read remembered in the current block.
+    ///
+    /// Clearing on `remove` is deliberately conservative: it drops the tracked
+    /// reads for every key, not only the removed one.
     Write,
 }
 
@@ -126,13 +132,16 @@ fn extract_storage_op<'tcx>(
     };
 
     let method_name = path_segment.ident.name.as_str();
-    if !STORAGE_READ_METHODS.contains(&method_name) && method_name != STORAGE_WRITE_METHOD {
+    if !STORAGE_READ_METHODS.contains(&method_name)
+        && method_name != STORAGE_WRITE_METHOD
+        && method_name != STORAGE_REMOVE_METHOD
+    {
         return None;
     }
 
     let storage_def_id = storage_accessor_def_id(cx, cx.typeck_results().expr_ty(receiver))?;
 
-    if method_name == STORAGE_WRITE_METHOD {
+    if method_name == STORAGE_WRITE_METHOD || method_name == STORAGE_REMOVE_METHOD {
         return Some(StorageOp::Write);
     }
 
@@ -207,7 +216,8 @@ impl<'tcx> LateLintPass<'tcx> for SorobanRedundantStorageRead {
 mod tests {
     use super::{
         SOROBAN_REDUNDANT_STORAGE_READ_HELP, SOROBAN_REDUNDANT_STORAGE_READ_MSG,
-        STORAGE_READ_METHODS, STORAGE_WRITE_METHOD, is_soroban_root, is_storage_accessor_path,
+        STORAGE_READ_METHODS, STORAGE_REMOVE_METHOD, STORAGE_WRITE_METHOD, is_soroban_root,
+        is_storage_accessor_path,
     };
 
     #[test]
@@ -256,6 +266,8 @@ mod tests {
     fn method_tables_and_messages_are_pinned() {
         assert_eq!(STORAGE_READ_METHODS, ["get", "try_get", "has"]);
         assert_eq!(STORAGE_WRITE_METHOD, "set");
+        assert_eq!(STORAGE_REMOVE_METHOD, "remove");
+        assert!(!STORAGE_READ_METHODS.contains(&STORAGE_REMOVE_METHOD));
         assert!(!SOROBAN_REDUNDANT_STORAGE_READ_MSG.is_empty());
         assert!(!SOROBAN_REDUNDANT_STORAGE_READ_HELP.is_empty());
     }
