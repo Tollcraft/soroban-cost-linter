@@ -52,6 +52,28 @@ fn bad_same_address_auth_in_loop_loop(env: Env) {
     }
 }
 
+/// A `while let` header desugars to a `loop` node that encloses the body, so
+/// the authorization inside it is still reported, once.
+fn bad_same_address_auth_in_while_let_loop(env: Env) {
+    let items = [Address, Address];
+    let mut iter = items.iter();
+    while let Some(item) = iter.next() {
+        item.require_auth(); // Should Warn — authorization inside the loop body
+    }
+}
+
+/// The authorization is hoisted above the `while let`, so the body only reads
+/// the item. Silence here shows the anchor is the body, not the `while let`.
+fn good_auth_before_while_let_loop(env: Env) {
+    let addr = Address;
+    addr.require_auth(); // Good — hoisted once, outside the loop
+    let items = [Address, Address];
+    let mut iter = items.iter();
+    while let Some(item) = iter.next() {
+        let _ = item; // only reads the item inside the loop
+    }
+}
+
 /// `require_auth_for_args` is tracked exactly like `require_auth`.
 fn bad_require_auth_for_args_in_loop(env: Env) {
     let addr = Address;
