@@ -168,5 +168,21 @@ LL |     let _: Option<i32> = env.storage().persistent().get(&1); // Should NOT 
    |
    = help: delete the storage read or use its returned value
 
-warning: 21 warnings emitted
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/soroban_redundant_storage_read.rs:203:26
+   |
+LL |     let b: Option<i32> = env.storage().temporary().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: redundant storage read: this key was already read without modification
+  --> $DIR/soroban_redundant_storage_read.rs:221:26
+   |
+LL |     let c: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: store the value from the first read and reuse it instead of reading again
+
+warning: 23 warnings emitted
 

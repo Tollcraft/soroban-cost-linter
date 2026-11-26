@@ -186,4 +186,40 @@ fn nested_loop_body(env: Env) {
     let _ = outer;
 }
 
+// --- Tier is part of read identity: the same key on another tier is another read ---
+
+// Near-miss: Persistent then Temporary for the same key. Neither tier repeats,
+// so the cross-tier pair is silent.
+fn persistent_then_temporary_is_not_a_repeat(env: Env) {
+    let a: Option<i32> = env.storage().persistent().get(&1);
+    let b: Option<i32> = env.storage().temporary().get(&1);
+    let _ = (a, b);
+}
+
+// Fires: two Temporary reads of the same key with no write in between, so the
+// second one is redundant.
+fn temporary_read_repeated(env: Env) {
+    let a: Option<i32> = env.storage().temporary().get(&1);
+    let b: Option<i32> = env.storage().temporary().get(&1); // Should Warn
+    let _ = (a, b);
+}
+
+// Near-miss: Instance, Persistent and Temporary in a row. Three distinct
+// identities, so no read is a repeat.
+fn all_three_tiers_are_distinct(env: Env) {
+    let a: Option<i32> = env.storage().instance().get(&1);
+    let b: Option<i32> = env.storage().persistent().get(&1);
+    let c: Option<i32> = env.storage().temporary().get(&1);
+    let _ = (a, b, c);
+}
+
+// Fires: a Temporary read between two Persistent reads of the same key does not
+// silence the second Persistent read, because the tier is part of the identity.
+fn cross_tier_read_does_not_clear_same_tier_repeat(env: Env) {
+    let a: Option<i32> = env.storage().persistent().get(&1);
+    let b: Option<i32> = env.storage().temporary().get(&1);
+    let c: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+    let _ = (a, b, c);
+}
+
 fn main() {}
